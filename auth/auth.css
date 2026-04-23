@@ -10,3 +10,27 @@
 .auth-input:focus { border-color: var(--accent); }
 .auth-hint { font-size: 12px; color: var(--text3); line-height: 1.5; padding: 8px 10px; background: var(--bg3); border-radius: 6px; border-left: 2px solid var(--accent); }
 .auth-error { font-size: 12px; color: var(--red); padding: 8px 10px; background: var(--red-dim); border-radius: 6px; }
+
+/* ---- Dropbox button ---- */
+.btn-dropbox {
+  padding: 11px 18px; background: #0061FF; color: #fff;
+  border: none; border-radius: var(--radius); font-family: var(--font-sans);
+  font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+  white-space: nowrap; display: flex; align-items: center; justify-content: center;
+}
+.btn-dropbox:hover { background: #0052D9; }
+.btn-dropbox:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- Auth back button ---- */
+.auth-back-btn {
+  background: none; border: none; color: var(--text3); font-family: var(--font-sans);
+  font-size: 12px; cursor: pointer; padding: 0; transition: color 0.15s;
+  display: flex; align-items: center; gap: 4px;
+}
+.auth-back-btn:hover { color: var(--text2); }
+
+/* ---- Section title inside card ---- */
+.auth-section-title {
+  font-family: var(--font-mono); font-size: 13px; font-weight: 700;
+  color: var(--text); margin-bottom: 14px; letter-spacing: -0.3px;
+}

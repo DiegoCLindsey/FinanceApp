@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FinanceApp — Tutorial de configuración Google Drive + GitHub Pages</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:     #0d0f14; --bg2: #13161e; --bg3: #1a1e28;
+  --border: #252a38; --border2: #2f3547;
+  --text:   #e8eaf2; --text2: #8b92a8; --text3: #555d77;
+  --accent: #00e5a0; --accent2: #00b37d; --accent-dim: rgba(0,229,160,0.12);
+  --red:    #ff4d6d; --red-dim: rgba(255,77,109,0.12);
+  --yellow: #ffd166; --yellow-dim: rgba(255,209,102,0.12);
+  --blue:   #4d9fff; --blue-dim: rgba(77,159,255,0.12);
+  --mono:   'Space Mono', monospace;
+  --sans:   'DM Sans', sans-serif;
+  --r:      8px; --rl: 14px;
+  --max:    760px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.7; }
+
+/* ── Layout ── */
+.page { max-width: var(--max); margin: 0 auto; padding: 48px 24px 80px; }
+
+/* ── Header ── */
+.header { text-align: center; margin-bottom: 56px; }
+.logo { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+.logo-mark { width: 40px; height: 40px; background: var(--accent); color: var(--bg); font-family: var(--mono); font-weight: 700; font-size: 20px; display: flex; align-items: center; justify-content: center; border-radius: 10px; }
+.logo-text { font-family: var(--mono); font-size: 20px; font-weight: 700; }
+.logo-text span { color: var(--accent); }
+h1 { font-family: var(--mono); font-size: clamp(22px, 5vw, 32px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.25; margin-bottom: 14px; }
+h1 em { color: var(--accent); font-style: normal; }
+.subtitle { font-size: 15px; color: var(--text2); max-width: 540px; margin: 0 auto; }
+
+/* ── Nav de pasos ── */
+.step-nav { display: flex; gap: 0; margin-bottom: 52px; border: 1px solid var(--border); border-radius: var(--rl); overflow: hidden; }
+.step-nav a { flex: 1; padding: 10px 8px; text-align: center; font-family: var(--mono); font-size: 11px; color: var(--text3); text-decoration: none; border-right: 1px solid var(--border); transition: all 0.15s; display: flex; flex-direction: column; align-items: center; gap: 4px; background: var(--bg2); }
+.step-nav a:last-child { border-right: none; }
+.step-nav a:hover { background: var(--bg3); color: var(--text2); }
+.step-nav a .n { font-size: 16px; font-weight: 700; color: var(--accent); }
+@media(max-width:560px){ .step-nav { flex-wrap: wrap; } .step-nav a { flex: 1 1 33%; border-bottom: 1px solid var(--border); } }
+
+/* ── Secciones de paso ── */
+.step { margin-bottom: 48px; scroll-margin-top: 20px; }
+.step-header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.step-num { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: var(--bg); font-family: var(--mono); font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.step-title { font-family: var(--mono); font-size: 17px; font-weight: 700; }
+.step p { color: var(--text2); margin-bottom: 14px; }
+.step p strong { color: var(--text); }
+
+/* ── Alertas ── */
+.alert { border-radius: var(--r); padding: 12px 16px; margin-bottom: 16px; display: flex; gap: 12px; font-size: 13px; line-height: 1.6; }
+.alert-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.alert-body { flex: 1; }
+.alert-body strong { display: block; margin-bottom: 3px; }
+.info  { background: var(--blue-dim);   border: 1px solid rgba(77,159,255,0.25); color: var(--blue); }
+.warn  { background: var(--yellow-dim); border: 1px solid rgba(255,209,102,0.25); color: var(--yellow); }
+.ok    { background: var(--accent-dim); border: 1px solid rgba(0,229,160,0.25);  color: var(--accent); }
+.danger{ background: var(--red-dim);    border: 1px solid rgba(255,77,109,0.25);  color: var(--red); }
+
+/* ── Código ── */
+pre, code { font-family: var(--mono); }
+code { background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 12px; color: var(--accent); }
+pre { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); padding: 16px 18px; overflow-x: auto; font-size: 12px; line-height: 1.7; margin-bottom: 16px; color: var(--text2); }
+pre .hl  { color: var(--accent); }
+pre .hl2 { color: var(--yellow); }
+pre .hl3 { color: var(--blue); }
+pre .cmt { color: var(--text3); }
+
+/* ── Pasos numerados ── */
+ol.steps { list-style: none; counter-reset: s; display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+ol.steps li { counter-increment: s; display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); font-size: 14px; color: var(--text2); }
+ol.steps li::before { content: counter(s); min-width: 22px; height: 22px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+ol.steps li strong { color: var(--text); }
+
+/* ── Imágenes placeholder ── */
+.img-placeholder { background: var(--bg2); border: 1px dashed var(--border2); border-radius: var(--r); padding: 20px; text-align: center; color: var(--text3); font-size: 12px; font-family: var(--mono); margin-bottom: 16px; }
+
+/* ── Tabla ── */
+table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; }
+th { padding: 8px 12px; text-align: left; font-family: var(--mono); font-size: 10px; color: var(--text3); letter-spacing: 0.5px; border-bottom: 1px solid var(--border2); background: var(--bg2); }
+td { padding: 9px 12px; border-bottom: 1px solid var(--border); color: var(--text2); vertical-align: top; }
+td:first-child { font-family: var(--mono); font-size: 12px; color: var(--accent); white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+
+/* ── Diagrama ── */
+.diagram { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--rl); padding: 24px; margin-bottom: 20px; font-family: var(--mono); font-size: 12px; color: var(--text2); line-height: 1.9; }
+.diagram .node { color: var(--accent); }
+.diagram .node2 { color: var(--yellow); }
+.diagram .node3 { color: var(--blue); }
+.diagram .arrow { color: var(--text3); }
+
+/* ── FAQ ── */
+.faq { display: flex; flex-direction: column; gap: 2px; margin-bottom: 16px; }
+details { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
+summary { padding: 13px 16px; cursor: pointer; font-weight: 500; color: var(--text); font-size: 14px; list-style: none; display: flex; align-items: center; gap: 10px; }
+summary::before { content: '+'; font-family: var(--mono); font-weight: 700; color: var(--accent); font-size: 16px; flex-shrink: 0; }
+details[open] summary::before { content: '−'; }
+details[open] summary { border-bottom: 1px solid var(--border); }
+.faq-body { padding: 14px 16px; font-size: 13px; color: var(--text2); line-height: 1.7; }
+.faq-body p { margin-bottom: 8px; }
+.faq-body p:last-child { margin-bottom: 0; }
+
+/* ── Footer ── */
+.footer { text-align: center; padding-top: 32px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text3); }
+
+/* ── Divider ── */
+hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ══════════════════════════════════════════════════════ HEADER -->
+<div class="header">
+  <div class="logo">
+    <div class="logo-mark">F</div>
+    <div class="logo-text">Finance<span>App</span></div>
+  </div>
+  <h1>Configurar <em>Google Drive</em><br>y desplegar en <em>GitHub Pages</em></h1>
+  <p class="subtitle">Guía completa para activar el backup cifrado en la nube sin exponer credenciales en el repositorio. Actualizada para 2026.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ NAV -->
+<nav class="step-nav">
+  <a href="#s1"><span class="n">1</span>Google Cloud</a>
+  <a href="#s2"><span class="n">2</span>Credenciales</a>
+  <a href="#s3"><span class="n">3</span>Repositorio</a>
+  <a href="#s4"><span class="n">4</span>Secrets</a>
+  <a href="#s5"><span class="n">5</span>Deploy</a>
+  <a href="#s6"><span class="n">6</span>Verificar</a>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════ INTRO TÉCNICA -->
+<div class="alert info">
+  <div class="alert-icon">ℹ️</div>
+  <div class="alert-body">
+    <strong>¿Por qué este proceso?</strong>
+    Google Drive requiere credenciales OAuth 2.0 para acceder a la API. Estas credenciales
+    no pueden estar hardcodeadas en el repositorio público (cualquiera podría verlas).
+    La solución es guardarlas como <strong>Repository Secrets</strong> en GitHub y usar
+    <strong>GitHub Actions</strong> para inyectarlas en el código justo antes del despliegue,
+    de modo que solo el binario desplegado las contiene, nunca el código fuente.
+  </div>
+</div>
+
+<div class="alert warn">
+  <div class="alert-icon">⚠️</div>
+  <div class="alert-body">
+    <strong>Tipo de cliente OAuth: Desktop app</strong>
+    En 2026, Google requiere <code>client_secret</code> para todos los tipos de cliente OAuth,
+    incluyendo SPAs. Para aplicaciones que no pueden guardar secrets de forma segura
+    (como una página estática), Google recomienda el tipo <strong>"Desktop app"</strong>, que
+    trata explícitamente el <code>client_secret</code> como no confidencial.
+    Ver <a href="https://developers.google.com/identity/protocols/oauth2/native-app" style="color:var(--yellow)" target="_blank">documentación oficial</a>.
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ DIAGRAMA -->
+<div class="diagram">
+<div><span class="arrow">┌─────────────────────────────────────────────────────────────────┐</span></div>
+<div><span class="arrow">│</span>                    <span class="node2">REPOSITORIO GitHub (fuente)</span>                       <span class="arrow">│</span></div>
+<div><span class="arrow">│</span>  auth/auth.js contiene <span class="node">%%GDRIVE_CLIENT_ID%%</span>                       <span class="arrow">│</span></div>
+<div><span class="arrow">│</span>                        <span class="node">%%GDRIVE_CLIENT_SECRET%%</span>  ← placeholders     <span class="arrow">│</span></div>
+<div><span class="arrow">└──────────────────────┬──────────────────────────────────────────┘</span></div>
+<div><span class="arrow">                       │ push a main</span></div>
+<div><span class="arrow">                       ▼</span></div>
+<div><span class="arrow">┌──────────────────────────────────────────────────────────────────┐</span></div>
+<div><span class="arrow">│</span>               <span class="node2">GITHUB ACTIONS</span> (runner efímero)                     <span class="arrow">│</span></div>
+<div><span class="arrow">│</span>  Lee secrets del repo → <span class="node">GDRIVE_CLIENT_ID</span>, <span class="node">GDRIVE_CLIENT_SECRET</span>  <span class="arrow">│</span></div>
+<div><span class="arrow">│</span>  sed sustituye placeholders en auth/auth.js                      <span class="arrow">│</span></div>
+<div><span class="arrow">└──────────────────────┬───────────────────────────────────────────┘</span></div>
+<div><span class="arrow">                       │</span></div>
+<div><span class="arrow">                       ▼</span></div>
+<div><span class="arrow">┌──────────────────────────────────────────────────────────────────┐</span></div>
+<div><span class="arrow">│</span>              <span class="node3">GITHUB PAGES</span> (sitio desplegado)                       <span class="arrow">│</span></div>
+<div><span class="arrow">│</span>  auth/auth.js contiene valores reales — solo en el binario        <span class="arrow">│</span></div>
+<div><span class="arrow">│</span>  El código fuente del repo NUNCA los muestra                      <span class="arrow">│</span></div>
+<div><span class="arrow">└──────────────────────────────────────────────────────────────────┘</span></div>
+</div>
+
+<hr/>
+
+<!-- ══════════════════════════════════════════════════════ PASO 1 -->
+<div id="s1" class="step">
+  <div class="step-header">
+    <div class="step-num">1</div>
+    <div class="step-title">Crear proyecto en Google Cloud Console</div>
+  </div>
+
+  <div class="alert ok">
+    <div class="alert-icon">✅</div>
+    <div class="alert-body">Si ya tienes un proyecto de Google Cloud para esta app, ve directamente al <a href="#s2" style="color:var(--accent)">paso 2</a>.</div>
+  </div>
+
+  <ol class="steps">
+    <li>Ve a <strong><a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent)">console.cloud.google.com</a></strong> e inicia sesión con tu cuenta de Google.</li>
+    <li>En la barra superior, haz clic en el selector de proyectos → <strong>"Nuevo proyecto"</strong>.</li>
+    <li>Dale un nombre (ej: <code>financeapp-drive</code>) y haz clic en <strong>"Crear"</strong>. Espera a que se cree (10-20 segundos).</li>
+    <li>Asegúrate de que el proyecto nuevo está seleccionado en el selector de la barra superior.</li>
+  </ol>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ PASO 2 -->
+<div id="s2" class="step">
+  <div class="step-header">
+    <div class="step-num">2</div>
+    <div class="step-title">Activar la API de Google Drive y crear credenciales OAuth</div>
+  </div>
+
+  <p>Este es el paso más largo. Son cuatro sub-pasos: habilitar la API, configurar la pantalla de consentimiento, crear las credenciales y apuntar los valores.</p>
+
+  <p><strong>2a — Habilitar Google Drive API</strong></p>
+  <ol class="steps">
+    <li>En el menú lateral izquierdo: <strong>APIs y servicios → Biblioteca</strong>.</li>
+    <li>Busca <code>Google Drive API</code> y haz clic en el resultado.</li>
+    <li>Haz clic en el botón azul <strong>"Habilitar"</strong>.</li>
+  </ol>
+
+  <p><strong>2b — Pantalla de consentimiento OAuth</strong></p>
+  <ol class="steps">
+    <li>Ve a <strong>APIs y servicios → Pantalla de consentimiento de OAuth</strong>.</li>
+    <li>Tipo de usuario: <strong>Externo</strong> → <strong>"Crear"</strong>.</li>
+    <li>Rellena los campos obligatorios:
+      <ul style="margin-top:6px;margin-left:16px;color:var(--text2);font-size:13px;line-height:2">
+        <li><strong>Nombre de la aplicación:</strong> FinanceApp (o el nombre que prefieras)</li>
+        <li><strong>Email de soporte de usuario:</strong> tu email</li>
+        <li><strong>Email del desarrollador:</strong> tu email</li>
+      </ul>
+    </li>
+    <li>Haz clic en <strong>"Guardar y continuar"</strong>.</li>
+    <li>En la pantalla <strong>"Permisos"</strong>, haz clic en <strong>"Añadir o quitar permisos"</strong>.</li>
+    <li>Busca <code>drive.appdata</code>, marca la casilla y haz clic en <strong>"Actualizar"</strong>.
+      <div class="alert info" style="margin-top:10px;font-size:12px">
+        <div class="alert-icon">ℹ️</div>
+        <div class="alert-body"><strong>¿Qué es <code>drive.appdata</code>?</strong> Es un scope restringido que solo permite a la app acceder a su propia carpeta oculta en el Drive del usuario. El usuario no puede ver estos archivos en drive.google.com y ninguna otra app tampoco puede.</div>
+      </div>
+    </li>
+    <li>Haz clic en <strong>"Guardar y continuar"</strong> hasta llegar a <strong>"Usuarios de prueba"</strong>.</li>
+    <li>Añade <strong>tu propio email</strong> como usuario de prueba (necesario mientras la app esté en modo "Testing").</li>
+    <li>Haz clic en <strong>"Guardar y continuar"</strong> → <strong>"Volver al panel"</strong>.</li>
+  </ol>
+
+  <div class="alert warn">
+    <div class="alert-icon">⚠️</div>
+    <div class="alert-body">
+      <strong>¿Publicar la app?</strong> Si es para uso personal, no hace falta publicarla. En modo "Testing" funciona perfectamente para los usuarios de prueba añadidos. Si quieres compartirla con otras personas, deberás publicarla (posible verificación de Google para scopes sensibles como <code>drive.appdata</code>).
+    </div>
+  </div>
+
+  <p><strong>2c — Crear credenciales OAuth tipo "Desktop app"</strong></p>
+
+  <div class="alert warn">
+    <div class="alert-icon">🔑</div>
+    <div class="alert-body">
+      <strong>Usa el tipo "Aplicación de escritorio" (Desktop app), NO "Aplicación web".</strong>
+      En 2026, Google requiere <code>client_secret</code> para todos los tipos de cliente. El tipo
+      "Desktop app" es el único que Google reconoce explícitamente como <em>cliente público</em>,
+      lo que significa que el <code>client_secret</code> puede estar en código no confidencial sin
+      implicaciones de seguridad adicionales. Una "Aplicación web" requeriría que el secret
+      fuera confidencial, lo cual es imposible en una SPA estática.
+    </div>
+  </div>
+
+  <ol class="steps">
+    <li>Ve a <strong>APIs y servicios → Credenciales</strong>.</li>
+    <li>Haz clic en <strong>"+ Crear credenciales"</strong> → <strong>"ID de cliente de OAuth"</strong>.</li>
+    <li>Tipo de aplicación: <strong>"Aplicación de escritorio"</strong> (Desktop app).</li>
+    <li>Nombre: <code>financeapp-desktop</code> (o cualquier nombre).</li>
+    <li>Haz clic en <strong>"Crear"</strong>.</li>
+    <li>Aparece un diálogo con <strong>ID de cliente</strong> y <strong>Secreto de cliente</strong>. <strong>Cópialos y guárdalos</strong> — los necesitarás en el paso 4.
+      <div class="alert danger" style="margin-top:10px;font-size:12px">
+        <div class="alert-icon">🚫</div>
+        <div class="alert-body">NO los pongas directamente en ningún archivo del repositorio. Solo en los Repository Secrets de GitHub (paso 4).</div>
+      </div>
+    </li>
+  </ol>
+
+  <p><strong>2d — Añadir el origen de la página como URI de redireccionamiento</strong></p>
+
+  <div class="alert info" style="font-size:13px">
+    <div class="alert-icon">ℹ️</div>
+    <div class="alert-body">Para tipo "Desktop app", Google acepta <code>http://localhost</code> y puertos como URIs de redirección. También acepta la URL completa de una página web si se registra. Para GitHub Pages debes añadir tu URL.</div>
+  </div>
+
+  <ol class="steps">
+    <li>En la lista de credenciales, haz clic en el nombre de la que acabas de crear.</li>
+    <li>En <strong>"URIs de redireccionamiento autorizados"</strong>, haz clic en <strong>"+ Añadir URI"</strong>.</li>
+    <li>Añade la URL exacta de tu GitHub Pages:
+      <pre><span class="hl">https://TU_USUARIO.github.io/TU_REPOSITORIO</span></pre>
+      Por ejemplo: <code>https://diegoclindsey.github.io/financeapp</code>
+    </li>
+    <li>Si también quieres desarrollar en local, añade también: <code>http://localhost:8080</code></li>
+    <li>Haz clic en <strong>"Guardar"</strong>.</li>
+  </ol>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ PASO 3 -->
+<div id="s3" class="step">
+  <div class="step-header">
+    <div class="step-num">3</div>
+    <div class="step-title">Preparar el repositorio en GitHub</div>
+  </div>
+
+  <p>El repositorio debe contener la carpeta <code>financeapp/</code> con el archivo <code>.github/workflows/deploy.yml</code> incluido en el ZIP que descargaste.</p>
+
+  <ol class="steps">
+    <li>Crea un repositorio nuevo en GitHub (puede ser público o privado).</li>
+    <li>Sube el contenido del ZIP descomprimido al repositorio. La estructura raíz debe ser:
+<pre>
+<span class="hl">.github/</span>
+  workflows/
+    <span class="hl2">deploy.yml</span>       ← el workflow que inyecta los secrets
+<span class="hl">auth/</span>
+  auth.js          ← contiene los placeholders %%GDRIVE_CLIENT_ID%%
+  ...
+<span class="hl">index.html</span>
+<span class="hl">common/</span> ...
+</pre>
+    </li>
+    <li>Activa GitHub Pages:
+      <ul style="margin-top:6px;margin-left:16px;color:var(--text2);font-size:13px;line-height:2">
+        <li>Ve a <strong>Settings → Pages</strong></li>
+        <li><strong>Source:</strong> "GitHub Actions"</li>
+        <li>(No selecciones una rama — el workflow lo gestiona todo)</li>
+      </ul>
+    </li>
+  </ol>
+
+  <div class="alert info">
+    <div class="alert-icon">ℹ️</div>
+    <div class="alert-body">
+      <strong>Repositorio público vs. privado:</strong> Para GitHub Pages gratuito en cuentas personales, el repositorio debe ser público. Las credenciales de Google Cloud <strong>no estarán visibles</strong> en el código fuente del repositorio (son placeholders), pero sí en el archivo desplegado. Esto es correcto y esperado para el tipo "Desktop app".
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ PASO 4 -->
+<div id="s4" class="step">
+  <div class="step-header">
+    <div class="step-num">4</div>
+    <div class="step-title">Añadir los Repository Secrets en GitHub</div>
+  </div>
+
+  <p>Los Repository Secrets son variables cifradas que GitHub Actions puede leer durante el build pero que nunca aparecen en los logs ni en el código fuente del repositorio.</p>
+
+  <ol class="steps">
+    <li>En tu repositorio de GitHub, ve a <strong>Settings → Secrets and variables → Actions</strong>.</li>
+    <li>Haz clic en <strong>"New repository secret"</strong>.</li>
+    <li>Crea el primer secret:
+      <table>
+        <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
+        <tbody>
+          <tr><td>Name</td><td><code>GDRIVE_CLIENT_ID</code></td></tr>
+          <tr><td>Secret</td><td>El "ID de cliente" copiado del paso 2c (termina en <code>.apps.googleusercontent.com</code>)</td></tr>
+        </tbody>
+      </table>
+    </li>
+    <li>Haz clic en <strong>"Add secret"</strong>.</li>
+    <li>Crea el segundo secret igual:
+      <table>
+        <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
+        <tbody>
+          <tr><td>Name</td><td><code>GDRIVE_CLIENT_SECRET</code></td></tr>
+          <tr><td>Secret</td><td>El "Secreto de cliente" copiado del paso 2c</td></tr>
+        </tbody>
+      </table>
+    </li>
+  </ol>
+
+  <div class="alert ok">
+    <div class="alert-icon">✅</div>
+    <div class="alert-body">Una vez guardados, los secrets <strong>nunca se muestran de nuevo</strong> — ni siquiera a ti. Solo puedes sobrescribirlos. Esto es por diseño y es correcto.</div>
+  </div>
+
+  <p><strong>¿Qué hace el workflow con estos secrets?</strong></p>
+  <p>El archivo <code>.github/workflows/deploy.yml</code> incluye este paso que sustituye los placeholders en <code>auth/auth.js</code> antes de desplegar:</p>
+
+<pre>
+<span class="cmt"># Del archivo .github/workflows/deploy.yml</span>
+- name: Inject Google Drive credentials
+  env:
+    <span class="hl">GDRIVE_CLIENT_ID</span>:     ${{ secrets.<span class="hl">GDRIVE_CLIENT_ID</span> }}
+    <span class="hl2">GDRIVE_CLIENT_SECRET</span>: ${{ secrets.<span class="hl2">GDRIVE_CLIENT_SECRET</span> }}
+  run: |
+    sed -i <span class="hl3">"s|%%GDRIVE_CLIENT_ID%%|${GDRIVE_CLIENT_ID}|g"</span>         auth/auth.js
+    sed -i <span class="hl3">"s|%%GDRIVE_CLIENT_SECRET%%|${GDRIVE_CLIENT_SECRET}|g"</span> auth/auth.js
+</pre>
+
+  <p>El código fuente en el repositorio siempre contiene <code>%%GDRIVE_CLIENT_ID%%</code>. Solo el archivo desplegado en GitHub Pages contiene el valor real.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ PASO 5 -->
+<div id="s5" class="step">
+  <div class="step-header">
+    <div class="step-num">5</div>
+    <div class="step-title">Disparar el primer despliegue</div>
+  </div>
+
+  <ol class="steps">
+    <li>Haz un <code>git push</code> a la rama <code>main</code> (o edita cualquier archivo desde la UI de GitHub).</li>
+    <li>Ve a la pestaña <strong>Actions</strong> de tu repositorio. Verás el workflow <code>Deploy FinanceApp to GitHub Pages</code> ejecutándose.</li>
+    <li>Haz clic en él para ver los logs en tiempo real. El paso <strong>"Inject Google Drive credentials"</strong> debería mostrar: <code>✅ Credenciales inyectadas correctamente.</code></li>
+    <li>Cuando termine (verde ✓), tu app estará disponible en: <code>https://TU_USUARIO.github.io/TU_REPOSITORIO</code></li>
+  </ol>
+
+  <div class="alert warn">
+    <div class="alert-icon">⚠️</div>
+    <div class="alert-body">
+      <strong>Primera vez:</strong> GitHub Pages puede tardar 1-3 minutos en activarse tras el primer despliegue. Refresca la URL si ves un 404.
+    </div>
+  </div>
+
+  <p><strong>Lanzar manualmente sin hacer push:</strong></p>
+  <p>Ve a <strong>Actions → Deploy FinanceApp to GitHub Pages → Run workflow</strong>. Útil si actualizas los secrets y quieres redesplegar sin tocar el código.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ PASO 6 -->
+<div id="s6" class="step">
+  <div class="step-header">
+    <div class="step-num">6</div>
+    <div class="step-title">Verificar que Google Drive funciona</div>
+  </div>
+
+  <ol class="steps">
+    <li>Abre la URL de tu GitHub Pages en el navegador.</li>
+    <li>En la pantalla de inicio de FinanceApp, haz clic en <strong>"Conectar con Google Drive"</strong>. Si el botón aparece desactivado con el texto "Google Drive sin configurar", hay un error en los secrets — vuelve al paso 4.</li>
+    <li>Te redirigirá a Google para autorizar. Inicia sesión con el email que añadiste como usuario de prueba en el paso 2b.</li>
+    <li>Google mostrará una advertencia de que la app no está verificada. Haz clic en <strong>"Continuar"</strong> (es tu propia app).</li>
+    <li>Acepta el permiso <strong>"Ver, editar, crear y eliminar únicamente los archivos de la aplicación específica de Google Drive"</strong> (scope <code>drive.appdata</code>).</li>
+    <li>Te redirige de vuelta a FinanceApp. Introduce una <strong>contraseña de cifrado</strong> y haz clic en "Confirmar". Esta contraseña cifra tus datos antes de subirlos a Drive — Google no puede leerlos.</li>
+    <li>¡Listo! Ahora puedes hacer clic en <strong>"☁ Drive"</strong> en el sidebar para guardar un backup cifrado.</li>
+  </ol>
+
+  <div class="alert danger">
+    <div class="alert-icon">🔐</div>
+    <div class="alert-body">
+      <strong>No olvides la contraseña de cifrado.</strong> Si la pierdes, los datos del backup en Drive no se pueden recuperar. Guárdala en un gestor de contraseñas. Los datos locales (localStorage) no están cifrados y siguen accesibles aunque pierdas la contraseña de Drive.
+    </div>
+  </div>
+</div>
+
+<hr/>
+
+<!-- ══════════════════════════════════════════════════════ DESARROLLO LOCAL -->
+<div class="step">
+  <div class="step-header">
+    <div class="step-num" style="background:var(--blue)">+</div>
+    <div class="step-title">Desarrollo y prueba local</div>
+  </div>
+
+  <p>Para probar la app en local con Google Drive funcionando, necesitas sustituir los placeholders manualmente en una copia local. <strong>Nunca hagas commit de esta copia con los valores reales.</strong></p>
+
+  <pre>
+<span class="cmt"># Copia de trabajo local (no hacer commit)</span>
+<span class="hl">cd financeapp</span>
+<span class="hl2">cp auth/auth.js auth/auth.js.backup</span>
+
+<span class="cmt"># Sustituir placeholders temporalmente</span>
+<span class="hl">sed -i "s|%%GDRIVE_CLIENT_ID%%|TU_CLIENT_ID.apps.googleusercontent.com|g"  auth/auth.js</span>
+<span class="hl">sed -i "s|%%GDRIVE_CLIENT_SECRET%%|TU_CLIENT_SECRET|g" auth/auth.js</span>
+
+<span class="cmt"># Arrancar servidor local</span>
+<span class="hl">python3 -m http.server 8080</span>
+<span class="cmt"># → http://localhost:8080</span>
+
+<span class="cmt"># Antes de hacer commit, restaurar los placeholders</span>
+<span class="hl2">cp auth/auth.js.backup auth/auth.js</span>
+  </pre>
+
+  <div class="alert warn">
+    <div class="alert-icon">⚠️</div>
+    <div class="alert-body">
+      Añade <code>auth/auth.js.backup</code> a tu <code>.gitignore</code> para no cometerlo por accidente.
+      También puedes añadir una regla de pre-commit que verifique que los placeholders están presentes.
+    </div>
+  </div>
+
+  <p><strong>Añadir <code>localhost:8080</code> como URI de redirección:</strong> En Google Cloud Console → Credenciales → tu cliente → Añadir <code>http://localhost:8080</code> como URI de redireccionamiento autorizado.</p>
+</div>
+
+<hr/>
+
+<!-- ══════════════════════════════════════════════════════ FAQ -->
+<div class="step">
+  <div class="step-header">
+    <div class="step-num" style="background:var(--text3)">?</div>
+    <div class="step-title">Preguntas frecuentes</div>
+  </div>
+
+  <div class="faq">
+    <details>
+      <summary>¿Es seguro que el <code>client_secret</code> quede en el JavaScript desplegado?</summary>
+      <div class="faq-body">
+        <p>Para el tipo <strong>"Desktop app"</strong> (Aplicación de escritorio), sí. Google lo documenta explícitamente: <em>"The client secret is obviously not treated as a secret."</em> El <code>client_secret</code> de una aplicación de escritorio o pública sirve únicamente para identificar a la app ante Google, no para autenticar al usuario. Combinado con PKCE, el flujo es seguro contra ataques de interceptación de código.</p>
+        <p>Lo que <strong>nunca debe ser público</strong> es el <code>access_token</code> y el <code>refresh_token</code> del usuario — esos se guardan solo en el <code>localStorage</code> del navegador del usuario y nunca se envían a terceros.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>¿Por qué no usar el tipo "Web application" que parece más apropiado para una web?</summary>
+      <div class="faq-body">
+        <p>Técnicamente, en 2026 Google requiere <code>client_secret</code> para todos los tipos de cliente OAuth, incluyendo "Web application". La diferencia es que para "Web application", Google <em>asume que el secret es confidencial</em> (guardado en un servidor backend), lo cual no es el caso de una SPA estática.</p>
+        <p>El tipo "Desktop app" es idéntico técnicamente pero Google lo declara como cliente público, reconociendo que el secret no puede mantenerse confidencial. Usar "Desktop app" es la práctica documentada y recomendada para SPAs que necesitan acceso a APIs de Google sin backend.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>¿Puedo usar la app sin Google Drive?</summary>
+      <div class="faq-body">
+        <p>Sí, perfectamente. Si no configuras los secrets de GitHub (o no añades las credenciales de Google Cloud), la app funciona en modo local: todos los datos se guardan en el <code>localStorage</code> del navegador. El botón de Drive aparece desactivado con una nota explicativa.</p>
+        <p>Puedes exportar e importar los datos manualmente en formato JSON desde el sidebar.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>El workflow falla con "Permission denied" al desplegar a Pages</summary>
+      <div class="faq-body">
+        <p>Ve a <strong>Settings → Actions → General → Workflow permissions</strong> y asegúrate de que está en <strong>"Read and write permissions"</strong>. Si no, el workflow no tiene permisos para escribir en GitHub Pages.</p>
+        <p>Alternativamente, verifica que en <strong>Settings → Pages</strong> el source está configurado como <strong>"GitHub Actions"</strong> y no como una rama.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Google muestra "redirect_uri_mismatch" al hacer login</summary>
+      <div class="faq-body">
+        <p>La URI de redirección que envía la app no coincide con ninguna de las URIs autorizadas en Google Cloud Console. Comprueba que en la configuración de credenciales (paso 2d) has añadido exactamente la URL correcta.</p>
+        <p>Casos comunes: URL con <code>/</code> final vs. sin él, URL con <code>www</code> vs. sin él, o falta de <code>http://localhost:8080</code> para desarrollo local. La URI debe ser una coincidencia exacta.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>¿Qué pasa si roto (cambio) las credenciales de Google?</summary>
+      <div class="faq-body">
+        <p>Actualiza los Repository Secrets en GitHub con los nuevos valores y lanza el workflow manualmente (<strong>Actions → Run workflow</strong>). Esto redespliega la app con las nuevas credenciales. Los usuarios que tenían sesión activa verán que su <code>access_token</code> ha caducado y deberán volver a autenticarse, pero sus datos en Drive permanecen intactos.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>¿El backup en Drive es realmente privado?</summary>
+      <div class="faq-body">
+        <p>Sí, en dos niveles: <strong>alcance</strong> y <strong>cifrado</strong>.</p>
+        <p><strong>Alcance (scope):</strong> El scope <code>drive.appdata</code> limita el acceso a la carpeta <code>appDataFolder</code>, que es invisible para el usuario desde drive.google.com y para cualquier otra app.</p>
+        <p><strong>Cifrado:</strong> Antes de subir, los datos se cifran con AES-GCM usando una clave derivada de tu contraseña mediante PBKDF2 (200.000 iteraciones). Google solo ve el texto cifrado. Sin tu contraseña, los datos son irrecuperables incluso para Google.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>La app desplegada muestra "Google Drive sin configurar" pero sí añadí los secrets</summary>
+      <div class="faq-body">
+        <p>Comprueba el log del workflow en la pestaña <strong>Actions</strong>. En el paso "Inject Google Drive credentials" debería aparecer <em>"✅ Credenciales inyectadas correctamente."</em>. Si aparece el mensaje de advertencia, los secrets están vacíos.</p>
+        <p>Verifica que los nombres exactos de los secrets son <code>GDRIVE_CLIENT_ID</code> y <code>GDRIVE_CLIENT_SECRET</code> (sensibles a mayúsculas). Luego lanza el workflow manualmente.</p>
+      </div>
+    </details>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ FOOTER -->
+<div class="footer">
+  <p>FinanceApp — Tutorial de configuración · Actualizado abril 2026</p>
+  <p style="margin-top:6px">Arquitectura: Authorization Code + PKCE (S256) · Cliente Desktop · Scope: drive.appdata · Cifrado: AES-GCM 256-bit</p>
+</div>
+
+</div>
+</body>
+</html>

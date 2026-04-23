@@ -1,0 +1,90 @@
+# .github/workflows/deploy.yml
+#
+# FinanceApp — Deploy to GitHub Pages
+#
+# Qué hace este workflow:
+#   1. Se dispara en cada push a `main`
+#   2. Sustituye los placeholders %%GDRIVE_CLIENT_ID%% y %%GDRIVE_CLIENT_SECRET%%
+#      en auth/auth.js por los valores reales almacenados como Repository Secrets
+#   3. Despliega el resultado a GitHub Pages
+#
+# Antes de usar este workflow necesitas:
+#   → Leer el tutorial de configuración (gdrive-setup-tutorial.html)
+#   → Añadir GDRIVE_CLIENT_ID y GDRIVE_CLIENT_SECRET en:
+#      Settings → Secrets and variables → Actions → New repository secret
+#
+# Si NO quieres usar Google Drive:
+#   → El workflow funciona igual. Los placeholders quedan como están.
+#   → La app arrancará sin el botón de Drive activo.
+#
+
+name: Deploy FinanceApp to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  # Permite lanzarlo manualmente desde la pestaña Actions
+  workflow_dispatch:
+
+# Permisos necesarios para escribir en GitHub Pages
+permissions:
+  contents: read
+  pages:    write
+  id-token: write
+
+# Evitar despliegues concurrentes
+concurrency:
+  group:              pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url:  ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Inyectar credenciales de Google Drive ───────────────────────────
+      # Se sustituyen los placeholders en auth/auth.js con los valores de
+      # los Repository Secrets. Si los secrets no están definidos, la
+      # sustitución deja los placeholders intactos y la app funciona
+      # sin Drive (modo solo local).
+      - name: Inject Google Drive credentials
+        env:
+          GDRIVE_CLIENT_ID:     ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+        run: |
+          # Solo sustituir si los secrets existen (no están vacíos)
+          if [ -n "$GDRIVE_CLIENT_ID" ] && [ -n "$GDRIVE_CLIENT_SECRET" ]; then
+            echo "✅ Inyectando credenciales de Google Drive..."
+            sed -i "s|%%GDRIVE_CLIENT_ID%%|${GDRIVE_CLIENT_ID}|g"         auth/auth.js
+            sed -i "s|%%GDRIVE_CLIENT_SECRET%%|${GDRIVE_CLIENT_SECRET}|g" auth/auth.js
+            echo "✅ Credenciales inyectadas correctamente."
+          else
+            echo "⚠️  GDRIVE_CLIENT_ID o GDRIVE_CLIENT_SECRET no definidos."
+            echo "    La app desplegará sin soporte de Google Drive."
+            echo "    Ver tutorial: gdrive-setup-tutorial.html"
+          fi
+
+      # ── 3. Configurar GitHub Pages ─────────────────────────────────────────
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      # ── 4. Subir artefacto (todos los archivos del repositorio) ───────────
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Sube todo el contenido del repo (el directorio raíz)
+          path: '.'
+
+      # ── 5. Desplegar ───────────────────────────────────────────────────────
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

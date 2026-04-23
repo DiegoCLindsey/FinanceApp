@@ -37,32 +37,89 @@
   <!-- ── Auth overlay (auth/auth.html) ── -->
   <div id="auth-overlay" class="auth-overlay">
     <div class="auth-card">
+
+      <!-- Logo -->
       <div class="auth-logo">
         <span class="logo-mark">F</span>
         <span class="logo-text">Finance<span class="logo-accent">App</span></span>
       </div>
-      <p style="font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6">
-        Tus datos financieros se guardan <strong>solo en tu dispositivo</strong>.
-        Conecta Google Drive para hacer backup cifrado en tu propio Drive.
-      </p>
-      <button id="btn-gdrive" class="btn-primary full-width" style="margin-bottom:10px">
-        <svg viewBox="0 0 24 24" style="width:16px;height:16px;vertical-align:middle;margin-right:6px"><path fill="currentColor" d="M6.28 3l5.72 9.9L17.72 3H6.28zM2 17.5L5 12l3 5.5H2zm15 0L14 12l3 5.5h3l-3-5.5zM9 17.5h6l-3-5.2-3 5.2z"/></svg>
-        Conectar con Google Drive
-      </button>
-      <div id="gdrive-pass-section" class="hidden" style="margin-bottom:10px">
-        <input type="password" id="gdrive-password" placeholder="Contraseña para cifrar tus datos" class="auth-input" style="margin-bottom:6px"/>
-        <div class="auth-hint" style="margin-bottom:8px">⚠️ Esta contraseña cifra tu backup. Si la pierdes, los datos no se pueden recuperar.</div>
-        <button id="btn-gdrive-confirm" class="btn-primary full-width">Confirmar y continuar</button>
-        <div id="gdrive-error" class="auth-error hidden" style="margin-top:6px"></div>
+
+      <!-- Paso 1: selector de método -->
+      <div id="auth-step-select">
+        <p style="font-size:13px;color:var(--text2);margin-bottom:18px;line-height:1.6">
+          Tus datos se guardan <strong>solo en tu dispositivo</strong>.
+          Conecta Dropbox para backup cifrado y sincronización entre dispositivos.
+        </p>
+        <button id="btn-dropbox" class="btn-dropbox full-width" style="margin-bottom:10px">
+          <svg viewBox="0 0 24 24" style="width:17px;height:17px;vertical-align:middle;margin-right:8px;flex-shrink:0"><path fill="currentColor" d="M6 2L0 6l6 4-6 4 6 4 6-4-6-4 6-4L6 2zm12 0l-6 4 6 4-6 4 6 4 6-4-6-4 6-4-6-4zm-6 10.5L6 16l6 4 6-4-6-3.5z"/></svg>
+          Usar Dropbox
+        </button>
+        <div style="display:flex;align-items:center;gap:10px;margin:12px 0">
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+          <span style="font-size:11px;color:var(--text3)">o</span>
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+        </div>
+        <button id="btn-local" class="btn-secondary full-width">Solo local (sin backup)</button>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;margin:12px 0">
-        <div style="flex:1;height:1px;background:var(--border)"></div>
-        <span style="font-size:11px;color:var(--text3)">o</span>
-        <div style="flex:1;height:1px;background:var(--border)"></div>
+
+      <!-- Paso 2: formulario Dropbox (primera vez) -->
+      <div id="auth-step-dropbox" class="hidden">
+        <button id="btn-dropbox-back" class="auth-back-btn" style="margin-bottom:16px">← Volver</button>
+        <div class="auth-section-title">Conectar con Dropbox</div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label">Token de acceso de Dropbox</label>
+          <input type="password" id="dbx-token" class="auth-input" placeholder="sl.u.AbCdEfGhIjKlMnOp…" autocomplete="off"/>
+          <div class="auth-hint" style="margin-top:6px">
+            Genera un token en
+            <a href="https://www.dropbox.com/developers/apps" target="_blank" style="color:var(--accent)">dropbox.com/developers/apps</a>
+            — tipo <strong>App folder</strong>. Ver
+            <span id="btn-dbx-help" style="color:var(--accent);cursor:pointer;text-decoration:underline">instrucciones</span>.
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label">Clave de cifrado</label>
+          <input type="password" id="dbx-passphrase" class="auth-input" placeholder="Contraseña para cifrar tu backup"/>
+          <div class="auth-hint" style="margin-top:6px">
+            ⚠️ Cifra los datos <strong>antes</strong> de subirlos. Dropbox nunca los ve en claro.
+            Si la pierdes, el backup no se puede recuperar.
+          </div>
+        </div>
+        <button id="btn-dropbox-connect" class="btn-dropbox full-width" style="margin-top:4px">Conectar y continuar</button>
+        <div id="dbx-error" class="auth-error hidden" style="margin-top:8px"></div>
       </div>
-      <button id="btn-local" class="btn-secondary full-width">Continuar sin backup (solo local)</button>
+
+      <!-- Paso 3: desbloqueo (sesión guardada) -->
+      <div id="auth-step-unlock" class="hidden">
+        <div class="auth-section-title" id="auth-unlock-title">Desbloquear backup de Dropbox</div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label">Clave de cifrado</label>
+          <input type="password" id="dbx-unlock-passphrase" class="auth-input" placeholder="Tu clave de cifrado"/>
+        </div>
+        <button id="btn-dropbox-unlock" class="btn-dropbox full-width">Desbloquear</button>
+        <button id="btn-dropbox-forget" class="btn-secondary full-width" style="margin-top:8px;font-size:12px">Olvidar esta cuenta y empezar de nuevo</button>
+        <div id="dbx-unlock-error" class="auth-error hidden" style="margin-top:8px"></div>
+      </div>
+
+    </div><!-- /.auth-card -->
+  </div><!-- /#auth-overlay -->
+
+  <!-- Modal instrucciones Dropbox -->
+  <div id="dbx-help-overlay" class="auth-overlay hidden" style="z-index:1100">
+    <div class="auth-card" style="max-width:460px">
+      <div class="auth-section-title" style="margin-bottom:14px">Cómo obtener un token de Dropbox</div>
+      <ol style="list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:8px;margin-bottom:18px;padding:0">
+        <li style="counter-increment:s;display:flex;gap:10px;font-size:13px;color:var(--text2)"><span style="min-width:20px;height:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:var(--accent);flex-shrink:0;margin-top:1px">1</span><span>Ve a <a href="https://www.dropbox.com/developers/apps" target="_blank" style="color:var(--accent)">dropbox.com/developers/apps</a> e inicia sesión.</span></li>
+        <li style="counter-increment:s;display:flex;gap:10px;font-size:13px;color:var(--text2)"><span style="min-width:20px;height:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:var(--accent);flex-shrink:0;margin-top:1px">2</span><span>Clic en <strong style="color:var(--text)">Create app</strong> → <strong style="color:var(--text)">Scoped access</strong> → <strong style="color:var(--text)">App folder</strong>.</span></li>
+        <li style="counter-increment:s;display:flex;gap:10px;font-size:13px;color:var(--text2)"><span style="min-width:20px;height:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:var(--accent);flex-shrink:0;margin-top:1px">3</span><span>Nombre de la app (ej: <code style="background:var(--bg3);padding:1px 5px;border-radius:3px;color:var(--accent)">financeapp</code>) → <strong style="color:var(--text)">Create app</strong>.</span></li>
+        <li style="counter-increment:s;display:flex;gap:10px;font-size:13px;color:var(--text2)"><span style="min-width:20px;height:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:var(--accent);flex-shrink:0;margin-top:1px">4</span><span>Pestaña <strong style="color:var(--text)">Permissions</strong> → activa <code style="background:var(--bg3);padding:1px 5px;border-radius:3px;color:var(--accent)">files.content.read</code> y <code style="background:var(--bg3);padding:1px 5px;border-radius:3px;color:var(--accent)">files.content.write</code> → <strong style="color:var(--text)">Submit</strong>.</span></li>
+        <li style="counter-increment:s;display:flex;gap:10px;font-size:13px;color:var(--text2)"><span style="min-width:20px;height:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:var(--accent);flex-shrink:0;margin-top:1px">5</span><span>Pestaña <strong style="color:var(--text)">Settings</strong> → sección <strong style="color:var(--text)">OAuth 2</strong> → <strong style="color:var(--text)">Generate</strong> (access token). Copia el token.</span></li>
+      </ol>
+      <div style="background:var(--accent-dim);border:1px solid rgba(0,229,160,0.2);border-radius:var(--radius);padding:10px 12px;font-size:12px;color:var(--accent);margin-bottom:16px;line-height:1.6">
+        ✅ La app solo accede a su propia carpeta <code>/Apps/financeapp/</code>. No puede ver el resto de tu Dropbox.
+      </div>
+      <button id="btn-dbx-help-close" class="btn-primary full-width">Entendido</button>
     </div>
-  </div>
+  </div
 
   <!-- ── Main shell ── -->
   <div id="main-shell" class="main-shell hidden">
@@ -114,13 +171,13 @@
           <span>Importar JSON</span>
         </button>
         <input type="file" id="import-file-input" accept=".json" style="display:none"/>
-        <button id="btn-gdrive-save" class="nav-btn hidden" title="Guardar backup cifrado en Google Drive">
-          <svg viewBox="0 0 24 24"><path d="M6.28 3l5.72 9.9L17.72 3H6.28zM2 17.5L5 12l3 5.5H2zm15 0L14 12l3 5.5h3l-3-5.5zM9 17.5h6l-3-5.2-3 5.2z"/></svg>
-          <span id="gdrive-save-label">☁ Drive</span>
+        <button id="btn-dbx-save" class="nav-btn hidden" title="Guardar backup cifrado en Dropbox">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 2L0 6l6 4-6 4 6 4 6-4-6-4 6-4L6 2zm12 0l-6 4 6 4-6 4 6 4 6-4-6-4 6-4-6-4zm-6 10.5L6 16l6 4 6-4-6-3.5z"/></svg>
+          <span id="dbx-save-label">☁ Dropbox</span>
         </button>
-        <button id="btn-gdrive-disconnect" class="nav-btn hidden" title="Desconectar Google Drive">
+        <button id="btn-dbx-disconnect" class="nav-btn hidden" title="Desconectar Dropbox">
           <svg viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
-          <span>Desconectar Drive</span>
+          <span>Desconectar Dropbox</span>
         </button>
       </div>
     </nav>
