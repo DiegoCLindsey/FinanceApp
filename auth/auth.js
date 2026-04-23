@@ -46,7 +46,8 @@ const DropboxService = (() => {
   const LS_SALT     = 'financeapp_dbx_salt';
 
   let _token      = null;   // access token en claro (solo en memoria)
-  let _cryptoKey  = null;   // clave AES-GCM derivada de la passphrase
+  let _cryptoKey  = null;   // clave AES-GCM derivada de la passphrase (para token local)
+  let _passphrase = null;   // passphrase en claro (solo en memoria, para encryptPortable)
 
   // ── Derivar clave y cifrar/descifrar el token guardado ───────────────────────
   async function _deriveKey(passphrase) {
@@ -84,8 +85,9 @@ const DropboxService = (() => {
     const tokenCipher = await CryptoService.encrypt(key, { t: token.trim() });
     localStorage.setItem(LS_TOKEN, tokenCipher);
 
-    _token     = token.trim();
-    _cryptoKey = key;
+    _token      = token.trim();
+    _cryptoKey  = key;
+    _passphrase = passphrase;
   }
 
   // ── Desbloqueo: descifrar token guardado con la passphrase ──────────────────
@@ -100,8 +102,9 @@ const DropboxService = (() => {
       throw new Error('Clave incorrecta. Los datos no se pueden descifrar.');
     }
     if (!plain?.t) throw new Error('Sesión corrupta. Olvida la cuenta y vuelve a conectar.');
-    _token     = plain.t;
-    _cryptoKey = key;
+    _token      = plain.t;
+    _cryptoKey  = key;
+    _passphrase = passphrase;
     return true;
   }
 
@@ -110,8 +113,9 @@ const DropboxService = (() => {
   function isConnected()     { return !!_token && !!_cryptoKey; }
 
   function forget() {
-    _token     = null;
-    _cryptoKey = null;
+    _token      = null;
+    _cryptoKey  = null;
+    _passphrase = null;
     localStorage.removeItem(LS_TOKEN);
     localStorage.removeItem(LS_SALT);
   }
@@ -131,30 +135,28 @@ const DropboxService = (() => {
   }
 
   // ── Subir backup cifrado ──────────────────────────────────────────────────────
+  // Usa encryptPortable: genera sal+IV frescos y los embebe en el payload.
+  // Formato en Dropbox: "salt_b64:iv_b64:ct_b64"
+  // Cualquier dispositivo con la passphrase correcta puede descifrarlo.
   async function uploadBackup() {
     if (!isConnected()) throw new Error('No conectado a Dropbox.');
 
-    // Serializar estado
     const snapshot = {};
     for (const k of ['loans', 'expenses', 'accounts', 'history', 'goals', 'config']) {
       snapshot[k] = State.get(k);
     }
 
-    // Cifrar
-    const cipher = await CryptoService.encrypt(_cryptoKey, snapshot);
+    // Cifrado portátil: sal embebida, no depende del localStorage local
+    const cipher = await CryptoService.encryptPortable(_passphrase, snapshot);
     const blob   = new Blob([cipher], { type: 'text/plain' });
 
-    // Subir con overwrite
     const resp = await fetch('https://content.dropboxapi.com/2/files/upload', {
       method:  'POST',
       headers: {
-        Authorization:    'Bearer ' + _token,
-        'Content-Type':   'application/octet-stream',
+        Authorization:     'Bearer ' + _token,
+        'Content-Type':    'application/octet-stream',
         'Dropbox-API-Arg': JSON.stringify({
-          path:       FILE_PATH,
-          mode:       'overwrite',
-          autorename: false,
-          mute:       true,
+          path: FILE_PATH, mode: 'overwrite', autorename: false, mute: true,
         }),
       },
       body: blob,
@@ -168,19 +170,20 @@ const DropboxService = (() => {
   }
 
   // ── Descargar y descifrar backup ─────────────────────────────────────────────
+  // Usa decryptPortable: extrae la sal del propio payload antes de derivar la clave.
+  // No usa localStorage — funciona igual en cualquier dispositivo.
   async function downloadBackup() {
     if (!isConnected()) throw new Error('No conectado a Dropbox.');
 
     const resp = await fetch('https://content.dropboxapi.com/2/files/download', {
       method:  'POST',
       headers: {
-        Authorization:    'Bearer ' + _token,
+        Authorization:     'Bearer ' + _token,
         'Dropbox-API-Arg': JSON.stringify({ path: FILE_PATH }),
       },
     });
 
-    // 409 = fichero no existe todavía (primer uso)
-    if (resp.status === 409) return null;
+    if (resp.status === 409) return null;   // fichero no existe todavía
     if (resp.status === 401) throw new Error('Token de Dropbox inválido o expirado.');
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
@@ -189,7 +192,7 @@ const DropboxService = (() => {
 
     const cipher = await resp.text();
     try {
-      return await CryptoService.decrypt(_cryptoKey, cipher);
+      return await CryptoService.decryptPortable(_passphrase, cipher);
     } catch {
       throw new Error('No se pudo descifrar el backup. Clave de cifrado incorrecta.');
     }
