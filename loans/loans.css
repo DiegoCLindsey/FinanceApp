@@ -1,0 +1,10 @@
+/* ==================== LOANS ==================== */
+.loan-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 10px; overflow: hidden; }
+.loan-card-header { padding: 14px 18px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: background 0.15s; gap: 8px; flex-wrap: wrap; }
+.loan-card-header:hover { background: var(--bg3); }
+.loan-card-title { font-family: var(--font-mono); font-size: 14px; font-weight: 700; }
+.loan-card-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.loan-tin { font-family: var(--font-mono); font-size: 17px; font-weight: 700; color: var(--red); }
+.loan-card-body { padding: 18px; display: none; border-top: 1px solid var(--border); }
+.loan-card-body.open { display: block; }
+.amort-item { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: var(--bg3); padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 6px; }

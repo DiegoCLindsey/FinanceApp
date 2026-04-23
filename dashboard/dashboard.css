@@ -1,0 +1,40 @@
+/* ==================== DASHBOARD ==================== */
+
+/* ── Score gauge ── */
+.score-gauge { display:flex; flex-direction:column; align-items:center; }
+.score-svg { overflow:visible; }
+.score-value { font-family:var(--font-mono); font-size:28px; font-weight:700; }
+.score-label { font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px; }
+.score-breakdown { display:grid; grid-template-columns:1fr 1fr; gap:6px; width:100%; margin-top:12px; }
+.score-item { background:var(--bg3); border-radius:var(--radius); padding:8px 10px; cursor:pointer; transition:border-color 0.15s; border:1px solid transparent; }
+.score-item:hover { border-color:var(--border2); }
+.score-item-label { font-size:10px; color:var(--text3); text-transform:uppercase; margin-bottom:3px; }
+.score-item-val { font-family:var(--font-mono); font-size:13px; font-weight:700; }
+
+/* ── Monte Carlo toggle ── */
+.mc-toggle { display:flex; gap:8px; align-items:center; font-size:12px; color:var(--text2); }
+
+/* ── Extracto table ── */
+.extr-head, .extr-row { display: grid; grid-template-columns: 105px 1fr 100px 90px 110px 90px; gap: 6px; padding: 7px 10px; align-items: center; font-size: 12px; }
+@media (max-width: 700px) { .extr-head, .extr-row { grid-template-columns: 90px 1fr 90px 90px; } .extr-col-hide { display: none; } }
+.extr-head { color: var(--text3); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; border-bottom: 1px solid var(--border2); }
+.extr-row { border-bottom: 1px solid var(--border); }
+.extr-row:hover { background: var(--bg3); }
+
+/* ── OHLC table ── */
+.ohlc-head, .ohlc-row { display: grid; grid-template-columns: 140px 70px 50px 90px 90px 90px 90px auto; gap: 6px; padding: 7px 10px; align-items: center; font-size: 12px; }
+@media (max-width: 700px) { .ohlc-head, .ohlc-row { grid-template-columns: 110px 60px 60px 80px auto; } }
+.ohlc-head { color: var(--text3); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; border-bottom: 1px solid var(--border2); }
+.ohlc-row { border-bottom: 1px solid var(--border); }
+.ohlc-row:hover { background: var(--bg3); }
+
+/* ── Exec summary strip ── */
+.exec-summary { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius-lg); padding:14px 20px; display:flex; gap:28px; align-items:center; flex-wrap:wrap; }
+.exec-item { display:flex; flex-direction:column; gap:2px; padding:4px 0; }
+.exec-item-label { font-size:9px; color:var(--text3); text-transform:uppercase; letter-spacing:0.8px; }
+.exec-item-val { font-family:var(--font-mono); font-size:14px; font-weight:700; }
+@media(max-width:600px){ .exec-summary{ padding:10px 12px; gap:14px; } }
+
+/* ── Deviation table ── */
+.dev-row { display:grid; grid-template-columns:80px 100px 100px 90px 70px; gap:6px; padding:6px 10px; border-bottom:1px solid var(--border); align-items:center; font-size:12px; }
+.dev-head { color:var(--text3); font-family:var(--font-mono); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border2); }

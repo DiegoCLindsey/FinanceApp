@@ -1,0 +1,32 @@
+<!-- ==================== AUTH OVERLAY ====================
+     Included inline in index.html inside #app.
+     Shown by AuthModule (auth/auth.js) on startup.
+     ===================================================== -->
+<div id="auth-overlay" class="auth-overlay">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="logo-mark">F</span>
+      <span class="logo-text">Finance<span class="logo-accent">App</span></span>
+    </div>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6">
+      Tus datos financieros se guardan <strong>solo en tu dispositivo</strong>.
+      Conecta Google Drive para hacer backup cifrado en tu propio Drive.
+    </p>
+    <button id="btn-gdrive" class="btn-primary full-width" style="margin-bottom:10px">
+      <svg viewBox="0 0 24 24" style="width:16px;height:16px;vertical-align:middle;margin-right:6px"><path fill="currentColor" d="M6.28 3l5.72 9.9L17.72 3H6.28zM2 17.5L5 12l3 5.5H2zm15 0L14 12l3 5.5h3l-3-5.5zM9 17.5h6l-3-5.2-3 5.2z"/></svg>
+      Conectar con Google Drive
+    </button>
+    <div id="gdrive-pass-section" class="hidden" style="margin-bottom:10px">
+      <input type="password" id="gdrive-password" placeholder="Contraseña para cifrar tus datos" class="auth-input" style="margin-bottom:6px"/>
+      <div class="auth-hint" style="margin-bottom:8px">⚠️ Esta contraseña cifra tu backup. Si la pierdes, los datos no se pueden recuperar.</div>
+      <button id="btn-gdrive-confirm" class="btn-primary full-width">Confirmar y continuar</button>
+      <div id="gdrive-error" class="auth-error hidden" style="margin-top:6px"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin:12px 0">
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <span style="font-size:11px;color:var(--text3)">o</span>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>
+    <button id="btn-local" class="btn-secondary full-width">Continuar sin backup (solo local)</button>
+  </div>
+</div>

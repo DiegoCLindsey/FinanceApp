@@ -1,0 +1,15 @@
+/* ==================== DESIGN TOKENS ==================== */
+:root {
+  --bg: #0d0f14; --bg2: #13161e; --bg3: #1a1e28;
+  --border: #252a38; --border2: #2f3547;
+  --text: #e8eaf2; --text2: #8b92a8; --text3: #555d77;
+  --accent: #00e5a0; --accent2: #00b37d; --accent-dim: rgba(0,229,160,0.12);
+  --red: #ff4d6d; --red-dim: rgba(255,77,109,0.12);
+  --yellow: #ffd166; --yellow-dim: rgba(255,209,102,0.12);
+  --blue: #4d9fff; --blue-dim: rgba(77,159,255,0.12);
+  --font-mono: 'Space Mono', monospace; --font-sans: 'DM Sans', sans-serif;
+  --radius: 8px; --radius-lg: 14px;
+  --sidebar-w: 210px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  --mobile-header-h: 56px;
+}

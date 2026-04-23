@@ -1,0 +1,12 @@
+/* ==================== AUTH ==================== */
+.auth-overlay { position: fixed; inset: 0; z-index: 1000; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.auth-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 32px; width: 100%; max-width: 380px; box-shadow: var(--shadow); }
+.auth-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+.auth-tabs { display: flex; gap: 4px; margin-bottom: 20px; background: var(--bg3); border-radius: var(--radius); padding: 4px; }
+.tab-btn { flex: 1; padding: 7px; border: none; background: transparent; color: var(--text2); font-family: var(--font-sans); font-size: 13px; cursor: pointer; border-radius: 6px; transition: all 0.15s; }
+.tab-btn.active { background: var(--bg2); color: var(--text); font-weight: 500; }
+.auth-form { display: flex; flex-direction: column; gap: 10px; }
+.auth-input { padding: 11px 13px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font-sans); font-size: 14px; outline: none; transition: border-color 0.15s; width: 100%; }
+.auth-input:focus { border-color: var(--accent); }
+.auth-hint { font-size: 12px; color: var(--text3); line-height: 1.5; padding: 8px 10px; background: var(--bg3); border-radius: 6px; border-left: 2px solid var(--accent); }
+.auth-error { font-size: 12px; color: var(--red); padding: 8px 10px; background: var(--red-dim); border-radius: 6px; }
