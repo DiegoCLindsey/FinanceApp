@@ -78,31 +78,39 @@ jobs:
 
       # ── 4. Inyectar banner de preview en index.html ────────────────────────
       - name: Inject preview banner
+        env:
+          BRANCH: ${{ steps.slug.outputs.branch }}
+          SHA:    ${{ steps.slug.outputs.sha_short }}
         run: |
-          BRANCH="${{ steps.slug.outputs.branch }}"
-          SHA="${{ steps.slug.outputs.sha_short }}"
-          BANNER=$(cat <<'BANNER_EOF'
-          <style>
-            #preview-banner {
-              position: fixed; top: 0; left: 0; right: 0; z-index: 99999;
-              background: #7c3aed; color: #fff; font-size: 12px;
-              padding: 5px 12px; display: flex; align-items: center;
-              gap: 10px; font-family: monospace; box-shadow: 0 2px 6px rgba(0,0,0,.35);
-            }
-            #preview-banner a { color: #e9d5ff; text-decoration: underline; }
-            body { padding-top: 30px !important; }
-          </style>
-          <div id="preview-banner">
-            🔬 PREVIEW &nbsp;·&nbsp; rama: <strong>BRANCH_PLACEHOLDER</strong>
-            &nbsp;·&nbsp; commit: <code>SHA_PLACEHOLDER</code>
-          </div>
-          BANNER_EOF
+          python3 - <<'PYEOF'
+          import os, sys
+          branch = os.environ['BRANCH']
+          sha    = os.environ['SHA']
+          banner = (
+            '<style>'
+            '#preview-banner{'
+              'position:fixed;top:0;left:0;right:0;z-index:99999;'
+              'background:#7c3aed;color:#fff;font-size:12px;'
+              'padding:5px 12px;display:flex;align-items:center;'
+              'gap:10px;font-family:monospace;box-shadow:0 2px 6px rgba(0,0,0,.35);'
+            '}'
+            'body{padding-top:30px!important}'
+            '</style>'
+            f'<div id="preview-banner">'
+            f'&#x1F52C; PREVIEW &nbsp;&middot;&nbsp; rama: <strong>{branch}</strong>'
+            f'&nbsp;&middot;&nbsp; commit: <code>{sha}</code>'
+            f'</div>'
           )
-          BANNER="${BANNER//BRANCH_PLACEHOLDER/$BRANCH}"
-          BANNER="${BANNER//SHA_PLACEHOLDER/$SHA}"
-          # Insertar justo después de <body>
-          sed -i "s|<body>|<body>\n${BANNER}|" index.html
-          echo "✅ Banner de preview inyectado."
+          with open('index.html', 'r', encoding='utf-8') as f:
+              html = f.read()
+          if '<body>' not in html:
+              print('⚠️  No se encontró <body> en index.html — banner omitido.')
+              sys.exit(0)
+          html = html.replace('<body>', f'<body>\n{banner}', 1)
+          with open('index.html', 'w', encoding='utf-8') as f:
+              f.write(html)
+          print('✅ Banner de preview inyectado.')
+          PYEOF
 
       # ── 5. Desplegar al subdirectorio preview/<slug>/ ──────────────────────
       - name: Deploy preview to gh-pages
@@ -113,7 +121,9 @@ jobs:
           destination_dir: preview/${{ steps.slug.outputs.slug }}
           keep_files:      true          # no borrar el resto de gh-pages
           commit_message:  "preview(${{ steps.slug.outputs.branch }}): ${{ steps.slug.outputs.sha_short }}"
-          exclude_assets:  '.github,.git'
+          exclude_assets: |
+            .github
+            .git
 
       # ── 6. Mostrar URL del preview ─────────────────────────────────────────
       - name: Print preview URL
