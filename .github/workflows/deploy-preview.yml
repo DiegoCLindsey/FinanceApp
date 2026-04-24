@@ -1,0 +1,147 @@
+# .github/workflows/deploy-preview.yml
+#
+# FinanceApp — Deploy feature branch preview to GitHub Pages
+#
+# Qué hace este workflow:
+#   1. Se dispara en cada push a ramas `features/**`
+#   2. Calcula un slug a partir del nombre de la rama (ej: features/24_APR_26 → features-24_apr_26)
+#   3. Inyecta las credenciales de Google Drive (igual que en el deploy principal)
+#   4. Inyecta un banner de preview en index.html indicando la rama y el commit
+#   5. Despliega a GitHub Pages bajo el subdirectorio  preview/<slug>/
+#      usando `peaceiris/actions-gh-pages` con keep_files:true
+#      → la raíz del sitio principal (rama main) NO se sobreescribe
+#
+# URL de preview resultante:
+#   https://<org>.github.io/<repo>/preview/<slug>/
+#
+# Requisito de configuración (una sola vez):
+#   En GitHub → Settings → Pages → Build and deployment
+#   selecciona "Deploy from a branch" y elige la rama `gh-pages`.
+#   El workflow principal (deploy.yml) deberá también usar
+#   peaceiris/actions-gh-pages en lugar de actions/deploy-pages si
+#   quieres que ambos despliegues convivan en la misma rama gh-pages.
+#   (Ver nota al final del archivo.)
+#
+# Secrets requeridos (opcionales — igual que en deploy.yml):
+#   GDRIVE_CLIENT_ID, GDRIVE_CLIENT_SECRET
+#
+
+name: Deploy Preview (feature branches)
+
+on:
+  push:
+    branches:
+      - 'features/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # necesario para que peaceiris pueda hacer push a gh-pages
+
+concurrency:
+  group:              preview-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Calcular slug de la rama ────────────────────────────────────────
+      - name: Compute branch slug
+        id: slug
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          # Reemplaza / y caracteres no-alfanuméricos por guión, minúsculas
+          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's|[^a-z0-9_\-]|-|g')
+          echo "slug=$SLUG"       >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH"   >> "$GITHUB_OUTPUT"
+          echo "sha_short=$(echo '${{ github.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      # ── 3. Inyectar credenciales de Google Drive ───────────────────────────
+      - name: Inject Google Drive credentials
+        env:
+          GDRIVE_CLIENT_ID:     ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+        run: |
+          if [ -n "$GDRIVE_CLIENT_ID" ] && [ -n "$GDRIVE_CLIENT_SECRET" ]; then
+            echo "✅ Inyectando credenciales de Google Drive..."
+            sed -i "s|%%GDRIVE_CLIENT_ID%%|${GDRIVE_CLIENT_ID}|g"         auth/auth.js
+            sed -i "s|%%GDRIVE_CLIENT_SECRET%%|${GDRIVE_CLIENT_SECRET}|g" auth/auth.js
+          else
+            echo "⚠️  Secrets de Drive no definidos — preview sin soporte Drive."
+          fi
+
+      # ── 4. Inyectar banner de preview en index.html ────────────────────────
+      - name: Inject preview banner
+        run: |
+          BRANCH="${{ steps.slug.outputs.branch }}"
+          SHA="${{ steps.slug.outputs.sha_short }}"
+          BANNER=$(cat <<'BANNER_EOF'
+          <style>
+            #preview-banner {
+              position: fixed; top: 0; left: 0; right: 0; z-index: 99999;
+              background: #7c3aed; color: #fff; font-size: 12px;
+              padding: 5px 12px; display: flex; align-items: center;
+              gap: 10px; font-family: monospace; box-shadow: 0 2px 6px rgba(0,0,0,.35);
+            }
+            #preview-banner a { color: #e9d5ff; text-decoration: underline; }
+            body { padding-top: 30px !important; }
+          </style>
+          <div id="preview-banner">
+            🔬 PREVIEW &nbsp;·&nbsp; rama: <strong>BRANCH_PLACEHOLDER</strong>
+            &nbsp;·&nbsp; commit: <code>SHA_PLACEHOLDER</code>
+          </div>
+          BANNER_EOF
+          )
+          BANNER="${BANNER//BRANCH_PLACEHOLDER/$BRANCH}"
+          BANNER="${BANNER//SHA_PLACEHOLDER/$SHA}"
+          # Insertar justo después de <body>
+          sed -i "s|<body>|<body>\n${BANNER}|" index.html
+          echo "✅ Banner de preview inyectado."
+
+      # ── 5. Desplegar al subdirectorio preview/<slug>/ ──────────────────────
+      - name: Deploy preview to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token:    ${{ secrets.GITHUB_TOKEN }}
+          publish_dir:     .
+          destination_dir: preview/${{ steps.slug.outputs.slug }}
+          keep_files:      true          # no borrar el resto de gh-pages
+          commit_message:  "preview(${{ steps.slug.outputs.branch }}): ${{ steps.slug.outputs.sha_short }}"
+          exclude_assets:  '.github,.git'
+
+      # ── 6. Mostrar URL del preview ─────────────────────────────────────────
+      - name: Print preview URL
+        run: |
+          REPO="${{ github.repository }}"
+          OWNER=$(echo "$REPO" | cut -d/ -f1)
+          REPONAME=$(echo "$REPO" | cut -d/ -f2)
+          SLUG="${{ steps.slug.outputs.slug }}"
+          echo ""
+          echo "🔗 Preview URL:"
+          echo "   https://${OWNER}.github.io/${REPONAME}/preview/${SLUG}/"
+          echo ""
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NOTA — Coexistencia con el deploy principal (deploy.yml)
+# ─────────────────────────────────────────────────────────────────────────────
+# Este workflow usa peaceiris/actions-gh-pages que hace push a la rama
+# `gh-pages`.  El deploy.yml actual usa actions/deploy-pages (API oficial).
+# Ambos mecanismos son incompatibles si Pages está en modo "GitHub Actions".
+#
+# Para que los previews funcionen junto con el deploy principal, tienes dos
+# opciones:
+#
+#  A) (Recomendada) Migrar deploy.yml a peaceiris/actions-gh-pages también,
+#     con destination_dir:'.' y keep_files:true. Así ambos conviven en la
+#     misma rama gh-pages y Pages se configura en modo "branch: gh-pages".
+#
+#  B) Usar este workflow solo para tener los archivos en la rama gh-pages
+#     y compartir el link directamente (sin que sea el sitio "oficial").
+#     El deploy principal sigue igual sobre GitHub Pages Actions mode.
+#
