@@ -832,6 +832,11 @@ const FinanceMath = (() => {
       const excedente = saldoMin - colchon - SAFETY_BUFFER;
       if (excedente < minAmortizable) continue;
 
+      // Snapshot para rollback si el mes siguiente queda por debajo del colchón
+      const planLenAntes = plan.length;
+      const amortSnap = {};
+      for (const l of loansActivos) amortSnap[l._id] = [...amortsPorLoan[l._id]];
+
       let excedentRestante = excedente;
       let totalAmortizadoEsteMes = 0;
 
@@ -851,7 +856,7 @@ const FinanceMath = (() => {
         const comision   = +(cantidad * comAmort / 100).toFixed(2);
         const costeTotal = cantidad + comision;
 
-        // Verificación final: el coste no puede superar el excedente restante
+        // Verificación: el coste no puede superar el excedente restante
         if (costeTotal > excedentRestante) continue;
 
         amortsPorLoan[loan._id].push({
@@ -866,11 +871,22 @@ const FinanceMath = (() => {
           capitalAntes: capActual, cantidadAmort: cantidad, comision,
           capitalDespues: Math.max(0, capActual - cantidad),
           saldoMin, excedente,
-          saldoDespuesMes: saldoMin - totalAmortizadoEsteMes, // acumulado correcto
+          saldoDespuesMes: saldoMin - totalAmortizadoEsteMes,
           tipoAmort,
         });
 
         excedentRestante -= costeTotal;
+      }
+
+      // Verificar que el mes siguiente no baje del colchón por las amortizaciones
+      // de este mes. Si lo hace, se deshacen todas las amortizaciones del mes.
+      if (plan.length > planLenAntes) {
+        const next = mesInfo(i + 1);
+        const saldoMinSiguiente = saldoMinDelMes(next.ini, next.fin);
+        if (saldoMinSiguiente < colchon) {
+          plan.length = planLenAntes;
+          for (const l of loansActivos) amortsPorLoan[l._id] = amortSnap[l._id];
+        }
       }
     }
 
