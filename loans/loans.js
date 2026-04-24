@@ -1,32 +1,46 @@
 // Depends on: State, FinanceMath, UI
 const LoansModule = (() => {
+  let mostrarFinalizados = false;
+
+  function isLoanCompleted(loan) {
+    if (!loan.activo || loan.simulacion) return false;
+    const today = new Date().toISOString().slice(0,10);
+    const { tabla } = FinanceMath.resumenPrestamo(loan);
+    const regularRows = tabla.filter(r => !r.esAmortizacion);
+    if (regularRows.length === 0) return true;
+    return regularRows[regularRows.length - 1].fecha < today;
+  }
 
   function render(keepOpen=null) {
-    // Preserve which loan bodies are currently open
     const view = document.getElementById('view-loans');
     const openIds = keepOpen ?? [...view.querySelectorAll('.loan-card-body.open')].map(el => el.id.replace('loan-body-',''));
-    const loans = [...State.get('loans')].sort((a,b)=>b.tin-a.tin);
+    const allLoans = [...State.get('loans')].sort((a,b)=>b.tin-a.tin);
 
-    // ── Cuota del mes actual por préstamo activo ──────────────────────────────
+    // Classify
+    const completedIds = new Set(allLoans.filter(l => isLoanCompleted(l)).map(l => l._id));
+    const loans = mostrarFinalizados ? allLoans : allLoans.filter(l => !completedIds.has(l._id));
+    const numFinalizados = completedIds.size;
+
+    // ── Cuota del mes actual — solo préstamos activos y no finalizados ────────
     const hoy = new Date();
     const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
     let totalCuotaMes = 0;
-    const cuotaMesMap = {}; // _id → cuota del mes actual (0 si no hay)
-    loans.filter(l => l.activo && !l.simulacion).forEach(loan => {
+    const cuotaMesMap = {};
+    allLoans.filter(l => l.activo && !l.simulacion && !completedIds.has(l._id)).forEach(loan => {
       const { tabla } = FinanceMath.resumenPrestamo(loan);
-      // Buscar filas normales (no amortización) cuya fecha cae en el mes actual
       const filasMes = tabla.filter(r => !r.esAmortizacion && r.fecha.startsWith(mesActual));
       const cuota = filasMes.length > 0 ? filasMes[0].cuota : 0;
       cuotaMesMap[loan._id] = cuota;
       totalCuotaMes += cuota;
     });
 
-    const activosConCuota = loans.filter(l => l.activo && !l.simulacion && cuotaMesMap[l._id] > 0).length;
+    const activosConCuota = allLoans.filter(l => l.activo && !l.simulacion && !completedIds.has(l._id) && cuotaMesMap[l._id] > 0).length;
 
     view.innerHTML = `
       <div class="page-header">
         <h1 class="page-title">Mis <span>Préstamos</span></h1>
         <div class="page-actions">
+          ${numFinalizados > 0 ? `<button class="btn-secondary btn-sm" onclick="LoansModule.toggleFinalizados()">${mostrarFinalizados?'Ocultar':'Mostrar'} finalizados (${numFinalizados})</button>` : ''}
           <button class="btn-secondary" id="btn-optimizar">✨ Optimizar amortizaciones</button>
           <button class="btn-primary" id="btn-new-loan">+ Nuevo préstamo</button>
         </div>
@@ -36,13 +50,13 @@ const LoansModule = (() => {
         <div class="flex gap-24 items-center flex-wrap">
           <div>
             <div class="stat-label">Cuotas este mes (${hoy.toLocaleDateString('es-ES',{month:'long',year:'numeric'})})</div>
-            <div style="font-family:var(--font-mono);font-size:24px;font-weight:700;color:var(--red);margin-top:2px">${FinanceMath.eur(totalCuotaMes)}</div>
+            <div style="font-family:var(--font-mono);font-size:24px;font-weight:700;color:var(--text);margin-top:2px">${FinanceMath.eur(totalCuotaMes)}</div>
           </div>
-          <div class="text-sm" style="color:var(--text3)">${activosConCuota} préstamo${activosConCuota!==1?'s':''} con cuota en este mes</div>
+          <div class="text-sm" style="color:var(--text3)">${activosConCuota} préstamo${activosConCuota!==1?'s':''} con cuota activa este mes</div>
         </div>
       </div>` : ''}
       <div id="loans-list">
-        ${loans.length===0?'<div class="text-sm" style="text-align:center;padding:40px 0">Sin préstamos.</div>':loans.map(l=>renderCard(l, cuotaMesMap[l._id]||0)).join('')}
+        ${loans.length===0?'<div class="text-sm" style="text-align:center;padding:40px 0">Sin préstamos.</div>':loans.map(l=>renderCard(l, cuotaMesMap[l._id]||0, completedIds.has(l._id))).join('')}
       </div>`;
     document.getElementById('btn-new-loan').onclick = () => openForm();
     document.getElementById('btn-optimizar').onclick = () => openOptimizador();
@@ -58,7 +72,9 @@ const LoansModule = (() => {
     });
   }
 
-  function renderCard(loan, cuotaMes=0) {
+  function toggleFinalizados() { mostrarFinalizados = !mostrarFinalizados; render(); }
+
+  function renderCard(loan, cuotaMes=0, completado=false) {
     const res = FinanceMath.resumenPrestamoConAhorro(loan);
     const tieneAmorts = (loan.amortizaciones||[]).length > 0;
     const diaPagoLabel = FinanceMath.labelDiaPago(loan.diaPago||'');
@@ -72,10 +88,11 @@ const LoansModule = (() => {
     const interesesActual   = res.totalIntereses;
     const interesesOriginal = res.sinAmort.totalIntereses;
 
-    return `<div class="loan-card" id="loan-${loan._id}">
+    return `<div class="loan-card" id="loan-${loan._id}" style="${completado?'opacity:0.65':''}">
       <div class="loan-card-header" data-loan-id="${loan._id}">
         <div class="flex gap-8 items-center" style="flex-wrap:wrap">
           <span class="loan-card-title">${loan.nombre}</span>
+          ${completado?'<span class="badge badge-active" style="background:rgba(0,229,160,0.15);color:var(--accent)">✓ Finalizado</span>':''}
           ${loan.simulacion?'<span class="badge badge-sim">SIM</span>':''}
           ${!loan.activo?'<span class="badge badge-inactive">Inactivo</span>':''}
           <span class="badge badge-blue">${State.accountName(loan.cuenta||'default')}</span>
@@ -610,5 +627,5 @@ const LoansModule = (() => {
     render(Object.keys(porLoan));
   }
 
-  return { render, saveLoan, deleteAmort, openAmortForm, saveAmort, openOptimizador, runOptimizador, runComparador, aplicarDesdeComparador, aplicarPlanOptimizado };
+  return { render, saveLoan, deleteAmort, openAmortForm, saveAmort, openOptimizador, runOptimizador, runComparador, aplicarDesdeComparador, aplicarPlanOptimizado, toggleFinalizados };
 })();

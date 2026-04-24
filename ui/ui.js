@@ -12,8 +12,20 @@ const UI = (() => {
     const opts=options.map(([v,l])=>`<option value="${v}"${v==value?' selected':''}>${l}</option>`).join('');
     return `<div class="form-group"><label class="form-label" for="${id}">${label}</label><select class="form-select" id="${id}">${opts}</select></div>`;
   }
-  function accountSelect(id, label, value='default') {
-    return select(id, label, State.accountOptions(), value||'default');
+  function accountSelect(id, label, value='') {
+    const accounts = State.get('accounts') || [];
+    const principalId = State.getPrincipalAccountId();
+    const useValue = value || principalId;
+    const sorted = [...accounts].sort((a, b) => {
+      if (a.esCuentaPrincipal && !b.esCuentaPrincipal) return -1;
+      if (!a.esCuentaPrincipal && b.esCuentaPrincipal) return 1;
+      return a.nombre.localeCompare(b.nombre);
+    });
+    const opts = sorted.map(a => [
+      a._id,
+      a.nombre + (a.simulacion ? ' (SIM)' : '') + (a.esCuentaPrincipal ? ' ★' : '')
+    ]);
+    return select(id, label, opts, useValue);
   }
 
   // ── Widget día efectivo ────────────────────────────────────────────────────

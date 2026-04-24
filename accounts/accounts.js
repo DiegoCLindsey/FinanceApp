@@ -19,16 +19,27 @@ const AccountsModule = (() => {
     accounts.forEach(acc=>{
       view.querySelector(`[data-edit-acc="${acc._id}"]`)?.addEventListener('click',()=>openForm(acc._id));
       view.querySelector(`[data-del-acc="${acc._id}"]`)?.addEventListener('click',()=>{
-        if(acc._id==='default'){UI.toast('La cuenta Default no se puede eliminar','err');return;}
+        const accounts = State.get('accounts');
+        if(accounts.length <= 1){UI.toast('Debe existir al menos una cuenta','err');return;}
         if(!UI.confirm('¿Eliminar cuenta?'))return;
-        State.removeItem('accounts',acc._id); render();
+        State.removeItem('accounts',acc._id);
+        State.ensureDefaultAccount();
+        render();
       });
+      view.querySelector(`[data-principal-acc="${acc._id}"]`)?.addEventListener('click',()=>setAsPrincipal(acc._id));
       view.querySelector(`[data-hist-acc="${acc._id}"]`)?.addEventListener('click',()=>openHistorico(acc._id));
     });
   }
 
+  function setAsPrincipal(id) {
+    const accounts = State.get('accounts').map(a => ({...a, esCuentaPrincipal: a._id === id}));
+    State.set('accounts', accounts);
+    UI.toast('Cuenta marcada como principal');
+    render();
+  }
+
   function renderCard(acc) {
-    const isDefault=acc._id==='default';
+    const isPrincipal=acc.esCuentaPrincipal;
     const hist=[...(acc.historicoSaldos||[])].sort((a,b)=>b.fecha.localeCompare(a.fecha));
     const lastHist=hist[0];
     const saldoActual = lastHist ? lastHist.saldo : (acc.saldo||0);
@@ -58,20 +69,21 @@ const AccountsModule = (() => {
         </div>
       </div>` : '';
 
-    return `<div class="card">
+    return `<div class="card" style="${isPrincipal?'border-color:var(--accent2)':''}">
       <div class="flex justify-between items-center mb-12">
         <div class="flex gap-8 items-center" style="flex-wrap:wrap">
           <span class="card-title" style="margin:0">${acc.nombre}</span>
-          ${isDefault?'<span class="badge badge-blue">DEFAULT</span>':''}
+          ${isPrincipal?'<span class="badge badge-blue" title="Cuenta seleccionada por defecto en nuevos gastos">Principal</span>':''}
           ${acc.esFondoPension?'<span class="badge" style="background:rgba(255,209,102,0.15);color:var(--yellow)">🔒 Pensión</span>':''}
           ${acc.simulacion?'<span class="badge badge-sim">SIM</span>':''}
         </div>
         <div class="flex gap-8">
+          ${!isPrincipal?`<button class="btn-icon" data-principal-acc="${acc._id}" title="Marcar como cuenta principal" style="font-size:14px">★</button>`:''}
           <button class="btn-icon" data-hist-acc="${acc._id}" title="Histórico de saldos">
             <svg viewBox="0 0 24 24"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
           </button>
           <button class="btn-icon" data-edit-acc="${acc._id}"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button>
-          ${!isDefault?`<button class="btn-danger" data-del-acc="${acc._id}">✕</button>`:''}
+          <button class="btn-danger" data-del-acc="${acc._id}">✕</button>
         </div>
       </div>
       <div class="grid-2 mb-8" style="gap:8px">
@@ -87,7 +99,7 @@ const AccountsModule = (() => {
 
   function openForm(id=null) {
     const acc=id?State.get('accounts').find(a=>a._id===id):null;
-    const isDefault=acc?._id==='default';
+    const isDefault=false; // ya no se restringe el nombre de ninguna cuenta
     const hist=[...(acc?.historicoSaldos||[])].sort((a,b)=>b.fecha.localeCompare(a.fecha));
     const saldoActual = hist[0] ? hist[0].saldo : (acc?.saldo??0);
     const esPension = acc?.esFondoPension || false;
@@ -137,11 +149,10 @@ const AccountsModule = (() => {
   }
 
   function saveAccount(id) {
-    const isDefault=id==='default';
     const nuevoSaldo     = parseFloat(document.getElementById('ac-saldo').value)||0;
     const esFondoPension = document.getElementById('ac-pension')?.checked||false;
     const acc={
-      nombre:         isDefault?'Default':document.getElementById('ac-nombre').value.trim(),
+      nombre:         document.getElementById('ac-nombre').value.trim(),
       saldo:          nuevoSaldo,
       saldoInicial:   parseFloat(document.getElementById('ac-saldo-ini').value)||0,
       fechaInicialSaldo: document.getElementById('ac-fecha-ini').value,
@@ -239,5 +250,5 @@ const AccountsModule = (() => {
     openHistorico(accId);
   }
 
-  return { render, saveAccount, openHistorico, saveHistorico, deleteHistorico };
+  return { render, saveAccount, openHistorico, saveHistorico, deleteHistorico, setAsPrincipal };
 })();
