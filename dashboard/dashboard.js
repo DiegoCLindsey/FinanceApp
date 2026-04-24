@@ -161,17 +161,48 @@ const DashboardModule = (() => {
       <!-- Config -->
       <div class="card">
         <div class="grid-2" style="gap:10px">
-          <div class="form-group"><label class="form-label">Periodo inicio</label><input class="form-input" type="date" id="cfg-start" value="${config.dashboardStart}"/></div>
-          <div class="form-group"><label class="form-label">Periodo fin</label><input class="form-input" type="date" id="cfg-end" value="${config.dashboardEnd}"/></div>
+          <div class="form-group">
+            <label class="form-label">Periodo inicio</label>
+            <input class="form-input" type="date" id="cfg-start" value="${config.dashboardStart}"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Periodo fin</label>
+            <div class="flex gap-6 flex-wrap items-center" style="row-gap:6px">
+              ${['1M','3M','6M','1Y','5Y','10Y'].map(p=>`<button type="button" class="btn-secondary btn-sm" style="min-width:36px" onclick="DashboardModule.applyPreset('${p}')">${p}</button>`).join('')}
+              <input class="form-input" type="date" id="cfg-end" value="${config.dashboardEnd}" style="width:145px;margin-left:4px"/>
+            </div>
+          </div>
         </div>
         <div class="grid-2 mt-8" style="gap:10px">
           <div class="form-group">
-            <label class="form-label">Colchón económico (meses de gastos básicos)</label>
-            <input class="form-input" type="number" id="cfg-colchon" value="${config.colchonMeses||6}" min="1" max="36"/>
+            <label class="form-label">Colchón económico</label>
+            <div class="flex gap-6 items-center mb-6">
+              <button type="button" class="btn-sm ${(config.colchonTipo||'meses')==='meses'?'btn-primary':'btn-secondary'}" onclick="DashboardModule.setColchonTipo('meses')">Por meses</button>
+              <button type="button" class="btn-sm ${config.colchonTipo==='fijo'?'btn-primary':'btn-secondary'}" onclick="DashboardModule.setColchonTipo('fijo')">Cantidad fija</button>
+            </div>
+            ${config.colchonTipo==='fijo'
+              ? `<div class="flex gap-8 items-center"><input class="form-input" type="number" id="cfg-colchon-fijo" value="${config.colchonFijo||0}" min="0" style="width:130px"/><span class="text-sm" style="color:var(--text2)">€</span></div>`
+              : `<div class="flex gap-8 items-center"><input class="form-input" type="number" id="cfg-colchon" value="${config.colchonMeses||6}" min="1" max="36" style="width:80px"/><span class="text-sm" style="color:var(--text2)">meses de gastos básicos</span></div>`
+            }
+            ${(()=>{
+              const gastoBasMes = FinanceMath.calcGastoBasicoMensual(expenses);
+              if (gastoBasMes <= 0) return `<div class="text-sm mt-6" style="color:var(--text3)">Marca gastos como "básico" para ver la recomendación.</div>`;
+              const meses3 = gastoBasMes * 3, meses6 = gastoBasMes * 6;
+              if (config.colchonTipo === 'fijo') {
+                const equiv = config.colchonFijo > 0 ? (config.colchonFijo / gastoBasMes).toFixed(1) : 0;
+                return `<div class="text-sm mt-6" style="color:var(--text3)">Equivale a <strong style="color:var(--text2)">${equiv} meses</strong> de gastos básicos. Recomendación: entre ${FinanceMath.eur(meses3)} (3m) y ${FinanceMath.eur(meses6)} (6m).</div>`;
+              }
+              const mesesActuales = config.colchonMeses || 6;
+              const colchonActual = gastoBasMes * mesesActuales;
+              const nivel = mesesActuales < 3 ? '⚠️ Por debajo del mínimo recomendado (3 meses).' : mesesActuales < 6 ? '💡 Aceptable. Lo ideal son 6 meses.' : '✅ Colchón sólido.';
+              return `<div class="text-sm mt-6" style="color:var(--text3)">${nivel} Con ${FinanceMath.eur(gastoBasMes)}/mes de básicos: <strong style="color:var(--text2)">${FinanceMath.eur(colchonActual)}</strong>.</div>`;
+            })()}
           </div>
-          <div class="form-group" style="display:flex;align-items:center;gap:10px;padding-top:20px">
-            <label class="toggle"><input type="checkbox" id="cfg-show-hist" ${config.showHistorico?'checked':''}/><span class="toggle-slider"></span></label>
-            <label class="form-label" style="margin:0">Mostrar histórico real en gráfica (cuentas visibles)</label>
+          <div class="form-group" style="display:flex;align-items:flex-start;gap:10px;padding-top:8px;flex-direction:column">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)">
+              <label class="toggle"><input type="checkbox" id="cfg-show-hist" ${config.showHistorico?'checked':''}/><span class="toggle-slider"></span></label>
+              Mostrar histórico real en gráfica
+            </label>
           </div>
         </div>
         <div class="flex gap-8 mt-8 items-center flex-wrap">
@@ -199,11 +230,36 @@ const DashboardModule = (() => {
         <button class="btn-secondary btn-sm" onclick="DashboardModule.toggleExecSummary()">${config.showExecSummary!==false?'Ocultar':'Mostrar'}</button>
       </div>
       ${config.showExecSummary!==false?`<div class="exec-summary mb-14">
-        <div class="exec-item"><div class="exec-item-label">Saldo hoy</div><div class="exec-item-val ${saldoHoy>=0?'pos':'neg'}">${FinanceMath.eur(saldoHoy)}</div></div>
-        <div class="exec-item"><div class="exec-item-label">Score salud</div><div class="exec-item-val" style="color:${score.color}">${score.total}/100 ${score.label}</div></div>
-        <div class="exec-item"><div class="exec-item-label">Colchón</div><div class="exec-item-val ${saldoHoy>=colchon?'pos':'neg'}">${FinanceMath.eur(colchon)}</div></div>
-        <div class="exec-item"><div class="exec-item-label">Media gastos/mes</div><div class="exec-item-val neg">${FinanceMath.eur(mediaMensual)}</div></div>
-        ${alertas.length>0?`<div class="exec-item"><div class="exec-item-label">Alertas</div><div class="exec-item-val" style="color:var(--red)">${alertas.length} punto${alertas.length>1?'s':''}</div></div>`:''}
+        <div class="exec-item">
+          <div class="exec-item-label">Saldo hoy</div>
+          <div class="exec-item-val ${saldoHoy>=0?'pos':'neg'}">${FinanceMath.eur(saldoHoy)}</div>
+        </div>
+        <div class="exec-item">
+          <div class="exec-item-label">Score salud</div>
+          <div class="exec-item-val" style="color:${score.color}">${score.total}/100 <span style="font-size:11px;font-family:var(--font-sans)">${score.label}</span></div>
+        </div>
+        <div class="exec-item">
+          <div class="exec-item-label">Ahorro est./mes</div>
+          ${(()=>{
+            const ahorroEst = ingresosMesActual - gastosTosMesActual;
+            const color = ahorroEst > 0 ? 'var(--accent)' : 'var(--red)';
+            return `<div class="exec-item-val" style="color:${color}">${ahorroEst>=0?'+':''}${FinanceMath.eur(ahorroEst)}</div>`;
+          })()}
+        </div>
+        <div class="exec-item">
+          <div class="exec-item-label">Colchón</div>
+          ${(()=>{
+            const cubierto = saldoHoy >= colchon && colchon > 0;
+            const sinConfig = colchon <= 0;
+            if (sinConfig) return `<div class="exec-item-val" style="color:var(--text3)">No configurado</div>`;
+            return `<div class="exec-item-val" style="color:${cubierto?'var(--accent)':'var(--red)'}">${FinanceMath.eur(colchon)} ${cubierto?'✓':'✗'}</div>`;
+          })()}
+        </div>
+        <div class="exec-item">
+          <div class="exec-item-label">Ingresos/mes</div>
+          <div class="exec-item-val" style="color:var(--text)">${FinanceMath.eur(ingresosMesActual||ingresosMediaMes)}</div>
+        </div>
+        ${alertas.length>0?`<div class="exec-item"><div class="exec-item-label">Alertas</div><div class="exec-item-val" style="color:var(--yellow)">${alertas.length} punto${alertas.length>1?'s':''} crítico${alertas.length>1?'s':''}</div></div>`:''}
       </div>`:'<div class="mb-14"></div>'}
 
       <!-- Stats row -->
@@ -245,7 +301,7 @@ const DashboardModule = (() => {
         <!-- Panel 1: Gastos mensuales -->
         <div class="card">
           <div class="card-title mb-12">Gastos mensuales</div>
-          <div class="stat-value neg mb-8">${FinanceMath.eur(gastosFijosMes + cuotasMesActual)}<span class="stat-sub" style="font-size:11px;margin-left:6px">este mes</span></div>
+          <div class="stat-value mb-8" style="color:var(--text)">${FinanceMath.eur(gastosFijosMes + cuotasMesActual)}<span class="stat-sub" style="font-size:11px;margin-left:6px">este mes</span></div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:10px">${FinanceMath.eur(gastosFijosMes)} gastos + ${FinanceMath.eur(cuotasMesActual)} cuotas</div>
           <div style="display:flex;flex-direction:column;gap:5px">
             <div style="display:flex;justify-content:space-between;font-size:12px">
@@ -262,7 +318,7 @@ const DashboardModule = (() => {
         <!-- Panel 2: Endeudamiento -->
         <div class="card">
           <div class="card-title mb-12">Endeudamiento</div>
-          <div class="stat-value neg mb-8">${FinanceMath.eur(cuotasMesActual)}<span class="stat-sub" style="font-size:11px;margin-left:6px">cuotas este mes</span></div>
+          <div class="stat-value mb-8" style="color:var(--text)">${FinanceMath.eur(cuotasMesActual)}<span class="stat-sub" style="font-size:11px;margin-left:6px">cuotas este mes</span></div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Solo cuotas ordinarias, sin amortizaciones</div>
           <div style="display:flex;flex-direction:column;gap:5px">
             <div style="display:flex;justify-content:space-between;font-size:12px">
@@ -282,7 +338,7 @@ const DashboardModule = (() => {
         <!-- Panel 3: Gastos básicos -->
         <div class="card">
           <div class="card-title mb-12">Gastos básicos + cuotas</div>
-          <div class="stat-value mb-8" style="color:var(--yellow)">${FinanceMath.eur(gastosBasicosMes + cuotasMesActual)}<span class="stat-sub" style="font-size:11px;margin-left:6px">al mes</span></div>
+          <div class="stat-value mb-8" style="color:var(--blue)">${FinanceMath.eur(gastosBasicosMes + cuotasMesActual)}<span class="stat-sub" style="font-size:11px;margin-left:6px">al mes</span></div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:10px">${FinanceMath.eur(gastosBasicosMes)} básicos + ${FinanceMath.eur(cuotasMesActual)} cuotas</div>
           <div style="display:flex;flex-direction:column;gap:5px">
             <div style="display:flex;justify-content:space-between;font-size:12px">
@@ -810,7 +866,7 @@ const DashboardModule = (() => {
         labels,
         datasets: [
           { label:'Ingresos', data:dataIngresos, backgroundColor:'rgba(0,229,160,0.7)', borderWidth:0, borderRadius:2, order:1 },
-          { label:'Cuotas préstamos', data:dataCuotas, backgroundColor:'rgba(255,209,102,0.8)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
+          { label:'Cuotas préstamos', data:dataCuotas, backgroundColor:'rgba(168,85,247,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
           { label:'Gastos básicos', data:dataBasicos, backgroundColor:'rgba(77,159,255,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
           { label:'Otros gastos', data:dataOtros, backgroundColor:'rgba(255,77,109,0.65)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
         ]
@@ -838,14 +894,37 @@ const DashboardModule = (() => {
     const existing = State.get('config');
     const config={
       ...existing,
-      dashboardStart:  document.getElementById('cfg-start').value,
-      dashboardEnd:    document.getElementById('cfg-end').value,
+      dashboardStart:  document.getElementById('cfg-start').value || existing.dashboardStart,
+      dashboardEnd:    document.getElementById('cfg-end').value || existing.dashboardEnd,
       colchonMeses:    parseInt(document.getElementById('cfg-colchon')?.value)||6,
+      colchonFijo:     parseFloat(document.getElementById('cfg-colchon-fijo')?.value)||0,
       showColchon:     document.getElementById('cfg-show-colchon')?.checked??true,
       showHistorico:   document.getElementById('cfg-show-hist')?.checked??true,
       showMC:          document.getElementById('cfg-show-mc')?.checked??false,
     };
     State.set('config',config); render();
+  }
+  function applyPreset(preset) {
+    const startEl = document.getElementById('cfg-start');
+    const endEl   = document.getElementById('cfg-end');
+    const base = startEl?.value || State.get('config').dashboardStart;
+    const dS   = new Date(base + 'T00:00:00');
+    const dE   = new Date(dS);
+    switch(preset) {
+      case '1M':  dE.setMonth(dE.getMonth()+1);    break;
+      case '3M':  dE.setMonth(dE.getMonth()+3);    break;
+      case '6M':  dE.setMonth(dE.getMonth()+6);    break;
+      case '1Y':  dE.setFullYear(dE.getFullYear()+1); break;
+      case '5Y':  dE.setFullYear(dE.getFullYear()+5); break;
+      case '10Y': dE.setFullYear(dE.getFullYear()+10); break;
+    }
+    if (endEl) endEl.value = dE.toISOString().slice(0,10);
+    applyConfig();
+  }
+  function setColchonTipo(tipo) {
+    const cfg = State.get('config');
+    State.set('config', {...cfg, colchonTipo: tipo});
+    render();
   }
   function setVentana(v) { ventana=v; render(); }
   function toggleTag(t) { if(activeTags.has(t))activeTags.delete(t); else activeTags.add(t); render(); }
@@ -857,5 +936,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, applyConfig, setVentana, toggleTag, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleScoreDetail, toggleCriticos };
+  return { render, applyConfig, applyPreset, setColchonTipo, setVentana, toggleTag, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleScoreDetail, toggleCriticos };
 })();
