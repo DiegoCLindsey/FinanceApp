@@ -452,7 +452,7 @@ const FinanceMath = (() => {
   }
 
   function mediaMensualGastos(extracto, config) {
-    const totalGastos = extracto.filter(e=>e.tipo==='gasto').reduce((s,e)=>s+Math.abs(e.cuantia),0);
+    const totalGastos = extracto.filter(e=>e.tipo==='gasto'&&e.sourceType!=='loan-amort').reduce((s,e)=>s+Math.abs(e.cuantia),0);
     const dS = new Date(config.dashboardStart+'T00:00:00');
     const dE = new Date(config.dashboardEnd+'T00:00:00');
     const meses = Math.max(1, (dE - dS) / (30.44 * 86400000));
