@@ -172,9 +172,11 @@ const DashboardModule = (() => {
           </div>
           <div class="form-group">
             <label class="form-label">Periodo fin</label>
-            <div class="flex gap-6 flex-wrap items-center" style="row-gap:6px">
-              ${['1M','3M','6M','1Y','5Y','10Y'].map(p=>`<button type="button" class="btn-secondary btn-sm" style="min-width:36px" onclick="DashboardModule.applyPreset('${p}')">${p}</button>`).join('')}
-              <input class="form-input" type="date" id="cfg-end" value="${config.dashboardEnd}" style="width:145px;margin-left:4px"/>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div class="flex gap-4 flex-wrap" style="row-gap:4px">
+                ${['1M','3M','6M','1Y','5Y','10Y'].map(p=>`<button type="button" class="btn-secondary btn-sm" style="min-width:34px;padding:5px 8px" onclick="DashboardModule.applyPreset('${p}')">${p}</button>`).join('')}
+              </div>
+              <input class="form-input" type="date" id="cfg-end" value="${config.dashboardEnd}" style="width:100%;max-width:200px"/>
             </div>
           </div>
         </div>
