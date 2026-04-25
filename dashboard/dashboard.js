@@ -278,9 +278,9 @@ const DashboardModule = (() => {
       <!-- Stats row -->
       <div class="grid-4 mb-14">
         ${(()=>{
-          const diff   = saldoHoy - saldoBase;
-          const diffPct = saldoBase !== 0 ? diff / Math.abs(saldoBase) * 100 : 0;
-          const diffColor = diff >= 0 ? 'var(--accent)' : 'var(--red)';
+          const diff   = saldoBase - saldoHoy;  // real − proyectado: positivo = mejor de lo esperado
+          const diffPct = saldoHoy !== 0 ? diff / Math.abs(saldoHoy) * 100 : 0;
+          const diffColor = diffPct > 20 ? 'var(--accent)' : diffPct < -20 ? 'var(--red)' : 'var(--text)';
           const diffSign  = diff >= 0 ? '+' : '';
           return `<div class="stat-card">
             <div class="stat-label">Saldo real vs proyectado hoy</div>
