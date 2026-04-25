@@ -30,7 +30,8 @@
 .sidebar-footer { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding-top: 8px; border-top: 1px solid var(--border); }
 
 .view-container { flex: 1; overflow-y: auto; padding: 24px 28px; background: var(--bg); min-width: 0; }
-@media (max-width: 600px) { .view-container { padding: 16px; } }
+@media (max-width: 600px) { .view-container { padding: 12px; } }
+@media (max-width: 480px) { .view-container { padding: 10px 8px; } }
 .view.hidden { display: none !important; }
 
 /* ---- Toast ---- */
