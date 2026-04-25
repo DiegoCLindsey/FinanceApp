@@ -445,7 +445,7 @@ const FinanceMath = (() => {
     const m=new Map();
     for (const ev of extracto) {
       if (ev.tipo!==tipo) continue;
-      if (ev.sourceType==='transfer-out'||ev.sourceType==='transfer-in') continue; // skip transfers
+      if (ev.sourceType==='transfer-out'||ev.sourceType==='transfer-in'||ev.sourceType==='loan-amort') continue; // skip transfers and amortizations
       for (const t of (ev.tags||['sin_tag'])) m.set(t,(m.get(t)||0)+Math.abs(ev.cuantia));
     }
     return m;
