@@ -828,6 +828,10 @@ const FinanceMath = (() => {
 
       const { label, ini, fin, dia15 } = mesInfo(i);
 
+      // Si la fecha de amortización ya pasó, el evento quedaría antes de
+      // dashboardStart y no aparecería en el extracto → saldo incorrecto.
+      if (dia15 < hoyStr) continue;
+
       const saldoMin  = saldoMinDelMes(ini, fin);
       const excedente = saldoMin - colchon - SAFETY_BUFFER;
       if (excedente < minAmortizable) continue;
