@@ -305,10 +305,20 @@ const DashboardModule = (() => {
           const deltaFin = saldoFinal - saldoBase;
           const deltaColor = deltaFin >= 0 ? 'var(--accent)' : 'var(--red)';
           const deltaSign  = deltaFin >= 0 ? '+' : '';
+          // Deuda estimada al fin del periodo
+          const loansActivos = loans.filter(l => l.activo && !l.simulacion && (l.fechaInicio || '') <= config.dashboardEnd);
+          const deudaFin = loansActivos.reduce((s, l) => {
+            const { tabla } = FinanceMath.resumenPrestamo(l);
+            const rowsAntes = tabla.filter(r => !r.esAmortizacion && r.fecha <= config.dashboardEnd);
+            return s + (rowsAntes.length > 0 ? rowsAntes[rowsAntes.length-1].capitalPendiente : (l.capital||0));
+          }, 0);
+          const amortEnPeriodo = extracto.filter(e => e.sourceType==='loan-amort' && e.fecha>=config.dashboardStart && e.fecha<=config.dashboardEnd).reduce((s,e)=>s+Math.abs(e.cuantia),0);
           return `<div class="stat-card">
             <div class="stat-label">Saldo estimado fin</div>
             <div class="stat-value ${saldoFinal>=0?'':'neg'}">${FinanceMath.eur(saldoFinal)}</div>
             <div style="font-family:var(--font-mono);font-size:12px;margin-top:4px;color:${deltaColor}">${deltaSign}${FinanceMath.eur(deltaFin)} vs hoy</div>
+            ${deudaFin > 0.01 ? `<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:5px;font-size:11px;color:var(--text3)">Deuda estimada: <span style="font-family:var(--font-mono);color:var(--red)">${FinanceMath.eur(deudaFin)}</span></div>` : ''}
+            ${amortEnPeriodo > 0.01 ? `<div style="font-size:11px;color:var(--text3)">Ahorro de deuda: <span style="font-family:var(--font-mono);color:var(--accent)">+${FinanceMath.eur(amortEnPeriodo)}</span></div>` : ''}
             <div class="stat-sub">${config.dashboardEnd}</div>
           </div>`;
         })()}
