@@ -158,8 +158,13 @@ const DashboardModule = (() => {
         <h1 class="page-title">Cuadro de <span>Mando</span></h1>
       </div>
 
-      <!-- Config -->
-      <div class="card">
+      <!-- Config (colapsable) -->
+      <div class="card" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;${config.configCollapsed?'':'margin-bottom:14px'}">
+          <span class="card-title" style="margin:0">Configuración del periodo</span>
+          <button class="btn-secondary btn-sm" style="padding:4px 10px;font-size:18px;line-height:1" onclick="DashboardModule.toggleConfig()" title="${config.configCollapsed?'Expandir':'Colapsar'}">${config.configCollapsed?'▸':'▾'}</button>
+        </div>
+        ${config.configCollapsed ? '' : `
         <div class="grid-2" style="gap:10px">
           <div class="form-group">
             <label class="form-label">Periodo inicio</label>
@@ -209,7 +214,7 @@ const DashboardModule = (() => {
           <span class="text-sm">Filtrar cuentas:</span>
           ${accPills}
           <button class="btn-secondary btn-sm" onclick="DashboardModule.clearAccFilter()">Todas</button>
-          <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;row-gap:6px">
             <label class="form-inline gap-8" style="font-size:12px;color:var(--text2)">
               <label class="toggle"><input type="checkbox" id="cfg-show-colchon" ${config.showColchon?'checked':''}/><span class="toggle-slider"></span></label>
               Colchón
@@ -221,7 +226,8 @@ const DashboardModule = (() => {
             <button class="btn-primary btn-sm" onclick="DashboardModule.applyConfig()">Actualizar</button>
           </div>
         </div>
-        ${cuentasActivas.length>0?`<div class="mt-8 text-sm" style="color:var(--text3)">Saldo base: ${cuentasActivas.map(a=>`${a.nombre}: ${FinanceMath.eur(a.saldoInicial||0)} (desde ${a.fechaInicialSaldo||'—'})`).join(' · ')}</div>`:''}
+        ${cuentasActivas.length>0?`<div class="mt-8 text-sm" style="color:var(--text3)">Saldo base: ${cuentasActivas.map(a=>`${a.nombre}: ${FinanceMath.eur(FinanceMath.saldoRealCuenta(a))} (${a.fechaInicialSaldo||'—'})`).join(' · ')}</div>`:''}
+        `}
       </div>
 
       <!-- Exec summary strip -->
@@ -247,12 +253,17 @@ const DashboardModule = (() => {
           })()}
         </div>
         <div class="exec-item">
-          <div class="exec-item-label">Colchón</div>
+          <div class="exec-item-label">Colchón (periodo)</div>
           ${(()=>{
-            const cubierto = saldoHoy >= colchon && colchon > 0;
-            const sinConfig = colchon <= 0;
-            if (sinConfig) return `<div class="exec-item-val" style="color:var(--text3)">No configurado</div>`;
-            return `<div class="exec-item-val" style="color:${cubierto?'var(--accent)':'var(--red)'}">${FinanceMath.eur(colchon)} ${cubierto?'✓':'✗'}</div>`;
+            if (colchon <= 0) return `<div class="exec-item-val" style="color:var(--text3)">No configurado</div>`;
+            const evTotal = extracto.length;
+            const evBajo  = extracto.filter(e => e.saldoAcum < colchon).length;
+            const pctBajo = evTotal > 0 ? evBajo / evTotal * 100 : 0;
+            const color = pctBajo === 0 ? 'var(--accent)' : pctBajo < 15 ? '#ffd166' : pctBajo < 40 ? '#fb923c' : 'var(--red)';
+            const icono = pctBajo === 0 ? '✓' : '✗';
+            const label = pctBajo === 0 ? 'cubierto' : `${pctBajo.toFixed(0)}% del tiempo sin cubrir`;
+            return `<div class="exec-item-val" style="color:${color}">${FinanceMath.eur(colchon)} ${icono}</div>
+                    <div style="font-size:10px;color:${color};margin-top:1px">${label}</div>`;
           })()}
         </div>
         <div class="exec-item">
@@ -264,9 +275,41 @@ const DashboardModule = (() => {
 
       <!-- Stats row -->
       <div class="grid-4 mb-14">
-        <div class="stat-card"><div class="stat-label">Saldo base cuentas</div><div class="stat-value">${FinanceMath.eur(saldoBase)}</div><div class="stat-sub">${cuentasActivas.length} cuenta${cuentasActivas.length!==1?'s':''}</div></div>
-        <div class="stat-card"><div class="stat-label">⬤ Saldo aprox. hoy</div><div class="stat-value ${saldoHoy>=0?'pos':'neg'}">${FinanceMath.eur(saldoHoy)}</div><div class="stat-sub">${new Date().toISOString().slice(0,10)}</div></div>
-        <div class="stat-card"><div class="stat-label">Saldo estimado fin</div><div class="stat-value ${saldoFinal>=0?'':'neg'}">${FinanceMath.eur(saldoFinal)}</div><div class="stat-sub">${config.dashboardEnd}</div></div>
+        ${(()=>{
+          const diff   = saldoHoy - saldoBase;
+          const diffPct = saldoBase !== 0 ? diff / Math.abs(saldoBase) * 100 : 0;
+          const diffColor = diff >= 0 ? 'var(--accent)' : 'var(--red)';
+          const diffSign  = diff >= 0 ? '+' : '';
+          return `<div class="stat-card">
+            <div class="stat-label">Saldo real vs proyectado hoy</div>
+            <div style="display:flex;flex-direction:column;gap:4px;margin-top:2px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+                <span style="font-size:10px;color:var(--text3)">Real (histórico)</span>
+                <span class="stat-value" style="font-size:16px">${FinanceMath.eur(saldoBase)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+                <span style="font-size:10px;color:var(--text3)">Proyectado</span>
+                <span style="font-family:var(--font-mono);font-size:14px;color:var(--text2)">${FinanceMath.eur(saldoHoy)}</span>
+              </div>
+              <div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:10px;color:var(--text3)">Diferencia</span>
+                <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:${diffColor}">${diffSign}${FinanceMath.eur(diff)} <span style="font-size:10px">(${diffSign}${diffPct.toFixed(1)}%)</span></span>
+              </div>
+            </div>
+            <div class="stat-sub" style="margin-top:4px">${new Date().toISOString().slice(0,10)} · ${cuentasActivas.length} cuenta${cuentasActivas.length!==1?'s':''}</div>
+          </div>`;
+        })()}
+        ${(()=>{
+          const deltaFin = saldoFinal - saldoBase;
+          const deltaColor = deltaFin >= 0 ? 'var(--accent)' : 'var(--red)';
+          const deltaSign  = deltaFin >= 0 ? '+' : '';
+          return `<div class="stat-card">
+            <div class="stat-label">Saldo estimado fin</div>
+            <div class="stat-value ${saldoFinal>=0?'':'neg'}">${FinanceMath.eur(saldoFinal)}</div>
+            <div style="font-family:var(--font-mono);font-size:12px;margin-top:4px;color:${deltaColor}">${deltaSign}${FinanceMath.eur(deltaFin)} vs hoy</div>
+            <div class="stat-sub">${config.dashboardEnd}</div>
+          </div>`;
+        })()}
         ${(()=>{
           const pensiones = accounts.filter(a=>a.activo&&a.esFondoPension);
           if (!pensiones.length) return `<div class="stat-card"><div class="stat-label">Media mensual gastos</div><div class="stat-value neg">${FinanceMath.eur(mediaMensual)}</div><div class="stat-sub">Total: ${FinanceMath.eur(totalGastos)}</div></div>`;
@@ -295,65 +338,47 @@ const DashboardModule = (() => {
         </div>`;
       })()}
 
-      <!-- KPI financieros -->
-      <div class="grid-4 mb-14" style="gap:14px">
+      <!-- KPI financieros: donut distribución + rendimiento -->
+      <div class="grid-2 mb-14" style="gap:14px">
 
-        <!-- Panel 1: Gastos mensuales -->
+        <!-- Donut distribución de ingresos (media mensual del periodo) -->
         <div class="card">
-          <div class="card-title mb-12">Gastos mensuales</div>
-          <div class="stat-value mb-8" style="color:var(--text)">${FinanceMath.eur(gastosFijosMes + cuotasMesActual)}<span class="stat-sub" style="font-size:11px;margin-left:6px">este mes</span></div>
-          <div style="font-size:11px;color:var(--text3);margin-bottom:10px">${FinanceMath.eur(gastosFijosMes)} gastos + ${FinanceMath.eur(cuotasMesActual)} cuotas</div>
-          <div style="display:flex;flex-direction:column;gap:5px">
-            <div style="display:flex;justify-content:space-between;font-size:12px">
-              <span style="color:var(--text2)">% ingresos este mes</span>
-              <span style="font-family:var(--font-mono);color:${semColor(pctFmt(gastosTosMesActual,ingresosMesActual||ingresosMensuales),[60,80])}">${pctFmt(gastosTosMesActual, ingresosMesActual||ingresosMensuales)}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:12px">
-              <span style="color:var(--text2)">% ingresos (media)</span>
-              <span style="font-family:var(--font-mono);color:${semColor(pctFmt(gastosMediaMes,ingresosMediaMes),[60,80])}">${pctFmt(gastosMediaMes, ingresosMediaMes)}</span>
-            </div>
-          </div>
+          <div class="card-title mb-8">Distribución media mensual (periodo)</div>
+          ${(()=>{
+            const otrosGastosMed = Math.max(0, gastosMediaMes - gastosBasicosMediaMes);
+            const ahorroMed      = Math.max(0, ingresosMediaMes - cuotasMediaMes - gastosMediaMes);
+            const totalRef       = ingresosMediaMes > 0 ? ingresosMediaMes : (cuotasMediaMes + gastosMediaMes + 0.01);
+            const pctBasicos = (gastosBasicosMediaMes / totalRef * 100).toFixed(1);
+            const pctOtros   = (otrosGastosMed / totalRef * 100).toFixed(1);
+            const pctDeuda   = (cuotasMediaMes / totalRef * 100).toFixed(1);
+            const pctAhorro  = (ahorroMed / totalRef * 100).toFixed(1);
+            const ahorroColor = ahorroMed > 0 ? 'var(--accent)' : 'var(--text3)';
+            return `
+            <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+              <div style="position:relative;width:140px;height:140px;flex-shrink:0"><canvas id="chart-expense-donut"></canvas></div>
+              <div style="flex:1;min-width:130px;display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px">
+                  <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#4d9fff;display:inline-block"></span><span style="color:var(--text2)">Básicos</span></span>
+                  <span style="font-family:var(--font-mono)">${FinanceMath.eur(gastosBasicosMediaMes)}<span style="color:var(--text3);margin-left:4px">${pctBasicos}%</span></span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px">
+                  <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#ff4d6d;display:inline-block"></span><span style="color:var(--text2)">Otros gastos</span></span>
+                  <span style="font-family:var(--font-mono)">${FinanceMath.eur(otrosGastosMed)}<span style="color:var(--text3);margin-left:4px">${pctOtros}%</span></span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px">
+                  <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#a855f7;display:inline-block"></span><span style="color:var(--text2)">Deuda</span></span>
+                  <span style="font-family:var(--font-mono)">${FinanceMath.eur(cuotasMediaMes)}<span style="color:var(--text3);margin-left:4px">${pctDeuda}%</span></span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;border-top:1px solid var(--border);padding-top:6px">
+                  <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#00e5a0;display:inline-block"></span><span style="color:var(--text2)">Ahorro est.</span></span>
+                  <span style="font-family:var(--font-mono);font-weight:700;color:${ahorroColor}">${FinanceMath.eur(ahorroMed)}<span style="margin-left:4px">${pctAhorro}%</span></span>
+                </div>
+                <div style="font-size:10px;color:var(--text3);margin-top:2px">Ingresos: ${FinanceMath.eur(ingresosMediaMes)}/mes</div>
+              </div>
+            </div>`;
+          })()}
         </div>
 
-        <!-- Panel 2: Endeudamiento -->
-        <div class="card">
-          <div class="card-title mb-12">Endeudamiento</div>
-          <div class="stat-value mb-8" style="color:var(--text)">${FinanceMath.eur(cuotasMesActual)}<span class="stat-sub" style="font-size:11px;margin-left:6px">cuotas este mes</span></div>
-          <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Solo cuotas ordinarias, sin amortizaciones</div>
-          <div style="display:flex;flex-direction:column;gap:5px">
-            <div style="display:flex;justify-content:space-between;font-size:12px">
-              <span style="color:var(--text2)">% ingresos este mes</span>
-              <span style="font-family:var(--font-mono);color:${semColor(pctFmt(cuotasMesActual,ingresosMesActual||ingresosMensuales),[20,35])}">${pctFmt(cuotasMesActual, ingresosMesActual||ingresosMensuales)}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:12px">
-              <span style="color:var(--text2)">% ingresos (media)</span>
-              <span style="font-family:var(--font-mono);color:${semColor(pctFmt(cuotasMediaMes,ingresosMediaMes),[20,35])}">${pctFmt(cuotasMediaMes, ingresosMediaMes)}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:2px;padding-top:5px;border-top:1px solid var(--border)">
-              <span style="color:var(--text3);font-size:10px">< 20% excelente · < 35% aceptable · > 35% ⚠️</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Panel 3: Gastos básicos -->
-        <div class="card">
-          <div class="card-title mb-12">Gastos básicos + cuotas</div>
-          <div class="stat-value mb-8" style="color:var(--blue)">${FinanceMath.eur(gastosBasicosMes + cuotasMesActual)}<span class="stat-sub" style="font-size:11px;margin-left:6px">al mes</span></div>
-          <div style="font-size:11px;color:var(--text3);margin-bottom:10px">${FinanceMath.eur(gastosBasicosMes)} básicos + ${FinanceMath.eur(cuotasMesActual)} cuotas</div>
-          <div style="display:flex;flex-direction:column;gap:5px">
-            <div style="display:flex;justify-content:space-between;font-size:12px">
-              <span style="color:var(--text2)">% sobre ingresos</span>
-              <span style="font-family:var(--font-mono);color:${semColor(pctFmt(gastosBasicosMes+cuotasMesActual,ingresosMensuales),[60,80])}">${pctFmt(gastosBasicosMes+cuotasMesActual, ingresosMensuales)}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:12px">
-              <span style="color:var(--text2)">Básicos solos</span>
-              <span style="font-family:var(--font-mono)">${pctFmt(gastosBasicosMes, ingresosMensuales)}</span>
-            </div>
-            ${gastosBasicosMes===0?`<div style="font-size:10px;color:var(--text3);margin-top:2px">Marca gastos como 'básico' en la sección Gastos</div>`:''}
-          </div>
-        </div>
-
-        <!-- Panel 4: Rendimiento cuentas remuneradas -->
         <div class="card">
           <div class="card-title mb-12">Rendimiento cuentas</div>
           ${interesesMesActual > 0
@@ -522,11 +547,13 @@ const DashboardModule = (() => {
 
     // Pass computed metrics to chart functions
     const _metricasGraficos = { loans, expenses, config, numMeses, extracto };
+    const _donutMetrics = { gastosBasicosMediaMes, gastosMediaMes, cuotasMediaMes, ingresosMediaMes };
     setTimeout(()=>{
       renderChartSaldo(extracto);
       renderChartVelas(extracto);
       renderChartTags(extracto, activeTags);
       renderChartBreakdown(_metricasGraficos);
+      renderChartExpenseDonut(_donutMetrics);
     }, 60);
   }
 
@@ -567,20 +594,35 @@ const DashboardModule = (() => {
       };
     }
 
-    // Historial scatter — sum historicos of all visible accounts
+    // Historial scatter — LOCF por cuenta: para cada fecha en cualquier cuenta,
+    // suma el saldo más reciente de CADA cuenta hasta esa fecha.
     let histDataset = null;
     if (config.showHistorico) {
-      // Cuentas visibles = las del filtro activo, o todas si no hay filtro
       const visibles = accounts.filter(a =>
         filtroAccounts.length === 0 || filtroAccounts.includes(a._id)
       );
-      // Merge all historico points by date, summing saldos
+      // Recoger todas las fechas únicas; deduplicar por cuenta (último en inserción)
+      const allDates = new Set();
+      const dedupedHist = visibles.map(acc => {
+        const byD = {};
+        for (const h of (acc.historicoSaldos || [])) byD[h.fecha] = h.saldo; // último gana
+        for (const d of Object.keys(byD)) allDates.add(d);
+        return byD;
+      });
       const byFecha = {};
-      for (const acc of visibles) {
-        for (const h of (acc.historicoSaldos || [])) {
-          if (!byFecha[h.fecha]) byFecha[h.fecha] = 0;
-          byFecha[h.fecha] += h.saldo;
+      for (const fecha of [...allDates].sort()) {
+        let total = 0;
+        for (let ai = 0; ai < visibles.length; ai++) {
+          // Saldo más reciente de esta cuenta hasta `fecha`
+          const entries = Object.entries(dedupedHist[ai]).filter(([d]) => d <= fecha);
+          if (entries.length > 0) {
+            entries.sort(([a],[b]) => b.localeCompare(a));
+            total += entries[0][1];
+          } else {
+            total += visibles[ai].saldoInicial || 0;
+          }
         }
+        byFecha[fecha] = total;
       }
       const pts = Object.entries(byFecha)
         .sort(([a],[b]) => a.localeCompare(b))
@@ -595,8 +637,8 @@ const DashboardModule = (() => {
           type: 'scatter',
           backgroundColor: '#ffd166',
           borderColor: '#ffd166',
-          pointRadius: 6,
-          pointHoverRadius: 9,
+          pointRadius: 3,
+          pointHoverRadius: 6,
           showLine: pts.length > 1,
           borderWidth: 1.5,
           borderDash: [4,3],
@@ -890,6 +932,44 @@ const DashboardModule = (() => {
     });
   }
 
+  function renderChartExpenseDonut({ gastosBasicosMediaMes, gastosMediaMes, cuotasMediaMes, ingresosMediaMes }) {
+    const ctx = document.getElementById('chart-expense-donut'); if (!ctx) return;
+    const otrosGastos = Math.max(0, gastosMediaMes - gastosBasicosMediaMes);
+    const ahorro      = Math.max(0, ingresosMediaMes - cuotasMediaMes - gastosMediaMes);
+    const segments = [
+      { label:'Básicos',      value: gastosBasicosMediaMes, color:'#4d9fff' },
+      { label:'Otros gastos', value: otrosGastos,           color:'#ff4d6d' },
+      { label:'Deuda',        value: cuotasMediaMes,        color:'#a855f7' },
+      { label:'Ahorro est.',  value: ahorro,                color:'#00e5a0' },
+    ].filter(s => s.value > 0);
+    if (!segments.length) return;
+    if (charts['chart-expense-donut']) { try { charts['chart-expense-donut'].destroy(); } catch{} }
+    charts['chart-expense-donut'] = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: segments.map(s=>s.label),
+        datasets: [{ data: segments.map(s=>s.value), backgroundColor: segments.map(s=>s.color), borderWidth: 0, hoverOffset: 4 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '68%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor:'#13161e', borderColor:'#252a38', borderWidth:1,
+            titleColor:'#8b92a8', bodyColor:'#e8eaf2',
+            callbacks: { label: c => ` ${c.label}: ${FinanceMath.eur(c.parsed)} (${(c.parsed/(ingresosMediaMes||c.parsed)*100).toFixed(1)}%)` }
+          }
+        }
+      }
+    });
+  }
+
+  function toggleConfig() {
+    const cfg = State.get('config');
+    State.set('config', { ...cfg, configCollapsed: !cfg.configCollapsed });
+    render();
+  }
+
   function applyConfig() {
     const existing = State.get('config');
     const config={
@@ -936,5 +1016,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, applyConfig, applyPreset, setColchonTipo, setVentana, toggleTag, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleScoreDetail, toggleCriticos };
+  return { render, applyConfig, applyPreset, setColchonTipo, setVentana, toggleTag, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleScoreDetail, toggleCriticos, toggleConfig };
 })();
