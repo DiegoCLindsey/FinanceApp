@@ -96,7 +96,8 @@
           <input type="password" id="dbx-unlock-passphrase" class="auth-input" placeholder="Tu clave de cifrado"/>
         </div>
         <button id="btn-dropbox-unlock" class="btn-dropbox full-width">Desbloquear</button>
-        <button id="btn-dropbox-forget" class="btn-secondary full-width" style="margin-top:8px;font-size:12px">Olvidar esta cuenta y empezar de nuevo</button>
+        <div id="dbx-expiry-warning" class="hidden" style="margin-top:10px;background:var(--yellow-dim);border:1px solid rgba(255,209,102,0.3);border-radius:var(--radius);padding:10px 12px;font-size:12px;color:var(--yellow);line-height:1.6"></div>
+        <button id="btn-dropbox-forget" class="btn-secondary full-width" style="margin-top:8px;font-size:12px">Introducir nuevo token</button>
         <div id="dbx-unlock-error" class="auth-error hidden" style="margin-top:8px"></div>
       </div>
 

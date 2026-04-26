@@ -41,9 +41,10 @@ GDRIVE_DISABLED_END */
 // Fichero en Dropbox: /financeapp_backup.enc (texto cifrado)
 // ─────────────────────────────────────────────────────────────────────────────
 const DropboxService = (() => {
-  const FILE_PATH   = '/financeapp_backup.enc';
-  const LS_TOKEN    = 'financeapp_dbx_token_enc';  // token cifrado con la passphrase
-  const LS_SALT     = 'financeapp_dbx_salt';
+  const FILE_PATH      = '/financeapp_backup.enc';
+  const LS_TOKEN       = 'financeapp_dbx_token_enc';  // token cifrado con la passphrase
+  const LS_SALT        = 'financeapp_dbx_salt';
+  const LS_TOKEN_META  = 'financeapp_dbx_token_meta'; // { savedAt: ISO string }
 
   let _token      = null;   // access token en claro (solo en memoria)
   let _cryptoKey  = null;   // clave AES-GCM derivada de la passphrase (para token local)
@@ -84,6 +85,7 @@ const DropboxService = (() => {
     const key         = await _deriveKey(passphrase);
     const tokenCipher = await CryptoService.encrypt(key, { t: token.trim() });
     localStorage.setItem(LS_TOKEN, tokenCipher);
+    localStorage.setItem(LS_TOKEN_META, JSON.stringify({ savedAt: new Date().toISOString() }));
 
     _token      = token.trim();
     _cryptoKey  = key;
@@ -118,6 +120,20 @@ const DropboxService = (() => {
     _passphrase = null;
     localStorage.removeItem(LS_TOKEN);
     localStorage.removeItem(LS_SALT);
+    localStorage.removeItem(LS_TOKEN_META);
+  }
+
+  function tokenAgeHours() {
+    try {
+      const meta = JSON.parse(localStorage.getItem(LS_TOKEN_META) || 'null');
+      if (!meta?.savedAt) return null;
+      return (Date.now() - new Date(meta.savedAt).getTime()) / 3600000;
+    } catch { return null; }
+  }
+
+  function couldBeExpired() {
+    const h = tokenAgeHours();
+    return h !== null && h >= 4;
   }
 
   // ── Dropbox API helpers ───────────────────────────────────────────────────────
@@ -200,7 +216,7 @@ const DropboxService = (() => {
 
   return {
     setup, unlock, hasSavedSession, isConnected, forget,
-    uploadBackup, downloadBackup,
+    uploadBackup, downloadBackup, tokenAgeHours, couldBeExpired,
   };
 })();
 
@@ -319,6 +335,18 @@ const AuthModule = (() => {
   function _wireUnlockStep() {
     _err('dbx-unlock-error', '');
 
+    // Aviso de posible caducidad del token
+    const warningEl = document.getElementById('dbx-expiry-warning');
+    if (warningEl && DropboxService.couldBeExpired()) {
+      const h = Math.floor(DropboxService.tokenAgeHours());
+      warningEl.innerHTML =
+        `⚠ El token se guardó hace ${h} horas y puede haber caducado (límite: 4 h). ` +
+        `Si la conexión falla, genera uno nuevo:<br><a href="https://www.dropbox.com/developers/apps" ` +
+        `target="_blank" style="color:var(--yellow);font-weight:600;text-decoration:underline">` +
+        `Abrir Dropbox Developers →</a>`;
+      warningEl.classList.remove('hidden');
+    }
+
     const doUnlock = async () => {
       _err('dbx-unlock-error', '');
       const pass = document.getElementById('dbx-unlock-passphrase')?.value;
@@ -351,15 +379,9 @@ const AuthModule = (() => {
     });
 
     document.getElementById('btn-dropbox-forget')?.addEventListener('click', () => {
-      if (!confirm('¿Olvidar la cuenta de Dropbox? Los datos locales no se borrarán, pero tendrás que volver a conectar con tu token.')) return;
       DropboxService.forget();
-      _showStep('auth-step-select');
-      // Reconectar listeners del selector
-      document.getElementById('btn-dropbox')?.addEventListener('click', () => {
-        _showStep('auth-step-dropbox');
-        _wireDropboxStep();
-      });
-      document.getElementById('btn-local')?.addEventListener('click', () => launch(false));
+      _showStep('auth-step-dropbox');
+      _wireDropboxStep();
     });
 
     setTimeout(() => document.getElementById('dbx-unlock-passphrase')?.focus(), 50);
