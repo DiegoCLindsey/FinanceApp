@@ -141,8 +141,8 @@ const DashboardModule = (() => {
       return { loan: l, fechaFin };
     }).filter(Boolean);
     // Cashflow: ingreso medio − gastos ordinarios medio − cuotas del momento
-    // Las cuotas se calculan por punto en el tiempo (inicio/media/fin) para reflejar
-    // cuándo se acaban préstamos. Los gastos ordinarios y los ingresos se promedian.
+    // Cuotas leídas de las tablas de amortización (source of truth), no del extracto,
+    // para no depender del corte de dashboardStart/dashboardEnd a mitad de mes.
     const mesesCf = [...new Set(extracto.filter(e=>e.fecha>=config.dashboardStart&&e.fecha<=config.dashboardEnd).map(e=>e.fecha.slice(0,7)))].sort();
     const _sumMes = (mes, fn) => {
       const ini = mes+'-01';
@@ -150,9 +150,23 @@ const DashboardModule = (() => {
       return extracto.filter(e=>e.fecha>=ini&&e.fecha<=fin).filter(fn).reduce((s,e)=>s+Math.abs(e.cuantia),0);
     };
     const gastosExpMedio = mesesCf.length > 0 ? mesesCf.reduce((s,m)=>s+_sumMes(m,e=>e.tipo==='gasto'&&e.sourceType==='expense'),0)/mesesCf.length : 0;
-    const cuotasInicio   = mesesCf.length > 0 ? _sumMes(mesesCf[0], e=>e.tipo==='gasto'&&e.sourceType==='loan') : 0;
-    const cuotasFin      = mesesCf.length > 0 ? _sumMes(mesesCf[mesesCf.length-1], e=>e.tipo==='gasto'&&e.sourceType==='loan') : 0;
-    const cuotasMedio    = mesesCf.length > 0 ? mesesCf.reduce((s,m)=>s+_sumMes(m,e=>e.tipo==='gasto'&&e.sourceType==='loan'),0)/mesesCf.length : 0;
+
+    // Tablas de amortización cacheadas para cuotas
+    const _tablasAmort = loansActivos.map(l => FinanceMath.resumenPrestamo(l).tabla);
+    const _cuotasDelMes = (mes) => {
+      const ini = mes+'-01';
+      const fin = new Date(parseInt(mes.slice(0,4)), parseInt(mes.slice(5,7)), 0).toISOString().slice(0,10);
+      return _tablasAmort.reduce((s, tabla) => {
+        const row = tabla.find(r => !r.esAmortizacion && r.fecha >= ini && r.fecha <= fin);
+        return s + (row ? row.cuota : 0);
+      }, 0);
+    };
+    // Generar todos los meses del periodo para la media (no depender de mesesCf)
+    const _mesesPeriodo = [];
+    { let _mc = new Date(config.dashboardStart.slice(0,7)+'-01T00:00:00'); const _me = new Date(config.dashboardEnd.slice(0,7)+'-01T00:00:00'); while (_mc <= _me) { _mesesPeriodo.push(_mc.toISOString().slice(0,7)); _mc = new Date(_mc.getFullYear(), _mc.getMonth()+1, 1); } }
+    const cuotasInicio = _cuotasDelMes(config.dashboardStart.slice(0,7));
+    const cuotasFin    = _cuotasDelMes(config.dashboardEnd.slice(0,7));
+    const cuotasMedio  = _mesesPeriodo.length > 0 ? _mesesPeriodo.reduce((s,m)=>s+_cuotasDelMes(m),0)/_mesesPeriodo.length : 0;
     // ingresosMediaMes ya calculado arriba — es la referencia fija de ingresos
     const cfInicio = ingresosMediaMes - gastosExpMedio - cuotasInicio;
     const cfMedio  = ingresosMediaMes - gastosExpMedio - cuotasMedio;
