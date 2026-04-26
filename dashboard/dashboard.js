@@ -143,12 +143,13 @@ const DashboardModule = (() => {
     // Cashflow mensual (capacidad de ahorro = ingresos − gastos − cuotas, sin amortizaciones ni transferencias)
     const mesesCf = [...new Set(extracto.filter(e=>e.fecha>=config.dashboardStart&&e.fecha<=config.dashboardEnd).map(e=>e.fecha.slice(0,7)))].sort();
     const cashflowPorMes = mesesCf.map(mes => {
-      const ini = mes+'-01';
-      const fin = new Date(parseInt(mes.slice(0,4)), parseInt(mes.slice(5,7)), 0).toISOString().slice(0,10);
-      const evs = extracto.filter(e=>e.fecha>=ini&&e.fecha<=fin&&e.sourceType!=='transfer-out'&&e.sourceType!=='transfer-in'&&e.sourceType!=='loan-amort');
-      const ing = evs.filter(e=>e.tipo==='ingreso').reduce((s,e)=>s+Math.abs(e.cuantia),0);
-      const gst = evs.filter(e=>e.tipo==='gasto').reduce((s,e)=>s+Math.abs(e.cuantia),0);
-      return { mes, cf: ing - gst };
+      const ini  = mes+'-01';
+      const fin  = new Date(parseInt(mes.slice(0,4)), parseInt(mes.slice(5,7)), 0).toISOString().slice(0,10);
+      const evs  = extracto.filter(e=>e.fecha>=ini&&e.fecha<=fin&&e.sourceType!=='transfer-out'&&e.sourceType!=='transfer-in');
+      const ing    = evs.filter(e=>e.tipo==='ingreso').reduce((s,e)=>s+Math.abs(e.cuantia),0);
+      const gastos = evs.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').reduce((s,e)=>s+Math.abs(e.cuantia),0);
+      const cuotas = evs.filter(e=>e.tipo==='gasto'&&e.sourceType==='loan').reduce((s,e)=>s+Math.abs(e.cuantia),0);
+      return { mes, cf: ing - gastos - cuotas };
     });
     const cfInicio = cashflowPorMes[0]?.cf ?? 0;
     const cfFin    = cashflowPorMes[cashflowPorMes.length-1]?.cf ?? 0;
