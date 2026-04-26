@@ -140,18 +140,7 @@ const DashboardModule = (() => {
       if (!fechaFin || fechaFin < config.dashboardStart || fechaFin > config.dashboardEnd) return null;
       return { loan: l, fechaFin };
     }).filter(Boolean);
-    // Cashflow: ingreso medio − gastos ordinarios medio − cuotas del momento
-    // Cuotas leídas de las tablas de amortización (source of truth), no del extracto,
-    // para no depender del corte de dashboardStart/dashboardEnd a mitad de mes.
-    const mesesCf = [...new Set(extracto.filter(e=>e.fecha>=config.dashboardStart&&e.fecha<=config.dashboardEnd).map(e=>e.fecha.slice(0,7)))].sort();
-    const _sumMes = (mes, fn) => {
-      const ini = mes+'-01';
-      const fin = new Date(parseInt(mes.slice(0,4)), parseInt(mes.slice(5,7)), 0).toISOString().slice(0,10);
-      return extracto.filter(e=>e.fecha>=ini&&e.fecha<=fin).filter(fn).reduce((s,e)=>s+Math.abs(e.cuantia),0);
-    };
-    const gastosExpMedio = mesesCf.length > 0 ? mesesCf.reduce((s,m)=>s+_sumMes(m,e=>e.tipo==='gasto'&&e.sourceType==='expense'),0)/mesesCf.length : 0;
-
-    // Tablas de amortización cacheadas para cuotas
+    // Cuotas al inicio y fin del periodo, leídas de las tablas de amortización
     const _tablasAmort = loansActivos.map(l => FinanceMath.resumenPrestamo(l).tabla);
     const _cuotasDelMes = (mes) => {
       const ini = mes+'-01';
@@ -161,16 +150,8 @@ const DashboardModule = (() => {
         return s + (row ? row.cuota : 0);
       }, 0);
     };
-    // Generar todos los meses del periodo para la media (no depender de mesesCf)
-    const _mesesPeriodo = [];
-    { let _mc = new Date(config.dashboardStart.slice(0,7)+'-01T00:00:00'); const _me = new Date(config.dashboardEnd.slice(0,7)+'-01T00:00:00'); while (_mc <= _me) { _mesesPeriodo.push(_mc.toISOString().slice(0,7)); _mc = new Date(_mc.getFullYear(), _mc.getMonth()+1, 1); } }
     const cuotasInicio = _cuotasDelMes(config.dashboardStart.slice(0,7));
     const cuotasFin    = _cuotasDelMes(config.dashboardEnd.slice(0,7));
-    const cuotasMedio  = _mesesPeriodo.length > 0 ? _mesesPeriodo.reduce((s,m)=>s+_cuotasDelMes(m),0)/_mesesPeriodo.length : 0;
-    // ingresosMediaMes ya calculado arriba — es la referencia fija de ingresos
-    const cfInicio = ingresosMediaMes - gastosExpMedio - cuotasInicio;
-    const cfMedio  = ingresosMediaMes - gastosExpMedio - cuotasMedio;
-    const cfFin    = ingresosMediaMes - gastosExpMedio - cuotasFin;
 
 
     // ── Intereses de cuentas remuneradas ─────────────────────────────────────────
@@ -401,7 +382,6 @@ const DashboardModule = (() => {
         const deudaDelta    = deudaFin - deudaInicio;
         const deudaDeltaPct = deudaInicio > 0.01 ? deudaDelta / deudaInicio * 100 : 0;
         const deudaColor    = deudaDelta <= 0 ? 'var(--accent)' : 'var(--red)';
-        const cfColor = (v) => v > 0 ? 'var(--accent)' : v < 0 ? 'var(--red)' : 'var(--text2)';
         return `<div class="card mb-14">
           <div class="card-title mb-12">Préstamos</div>
           <div class="grid-3" style="gap:10px;margin-bottom:${(loansFinEnPeriodo.length>0||ahorroIntereses>0.01)?'14px':'0'}">
@@ -417,25 +397,22 @@ const DashboardModule = (() => {
                 </div>
               </div>
             </div>
-            <!-- Cashflow -->
-            <div style="background:var(--bg3);border-radius:var(--radius);padding:12px;border:1px solid var(--border)">
-              <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Cashflow mensual</div>
-              <div style="display:flex;flex-direction:column;gap:3px">
-                <div style="display:flex;justify-content:space-between;font-size:11px;padding-bottom:5px;border-bottom:1px solid var(--border)">
-                  <span style="color:var(--text3)">Ingresos (ref. media)</span>
-                  <span style="font-family:var(--font-mono);color:var(--text2)">${FinanceMath.eur(ingresosMediaMes)}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">− Gastos ordinarios (med.)</span><span style="font-family:var(--font-mono);color:var(--text2)">−${FinanceMath.eur(gastosExpMedio)}</span></div>
-                <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">− Cuotas inicio</span><span style="font-family:var(--font-mono);color:var(--text2)">−${FinanceMath.eur(cuotasInicio)}</span></div>
-                <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">− Cuotas media</span><span style="font-family:var(--font-mono);color:var(--text2)">−${FinanceMath.eur(cuotasMedio)}</span></div>
-                <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">− Cuotas fin</span><span style="font-family:var(--font-mono);color:var(--text2)">−${FinanceMath.eur(cuotasFin)}</span></div>
-                <div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;display:flex;flex-direction:column;gap:3px">
-                  <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3)">CF inicio</span><span style="font-family:var(--font-mono);color:${cfColor(cfInicio)}">${cfInicio>=0?'+':''}${FinanceMath.eur(cfInicio)}</span></div>
-                  <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3)">CF media</span><span style="font-family:var(--font-mono);color:${cfColor(cfMedio)}">${cfMedio>=0?'+':''}${FinanceMath.eur(cfMedio)}</span></div>
-                  <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3);font-weight:600">CF fin</span><span style="font-family:var(--font-mono);font-weight:700;color:${cfColor(cfFin)}">${cfFin>=0?'+':''}${FinanceMath.eur(cfFin)}</span></div>
+            <!-- Cuota mensual total -->
+            ${(()=>{
+              const cuotasDelta = cuotasFin - cuotasInicio;
+              const cuotasColor = cuotasDelta <= 0 ? 'var(--accent)' : 'var(--red)';
+              return `<div style="background:var(--bg3);border-radius:var(--radius);padding:12px;border:1px solid var(--border)">
+              <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Cuota mensual total</div>
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3)">Inicio</span><span style="font-family:var(--font-mono)">${FinanceMath.eur(cuotasInicio)}</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3)">Fin</span><span style="font-family:var(--font-mono)">${FinanceMath.eur(cuotasFin)}</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:12px;border-top:1px solid var(--border);padding-top:4px;margin-top:2px">
+                  <span style="color:var(--text3)">Diferencia</span>
+                  <span style="font-family:var(--font-mono);font-weight:700;color:${cuotasColor}">${cuotasDelta<=0?'':'+'}${FinanceMath.eur(cuotasDelta)}</span>
                 </div>
               </div>
-            </div>
+            </div>`;
+            })()}
             <!-- Ahorro intereses -->
             <div style="background:var(--bg3);border-radius:var(--radius);padding:12px;border:1px solid var(--border)">
               <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Ahorro de intereses</div>
