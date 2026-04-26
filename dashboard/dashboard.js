@@ -118,6 +118,42 @@ const DashboardModule = (() => {
     const gastosBasicosMes  = gastosBasicosMesActual;
     const ingresosMensuales = ingresosMesActual;
 
+    // ── Cálculos de préstamos compartidos ────────────────────────────────────────
+    const loansActivos = loans.filter(l => l.activo && !l.simulacion && (l.fechaInicio||'') <= config.dashboardEnd);
+    const _deudaEnFecha = (fecha) => loansActivos.reduce((s, l) => {
+      const { tabla } = FinanceMath.resumenPrestamo(l);
+      const rows = tabla.filter(r => !r.esAmortizacion && r.fecha <= fecha);
+      return s + (rows.length > 0 ? rows[rows.length-1].capitalPendiente : (l.capital||0));
+    }, 0);
+    const deudaInicio = _deudaEnFecha(config.dashboardStart);
+    const deudaFin    = _deudaEnFecha(config.dashboardEnd);
+    const ahorroIntereses = loansActivos.reduce((s, l) => {
+      const amortsPeriodo = (l.amortizaciones||[]).filter(a => a.fecha>=config.dashboardStart && a.fecha<=config.dashboardEnd);
+      if (!amortsPeriodo.length) return s;
+      const conAmorts = FinanceMath.resumenPrestamo(l).totalIntereses;
+      const loanSin   = { ...l, amortizaciones: (l.amortizaciones||[]).filter(a => a.fecha<config.dashboardStart || a.fecha>config.dashboardEnd) };
+      return s + Math.max(0, FinanceMath.resumenPrestamo(loanSin).totalIntereses - conAmorts);
+    }, 0);
+    const ahorroInteresesMes = numMeses > 0 ? ahorroIntereses / numMeses : 0;
+    const loansFinEnPeriodo  = loansActivos.map(l => {
+      const { fechaFin } = FinanceMath.resumenPrestamo(l);
+      if (!fechaFin || fechaFin < config.dashboardStart || fechaFin > config.dashboardEnd) return null;
+      return { loan: l, fechaFin };
+    }).filter(Boolean);
+    // Cashflow mensual (capacidad de ahorro = ingresos − gastos − cuotas, sin amortizaciones ni transferencias)
+    const mesesCf = [...new Set(extracto.filter(e=>e.fecha>=config.dashboardStart&&e.fecha<=config.dashboardEnd).map(e=>e.fecha.slice(0,7)))].sort();
+    const cashflowPorMes = mesesCf.map(mes => {
+      const ini = mes+'-01';
+      const fin = new Date(parseInt(mes.slice(0,4)), parseInt(mes.slice(5,7)), 0).toISOString().slice(0,10);
+      const evs = extracto.filter(e=>e.fecha>=ini&&e.fecha<=fin&&e.sourceType!=='transfer-out'&&e.sourceType!=='transfer-in'&&e.sourceType!=='loan-amort');
+      const ing = evs.filter(e=>e.tipo==='ingreso').reduce((s,e)=>s+Math.abs(e.cuantia),0);
+      const gst = evs.filter(e=>e.tipo==='gasto').reduce((s,e)=>s+Math.abs(e.cuantia),0);
+      return { mes, cf: ing - gst };
+    });
+    const cfInicio = cashflowPorMes[0]?.cf ?? 0;
+    const cfFin    = cashflowPorMes[cashflowPorMes.length-1]?.cf ?? 0;
+    const cfMedio  = cashflowPorMes.length > 0 ? cashflowPorMes.reduce((s,m)=>s+m.cf,0)/cashflowPorMes.length : 0;
+
     // ── Intereses de cuentas remuneradas ─────────────────────────────────────────
     // Mes actual (extracto propio del mes)
     const interesesMesActual = evsMesActual
@@ -303,41 +339,13 @@ const DashboardModule = (() => {
           </div>`;
         })()}
         ${(()=>{
-          const deltaFin = saldoFinal - saldoBase;
+          const deltaFin  = saldoFinal - saldoBase;
           const deltaColor = deltaFin >= 0 ? 'var(--accent)' : 'var(--red)';
           const deltaSign  = deltaFin >= 0 ? '+' : '';
-          const loansActivos = loans.filter(l => l.activo && !l.simulacion && (l.fechaInicio || '') <= config.dashboardEnd);
-          const deudaEnFecha = (fecha) => loansActivos.reduce((s, l) => {
-            const { tabla } = FinanceMath.resumenPrestamo(l);
-            const rows = tabla.filter(r => !r.esAmortizacion && r.fecha <= fecha);
-            return s + (rows.length > 0 ? rows[rows.length-1].capitalPendiente : (l.capital||0));
-          }, 0);
-          const deudaInicio = deudaEnFecha(config.dashboardStart);
-          const deudaFin    = deudaEnFecha(config.dashboardEnd);
-          // Ahorro de intereses: diferencia de intereses totales con/sin amortizaciones del periodo
-          const ahorroIntereses = loansActivos.reduce((s, l) => {
-            const amortsPeriodo = (l.amortizaciones||[]).filter(a => a.fecha>=config.dashboardStart && a.fecha<=config.dashboardEnd);
-            if (!amortsPeriodo.length) return s;
-            const conAmorts  = FinanceMath.resumenPrestamo(l).totalIntereses;
-            const loanSin    = { ...l, amortizaciones: (l.amortizaciones||[]).filter(a => a.fecha<config.dashboardStart || a.fecha>config.dashboardEnd) };
-            const sinAmorts  = FinanceMath.resumenPrestamo(loanSin).totalIntereses;
-            return s + Math.max(0, sinAmorts - conAmorts);
-          }, 0);
-          const ahorroInteresesMes = numMeses > 0 ? ahorroIntereses / numMeses : 0;
           return `<div class="stat-card">
             <div class="stat-label">Saldo estimado fin</div>
             <div class="stat-value ${saldoFinal>=0?'':'neg'}">${FinanceMath.eur(saldoFinal)}</div>
             <div style="font-family:var(--font-mono);font-size:12px;margin-top:4px;color:${deltaColor}">${deltaSign}${FinanceMath.eur(deltaFin)} vs hoy</div>
-            ${(deudaInicio > 0.01 || deudaFin > 0.01) ? `
-            <div style="margin-top:6px;border-top:1px solid var(--border);padding-top:5px;display:flex;flex-direction:column;gap:3px">
-              ${deudaInicio > 0.01 ? `<div style="font-size:11px;color:var(--text3)">Deuda inicio: <span style="font-family:var(--font-mono);color:var(--text)">${FinanceMath.eur(deudaInicio)}</span></div>` : ''}
-              ${deudaFin > 0.01 ? `<div style="font-size:11px;color:var(--text3)">Deuda fin: <span style="font-family:var(--font-mono);color:var(--text)">${FinanceMath.eur(deudaFin)}</span></div>` : ''}
-            </div>` : ''}
-            ${ahorroIntereses > 0.01 ? `
-            <div style="margin-top:5px;display:flex;flex-direction:column;gap:2px">
-              <div style="font-size:11px;color:var(--text3)">Ahorro de intereses: <span style="font-family:var(--font-mono);color:var(--accent)">+${FinanceMath.eur(ahorroIntereses)}</span></div>
-              <div style="font-size:11px;color:var(--text3)">Ahorro intereses/mes: <span style="font-family:var(--font-mono);color:var(--accent)">+${FinanceMath.eur(ahorroInteresesMes)}</span></div>
-            </div>` : ''}
             <div class="stat-sub">${config.dashboardEnd}</div>
           </div>`;
         })()}
@@ -368,6 +376,63 @@ const DashboardModule = (() => {
           }).join('')}
         </div>`;
       })()}
+
+      <!-- ── Sección Préstamos ── -->
+      ${loansActivos.length > 0 ? (()=>{
+        const deudaDelta    = deudaFin - deudaInicio;
+        const deudaDeltaPct = deudaInicio > 0.01 ? deudaDelta / deudaInicio * 100 : 0;
+        const deudaColor    = deudaDelta <= 0 ? 'var(--accent)' : 'var(--red)';
+        const cfColor = (v) => v > 0 ? 'var(--accent)' : v < 0 ? 'var(--red)' : 'var(--text2)';
+        return `<div class="card mb-14">
+          <div class="card-title mb-12">Préstamos</div>
+          <div class="grid-3" style="gap:10px;margin-bottom:${(loansFinEnPeriodo.length>0||ahorroIntereses>0.01)?'14px':'0'}">
+            <!-- Deuda -->
+            <div style="background:var(--bg3);border-radius:var(--radius);padding:12px;border:1px solid var(--border)">
+              <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Deuda viva</div>
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3)">Inicio</span><span style="font-family:var(--font-mono)">${FinanceMath.eur(deudaInicio)}</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3)">Fin</span><span style="font-family:var(--font-mono)">${FinanceMath.eur(deudaFin)}</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:12px;border-top:1px solid var(--border);padding-top:4px;margin-top:2px">
+                  <span style="color:var(--text3)">Reducción</span>
+                  <span style="font-family:var(--font-mono);font-weight:700;color:${deudaColor}">${deudaDelta<=0?'':'+'}${FinanceMath.eur(deudaDelta)} <span style="font-size:10px">(${deudaDeltaPct.toFixed(1)}%)</span></span>
+                </div>
+              </div>
+            </div>
+            <!-- Cashflow -->
+            <div style="background:var(--bg3);border-radius:var(--radius);padding:12px;border:1px solid var(--border)">
+              <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Cashflow mensual</div>
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3)">Inicio periodo</span><span style="font-family:var(--font-mono);color:${cfColor(cfInicio)}">${cfInicio>=0?'+':''}${FinanceMath.eur(cfInicio)}</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3)">Media</span><span style="font-family:var(--font-mono);color:${cfColor(cfMedio)}">${cfMedio>=0?'+':''}${FinanceMath.eur(cfMedio)}</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:12px;border-top:1px solid var(--border);padding-top:4px;margin-top:2px"><span style="color:var(--text3)">Fin periodo</span><span style="font-family:var(--font-mono);font-weight:700;color:${cfColor(cfFin)}">${cfFin>=0?'+':''}${FinanceMath.eur(cfFin)}</span></div>
+              </div>
+            </div>
+            <!-- Ahorro intereses -->
+            <div style="background:var(--bg3);border-radius:var(--radius);padding:12px;border:1px solid var(--border)">
+              <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Ahorro de intereses</div>
+              ${ahorroIntereses > 0.01 ? `
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3)">Total periodo</span><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">+${FinanceMath.eur(ahorroIntereses)}</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3)">Mensual medio</span><span style="font-family:var(--font-mono);color:var(--accent)">+${FinanceMath.eur(ahorroInteresesMes)}</span></div>
+              </div>` : `<div style="font-size:12px;color:var(--text3)">Sin amortizaciones extraordinarias en el periodo.</div>`}
+            </div>
+          </div>
+          ${loansFinEnPeriodo.length > 0 ? `
+          <div style="border-top:1px solid var(--border);padding-top:12px">
+            <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Préstamos que finalizan en el periodo</div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              ${loansFinEnPeriodo.map(({loan,fechaFin})=>`
+              <div style="display:flex;justify-content:space-between;align-items:center;background:var(--accent-dim);border:1px solid rgba(0,229,160,0.2);border-radius:var(--radius);padding:8px 12px;flex-wrap:wrap;gap:6px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-size:16px">🏁</span>
+                  <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--accent)">${loan.nombre}</span>
+                </div>
+                <span style="font-size:11px;color:var(--text2)">Última cuota: <strong>${fechaFin}</strong></span>
+              </div>`).join('')}
+            </div>
+          </div>` : ''}
+        </div>`;
+      })() : ''}
 
       <!-- KPI financieros: donut distribución + rendimiento -->
       <div class="grid-2 mb-14" style="gap:14px">
@@ -761,6 +826,34 @@ const DashboardModule = (() => {
 
     datasets.push(...criticoDatasets);
 
+    // Hitos de préstamos: línea vertical en la fecha de última cuota/amortización total
+    if (saldoXY.length > 0) {
+      const yValsAll = saldoXY.map(p=>p.y);
+      const yMinAll  = Math.min(...yValsAll), yMaxAll = Math.max(...yValsAll);
+      const spanAll  = Math.max(Math.abs(yMaxAll - yMinAll) * 0.08, 1);
+      const loansActivosChart = loans.filter(l => l.activo && !l.simulacion);
+      for (const l of loansActivosChart) {
+        const { fechaFin } = FinanceMath.resumenPrestamo(l);
+        if (!fechaFin || fechaFin < config.dashboardStart || fechaFin > config.dashboardEnd) continue;
+        const ts = new Date(fechaFin+'T00:00:00').getTime();
+        datasets.push({
+          label: `🏁 ${l.nombre}`,
+          data: [{ x: ts, y: yMinAll - spanAll }, { x: ts, y: yMaxAll + spanAll }],
+          borderColor: 'rgba(0,229,160,0.85)',
+          backgroundColor: ['transparent', 'rgba(0,229,160,0.9)'],
+          borderWidth: 1.5,
+          borderDash: [4, 3],
+          pointRadius: [0, 7],
+          pointStyle: ['false', 'triangle'],
+          pointRotation: [0, 0],
+          showLine: true,
+          tension: 0,
+          fill: false,
+          order: 2,
+        });
+      }
+    }
+
     charts.saldo = new Chart(ctx, {
       type: 'line',
       data: { datasets },
@@ -769,7 +862,7 @@ const DashboardModule = (() => {
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: {
-            display: (histDataset != null) || (colchonDataset != null) || mcDatasets.length>0 || criticoDatasets.length>0,
+            display: (histDataset != null) || (colchonDataset != null) || mcDatasets.length>0 || criticoDatasets.length>0 || datasets.some(d=>d.label?.startsWith('🏁')),
             labels: { color:'#8b92a8', font:{size:11}, boxWidth:12, filter: i => !['MC p25','MC p10','MC p75','MC p90'].includes(i.text) }
           },
           tooltip: {
