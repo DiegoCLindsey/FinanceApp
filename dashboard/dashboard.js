@@ -140,20 +140,24 @@ const DashboardModule = (() => {
       if (!fechaFin || fechaFin < config.dashboardStart || fechaFin > config.dashboardEnd) return null;
       return { loan: l, fechaFin };
     }).filter(Boolean);
-    // Cashflow mensual (capacidad de ahorro = ingresos − gastos − cuotas, sin amortizaciones ni transferencias)
+    // Cashflow: ingreso medio − gastos ordinarios medio − cuotas del momento
+    // Las cuotas se calculan por punto en el tiempo (inicio/media/fin) para reflejar
+    // cuándo se acaban préstamos. Los gastos ordinarios y los ingresos se promedian.
     const mesesCf = [...new Set(extracto.filter(e=>e.fecha>=config.dashboardStart&&e.fecha<=config.dashboardEnd).map(e=>e.fecha.slice(0,7)))].sort();
-    const cashflowPorMes = mesesCf.map(mes => {
-      const ini  = mes+'-01';
-      const fin  = new Date(parseInt(mes.slice(0,4)), parseInt(mes.slice(5,7)), 0).toISOString().slice(0,10);
-      const evs  = extracto.filter(e=>e.fecha>=ini&&e.fecha<=fin&&e.sourceType!=='transfer-out'&&e.sourceType!=='transfer-in');
-      const ing    = evs.filter(e=>e.tipo==='ingreso').reduce((s,e)=>s+Math.abs(e.cuantia),0);
-      const gastos = evs.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').reduce((s,e)=>s+Math.abs(e.cuantia),0);
-      const cuotas = evs.filter(e=>e.tipo==='gasto'&&e.sourceType==='loan').reduce((s,e)=>s+Math.abs(e.cuantia),0);
-      return { mes, cf: ing - gastos - cuotas };
-    });
-    const cfInicio = cashflowPorMes[0]?.cf ?? 0;
-    const cfFin    = cashflowPorMes[cashflowPorMes.length-1]?.cf ?? 0;
-    const cfMedio  = cashflowPorMes.length > 0 ? cashflowPorMes.reduce((s,m)=>s+m.cf,0)/cashflowPorMes.length : 0;
+    const _sumMes = (mes, fn) => {
+      const ini = mes+'-01';
+      const fin = new Date(parseInt(mes.slice(0,4)), parseInt(mes.slice(5,7)), 0).toISOString().slice(0,10);
+      return extracto.filter(e=>e.fecha>=ini&&e.fecha<=fin).filter(fn).reduce((s,e)=>s+Math.abs(e.cuantia),0);
+    };
+    const gastosExpMedio = mesesCf.length > 0 ? mesesCf.reduce((s,m)=>s+_sumMes(m,e=>e.tipo==='gasto'&&e.sourceType==='expense'),0)/mesesCf.length : 0;
+    const cuotasInicio   = mesesCf.length > 0 ? _sumMes(mesesCf[0], e=>e.tipo==='gasto'&&e.sourceType==='loan') : 0;
+    const cuotasFin      = mesesCf.length > 0 ? _sumMes(mesesCf[mesesCf.length-1], e=>e.tipo==='gasto'&&e.sourceType==='loan') : 0;
+    const cuotasMedio    = mesesCf.length > 0 ? mesesCf.reduce((s,m)=>s+_sumMes(m,e=>e.tipo==='gasto'&&e.sourceType==='loan'),0)/mesesCf.length : 0;
+    // ingresosMediaMes ya calculado arriba — es la referencia fija de ingresos
+    const cfInicio = ingresosMediaMes - gastosExpMedio - cuotasInicio;
+    const cfMedio  = ingresosMediaMes - gastosExpMedio - cuotasMedio;
+    const cfFin    = ingresosMediaMes - gastosExpMedio - cuotasFin;
+
 
     // ── Intereses de cuentas remuneradas ─────────────────────────────────────────
     // Mes actual (extracto propio del mes)
@@ -402,10 +406,20 @@ const DashboardModule = (() => {
             <!-- Cashflow -->
             <div style="background:var(--bg3);border-radius:var(--radius);padding:12px;border:1px solid var(--border)">
               <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Cashflow mensual</div>
-              <div style="display:flex;flex-direction:column;gap:4px">
-                <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3)">Inicio periodo</span><span style="font-family:var(--font-mono);color:${cfColor(cfInicio)}">${cfInicio>=0?'+':''}${FinanceMath.eur(cfInicio)}</span></div>
-                <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3)">Media</span><span style="font-family:var(--font-mono);color:${cfColor(cfMedio)}">${cfMedio>=0?'+':''}${FinanceMath.eur(cfMedio)}</span></div>
-                <div style="display:flex;justify-content:space-between;font-size:12px;border-top:1px solid var(--border);padding-top:4px;margin-top:2px"><span style="color:var(--text3)">Fin periodo</span><span style="font-family:var(--font-mono);font-weight:700;color:${cfColor(cfFin)}">${cfFin>=0?'+':''}${FinanceMath.eur(cfFin)}</span></div>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <div style="display:flex;justify-content:space-between;font-size:11px;padding-bottom:5px;border-bottom:1px solid var(--border)">
+                  <span style="color:var(--text3)">Ingresos (ref. media)</span>
+                  <span style="font-family:var(--font-mono);color:var(--text2)">${FinanceMath.eur(ingresosMediaMes)}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">− Gastos ordinarios (med.)</span><span style="font-family:var(--font-mono);color:var(--text2)">−${FinanceMath.eur(gastosExpMedio)}</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">− Cuotas inicio</span><span style="font-family:var(--font-mono);color:var(--text2)">−${FinanceMath.eur(cuotasInicio)}</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">− Cuotas media</span><span style="font-family:var(--font-mono);color:var(--text2)">−${FinanceMath.eur(cuotasMedio)}</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">− Cuotas fin</span><span style="font-family:var(--font-mono);color:var(--text2)">−${FinanceMath.eur(cuotasFin)}</span></div>
+                <div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;display:flex;flex-direction:column;gap:3px">
+                  <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3)">CF inicio</span><span style="font-family:var(--font-mono);color:${cfColor(cfInicio)}">${cfInicio>=0?'+':''}${FinanceMath.eur(cfInicio)}</span></div>
+                  <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3)">CF media</span><span style="font-family:var(--font-mono);color:${cfColor(cfMedio)}">${cfMedio>=0?'+':''}${FinanceMath.eur(cfMedio)}</span></div>
+                  <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text3);font-weight:600">CF fin</span><span style="font-family:var(--font-mono);font-weight:700;color:${cfColor(cfFin)}">${cfFin>=0?'+':''}${FinanceMath.eur(cfFin)}</span></div>
+                </div>
               </div>
             </div>
             <!-- Ahorro intereses -->
