@@ -56,10 +56,8 @@ const DashboardModule = (() => {
       const inflated = FinanceMath.aplicarInflacion(allExpEvents, expenses, inflGlobal);
       const inflMap = new Map(inflated.map(e=>[e.sourceId+'_'+e.fecha, e.cuantia]));
       extracto = extracto.map(e => e.sourceType==='expense' ? {...e, cuantia: inflMap.get(e.sourceId+'_'+e.fecha)||e.cuantia} : e);
-      // Recompute saldoAcum
-      const cuentasActivas2 = accounts.filter(a=>a.activo&&(filtroAccounts.length===0||filtroAccounts.includes(a._id)));
-      let s2 = cuentasActivas2.reduce((s,a)=>s+FinanceMath.saldoEnFecha(a, config.dashboardStart),0);
-      extracto = extracto.map(ev=>{ const d=ev.tipo==='ingreso'?Math.abs(ev.cuantia):-Math.abs(ev.cuantia); s2+=d; return {...ev,delta:d,saldoAcum:s2}; });
+      // Recompute saldoAcum bidireccional desde fechaReferencia
+      extracto = FinanceMath.recomputarSaldoAcum(extracto, accounts, config, filtroAccounts.length>0?filtroAccounts:null);
     }
     const cuentasActivas=accounts.filter(a=>a.activo&&(filtroAccounts.length===0||filtroAccounts.includes(a._id)));
     const saldoBase=cuentasActivas.reduce((s,a)=>s+FinanceMath.saldoRealCuenta(a),0);
@@ -202,10 +200,15 @@ const DashboardModule = (() => {
           <button class="btn-secondary btn-sm" style="padding:4px 10px;font-size:18px;line-height:1" onclick="DashboardModule.toggleConfig()" title="${config.configCollapsed?'Expandir':'Colapsar'}">${config.configCollapsed?'▸':'▾'}</button>
         </div>
         ${config.configCollapsed ? '' : `
-        <div class="grid-2" style="gap:10px">
+        <div class="grid-3" style="gap:10px">
           <div class="form-group">
             <label class="form-label">Periodo inicio</label>
             <input class="form-input" type="date" id="cfg-start" value="${config.dashboardStart}"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fecha referencia</label>
+            <input class="form-input" type="date" id="cfg-ref" value="${config.fechaReferencia||new Date().toISOString().slice(0,10)}"/>
+            <div class="text-sm mt-4" style="color:var(--text3)">Saldo conocido en esta fecha</div>
           </div>
           <div class="form-group">
             <label class="form-label">Periodo fin</label>
@@ -265,7 +268,7 @@ const DashboardModule = (() => {
             <button class="btn-primary btn-sm" onclick="DashboardModule.applyConfig()">Actualizar</button>
           </div>
         </div>
-        ${cuentasActivas.length>0?`<div class="mt-8 text-sm" style="color:var(--text3)">Saldo base: ${cuentasActivas.map(a=>`${a.nombre}: ${FinanceMath.eur(FinanceMath.saldoRealCuenta(a))} (${a.fechaInicialSaldo||'—'})`).join(' · ')}</div>`:''}
+        ${cuentasActivas.length>0?`<div class="mt-8 text-sm" style="color:var(--text3)">Ref. ${config.fechaReferencia||'—'}: ${cuentasActivas.map(a=>`${a.nombre} ${FinanceMath.eur(FinanceMath.saldoEnFecha(a, config.fechaReferencia||config.dashboardStart))}`).join(' · ')} · Total: ${FinanceMath.eur(cuentasActivas.reduce((s,a)=>s+FinanceMath.saldoEnFecha(a,config.fechaReferencia||config.dashboardStart),0))}</div>`:''}
         `}
       </div>
 
@@ -1117,6 +1120,7 @@ const DashboardModule = (() => {
       ...existing,
       dashboardStart:  document.getElementById('cfg-start').value || existing.dashboardStart,
       dashboardEnd:    document.getElementById('cfg-end').value || existing.dashboardEnd,
+      fechaReferencia: document.getElementById('cfg-ref')?.value || existing.fechaReferencia || new Date().toISOString().slice(0,10),
       colchonMeses:    parseInt(document.getElementById('cfg-colchon')?.value)||6,
       colchonFijo:     parseFloat(document.getElementById('cfg-colchon-fijo')?.value)||0,
       showColchon:     document.getElementById('cfg-show-colchon')?.checked??true,

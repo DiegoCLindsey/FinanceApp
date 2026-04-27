@@ -422,20 +422,58 @@ const FinanceMath = (() => {
     return entry ? entry.saldo : (acc.saldoInicial || 0);
   }
 
+  // Núcleo bidireccional: retrocede desde fechaReferencia hacia dashboardStart invirtiendo
+  // los movimientos, y proyecta hacia adelante desde fechaReferencia con normalidad.
+  // fechaReferencia es el ancla donde el saldo real es conocido (saldoEnFecha).
+  function _aplicarSaldoRef(sortedEvents, cuentasActivas, config) {
+    const raw = config.fechaReferencia || config.dashboardStart;
+    const fechaRef = raw < config.dashboardStart ? config.dashboardStart
+      : raw > config.dashboardEnd   ? config.dashboardEnd : raw;
+    const saldoRef = cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, fechaRef), 0);
+
+    const past   = sortedEvents.filter(e => e.fecha <  fechaRef);
+    const future = sortedEvents.filter(e => e.fecha >= fechaRef);
+
+    // Hacia atrás: empezamos en saldoRef y deshacemos cada evento
+    // saldoAcum[i] = saldo DESPUÉS del evento i (orden cronológico)
+    const pastResult = [];
+    let saldo = saldoRef;
+    for (const ev of [...past].reverse()) {
+      const d = ev.tipo === 'ingreso' ? Math.abs(ev.cuantia) : -Math.abs(ev.cuantia);
+      pastResult.unshift({ ...ev, delta: d, saldoAcum: saldo });
+      saldo -= d;
+    }
+
+    // Hacia adelante: desde saldoRef aplicamos normalmente
+    const futureResult = [];
+    saldo = saldoRef;
+    for (const ev of future) {
+      const d = ev.tipo === 'ingreso' ? Math.abs(ev.cuantia) : -Math.abs(ev.cuantia);
+      saldo += d;
+      futureResult.push({ ...ev, delta: d, saldoAcum: saldo });
+    }
+
+    return [...pastResult, ...futureResult];
+  }
+
+  // Recomputa saldoAcum sobre un array de eventos ya existente (p.ej. tras aplicar inflación).
+  function recomputarSaldoAcum(events, accounts, config, filtroAccounts=null) {
+    const cuentasActivas = accounts.filter(a => a.activo && (!filtroAccounts || filtroAccounts.length===0 || filtroAccounts.includes(a._id)));
+    return _aplicarSaldoRef([...events].sort((a,b) => a.fecha.localeCompare(b.fecha)), cuentasActivas, config);
+  }
+
   function generarExtracto(loans, expenses, accounts, config, filtroAccounts=null) {
     const gastos = expenses.filter(e=>e.tipo!=='transferencia');
     const transferencias = expenses.filter(e=>e.tipo==='transferencia');
-    let events = [];
-    events = events.concat(proyectarGastos(gastos, config.dashboardStart, config.dashboardEnd, filtroAccounts));
-    events = events.concat(proyectarPrestamos(loans, config.dashboardStart, config.dashboardEnd, filtroAccounts));
-    events = events.concat(proyectarTransferencias(transferencias, config.dashboardStart, config.dashboardEnd, filtroAccounts));
-    const intereses = proyectarInteresesCuentas(accounts, config.dashboardStart, config.dashboardEnd, filtroAccounts, events);
-    events = events.concat(intereses);
-    events.sort((a,b)=>a.fecha.localeCompare(b.fecha));
+    let allEvents = [];
+    allEvents = allEvents.concat(proyectarGastos(gastos, config.dashboardStart, config.dashboardEnd, filtroAccounts));
+    allEvents = allEvents.concat(proyectarPrestamos(loans, config.dashboardStart, config.dashboardEnd, filtroAccounts));
+    allEvents = allEvents.concat(proyectarTransferencias(transferencias, config.dashboardStart, config.dashboardEnd, filtroAccounts));
+    const intereses = proyectarInteresesCuentas(accounts, config.dashboardStart, config.dashboardEnd, filtroAccounts, allEvents);
+    allEvents = allEvents.concat(intereses);
+    allEvents.sort((a,b) => a.fecha.localeCompare(b.fecha));
     const cuentasActivas = accounts.filter(a => a.activo && (!filtroAccounts || filtroAccounts.length===0 || filtroAccounts.includes(a._id)));
-    // Arranque desde el saldo conocido en dashboardStart, no desde el más reciente
-    let saldo = cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, config.dashboardStart), 0);
-    return events.map(ev => { const d = ev.tipo==='ingreso'?Math.abs(ev.cuantia):-Math.abs(ev.cuantia); saldo+=d; return {...ev, delta:d, saldoAcum:saldo}; });
+    return _aplicarSaldoRef(allEvents, cuentasActivas, config);
   }
 
   function saldoHoy(extracto, accounts, filtroAccounts=null) {
@@ -574,63 +612,53 @@ const FinanceMath = (() => {
     const varExpenses = expenses.filter(e => e.varianza > 0);
     if (varExpenses.length === 0) return null;
 
-    // Extracto base para establecer el grid de fechas
-    const baseExtracto = generarExtracto(loans, expenses, accounts, config);
-    if (baseExtracto.length === 0) return null;
-    // Fechas únicas ordenadas (puede haber varias eventos por fecha)
-    const fechas = [...new Set(baseExtracto.map(e=>e.fecha))].sort();
+    // MC sólo cubre el futuro (>= fechaReferencia) — el pasado es determinista
+    const raw = config.fechaReferencia || config.dashboardStart;
+    const fechaRef = raw < config.dashboardStart ? config.dashboardStart
+      : raw > config.dashboardEnd   ? config.dashboardEnd : raw;
+    const cuentasActivas = accounts.filter(a => a.activo);
+    const saldoRef = cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, fechaRef), 0);
+
+    const transferencias = expenses.filter(e => e.tipo === 'transferencia');
+    const loanEvents      = proyectarPrestamos(loans, fechaRef, config.dashboardEnd);
+    const transferEvents  = proyectarTransferencias(transferencias, fechaRef, config.dashboardEnd);
+    const varMap = new Map(varExpenses.map(e => [e._id, { varianza: e.varianza, tipo: e.tipo }]));
+    const gastos = expenses.filter(e => e.tipo !== 'transferencia');
+    const baseGastoEvents = proyectarGastos(gastos, fechaRef, config.dashboardEnd);
+
+    const allBaseEvents = [...baseGastoEvents, ...loanEvents, ...transferEvents]
+      .sort((a,b) => a.fecha.localeCompare(b.fecha));
+    if (allBaseEvents.length === 0) return null;
+
+    const fechas = [...new Set(allBaseEvents.map(e=>e.fecha))].sort();
     const n = fechas.length;
     const samples = Array.from({length:n}, ()=>[]);
 
-    // Box-Muller: muestras normales independientes
     const rand_normal = () => {
       const u1 = Math.random(), u2 = Math.random();
       return Math.sqrt(-2*Math.log(u1)) * Math.cos(2*Math.PI*u2);
     };
 
-    // ── Pre-computar eventos deterministas (préstamos + transferencias) ──────
-    // Estos no tienen varianza: calcularlos una vez en lugar de 300 veces.
-    const transferencias = expenses.filter(e => e.tipo === 'transferencia');
-    const loanEvents     = proyectarPrestamos(loans, config.dashboardStart, config.dashboardEnd);
-    const transferEvents = proyectarTransferencias(transferencias, config.dashboardStart, config.dashboardEnd);
-
-    // Mapa de varianza por sourceId para acceso O(1) por evento
-    const varMap = new Map(varExpenses.map(e => [e._id, { varianza: e.varianza, tipo: e.tipo }]));
-
-    // Eventos de gasto base (misma estructura para todas las iteraciones)
-    const gastos = expenses.filter(e => e.tipo !== 'transferencia');
-    const baseGastoEvents = proyectarGastos(gastos, config.dashboardStart, config.dashboardEnd);
-
-    // Saldo de arranque: consistente con generarExtracto
-    const cuentasActivas = accounts.filter(a => a.activo);
-    const saldoArranque = cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, config.dashboardStart), 0);
-
     for (let iter=0; iter<iteraciones; iter++) {
-      // ── Perturbar cada OCURRENCIA de forma independiente (no por tipo de gasto) ──
-      // Esto produce dispersión que crece con el tiempo, como en la realidad.
       const pertGastoEvents = baseGastoEvents.map(ev => {
         const v = varMap.get(ev.sourceId);
         if (!v) return ev;
         const sigma = Math.abs(ev.cuantia) * (v.varianza / 100);
         const delta = rand_normal() * sigma;
-        // gasto: delta positivo = más gasto = peor; ingreso: delta positivo = más ingreso = mejor
         return { ...ev, cuantia: v.tipo === 'gasto' ? ev.cuantia + delta : ev.cuantia - delta };
       });
 
-      // Combinar todos los eventos y acumular saldo
-      // Los intereses se omiten en MC (efecto de segundo orden, <<1% del total)
       const allEvents = [...pertGastoEvents, ...loanEvents, ...transferEvents]
         .sort((a,b) => a.fecha.localeCompare(b.fecha));
 
-      let saldo = saldoArranque;
+      let saldo = saldoRef;
       const saldoPorFecha = new Map();
       for (const ev of allEvents) {
         saldo += ev.tipo === 'ingreso' ? Math.abs(ev.cuantia) : -Math.abs(ev.cuantia);
         saldoPorFecha.set(ev.fecha, saldo);
       }
 
-      // Mapear al grid con LOCF para fechas sin eventos propios
-      let lastSaldo = saldoArranque;
+      let lastSaldo = saldoRef;
       for (let i=0; i<n; i++) {
         const s = saldoPorFecha.get(fechas[i]);
         if (s !== undefined) lastSaldo = s;
@@ -638,7 +666,6 @@ const FinanceMath = (() => {
       }
     }
 
-    // Percentiles con interpolación lineal (bandas suaves, sin escalones)
     const pct_fn = (arr, p) => {
       const sorted = [...arr].sort((a,b)=>a-b);
       const idx = (p/100) * (sorted.length - 1);
@@ -1113,6 +1140,6 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, calcFondosPension, calcImpuestoPension, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcFondosPension, calcImpuestoPension, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 

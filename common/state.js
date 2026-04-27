@@ -12,6 +12,7 @@ const State = (() => {
     config: {
       dashboardStart: new Date().toISOString().slice(0,10),
       dashboardEnd: new Date(Date.now() + 365*24*60*60*1000).toISOString().slice(0,10),
+      fechaReferencia: new Date().toISOString().slice(0,10),
       colchonMeses: 6, showColchon: true, showHistorico: true, histCuenta: '',
       showMC: false, mcIteraciones: 300,
       inflacionGlobal: 0,  // % anual por defecto para gastos indexados
