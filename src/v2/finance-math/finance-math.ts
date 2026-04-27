@@ -18,11 +18,7 @@ function monthlyPayment(capital: number, tinAnual: number, meses: number): numbe
  *   'dia:ultimo'     → Last day of month
  *   'nthweekday:N:W' → Nth weekday W (0=Sun…6=Sat), N=-1 means last
  */
-export function resolvePaymentDate(
-  year: number,
-  month0: number,
-  diaPago: string
-): string | null {
+export function resolvePaymentDate(year: number, month0: number, diaPago: string): string | null {
   if (!diaPago) return null;
 
   if (diaPago.startsWith('dia:')) {
@@ -113,8 +109,7 @@ export function calculateTAE(
     const f = vp - neto;
     const df =
       cuota *
-      ((meses * Math.pow(1 + r, -(meses + 1))) / r -
-        (1 - Math.pow(1 + r, -meses)) / (r * r));
+      ((meses * Math.pow(1 + r, -(meses + 1))) / r - (1 - Math.pow(1 + r, -meses)) / (r * r));
     const nr = r - f / df;
     if (Math.abs(nr - r) < 1e-10) {
       r = nr;
@@ -139,7 +134,7 @@ export function calculateLoanSchedule(loan: Loan): LoanScheduleRow[] {
   const { capital, tin, meses, fechaInicio, comisionAmort, amortizaciones, diaPago } = loan;
   const rows: LoanScheduleRow[] = [];
   let cap = capital;
-  let cur = new Date(fechaInicio + 'T00:00:00');
+  const cur = new Date(fechaInicio + 'T00:00:00');
   const r = tin / 100 / 12;
   let mr = meses;
   let cuota = monthlyPayment(cap, tin, mr);
@@ -161,7 +156,10 @@ export function calculateLoanSchedule(loan: Loan): LoanScheduleRow[] {
       cap = Math.max(0, cap - am.cantidad);
 
       if (am.tipo === 'plazo') {
-        mr = r === 0 ? Math.ceil(cap / cuota) : Math.ceil(-Math.log(1 - (cap * r) / cuota) / Math.log(1 + r));
+        mr =
+          r === 0
+            ? Math.ceil(cap / cuota)
+            : Math.ceil(-Math.log(1 - (cap * r) / cuota) / Math.log(1 + r));
       } else {
         mr = meses - mes + 1;
         cuota = monthlyPayment(cap, tin, mr);
@@ -267,10 +265,7 @@ export function calculateEarlyRepaymentSavings(loan: Loan): {
  * Calculates income tax due given an annual gross income and progressive
  * tax brackets. Each bracket is [minIncome, ratePercent].
  */
-export function calculateIRPF(
-  baseImponible: number,
-  tramos: [number, number][]
-): number {
+export function calculateIRPF(baseImponible: number, tramos: [number, number][]): number {
   if (!tramos.length || baseImponible <= 0) return 0;
 
   const sorted = [...tramos].sort((a, b) => a[0] - b[0]);

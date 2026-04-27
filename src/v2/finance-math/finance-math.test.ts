@@ -150,7 +150,9 @@ describe('calculateLoanSchedule', () => {
       capital: 10000,
       tin: 5,
       meses: 24,
-      amortizaciones: [earlyRepaymentFactory({ fecha: '2024-07-01', cantidad: 3000, tipo: 'plazo' })],
+      amortizaciones: [
+        earlyRepaymentFactory({ fecha: '2024-07-01', cantidad: 3000, tipo: 'plazo' }),
+      ],
     });
     const without = calculateLoanSchedule({ ...loan, amortizaciones: [] }).filter(
       (r) => !r.esAmortizacion
@@ -222,7 +224,9 @@ describe('calculateEarlyRepaymentSavings', () => {
       capital: 10000,
       tin: 5,
       meses: 24,
-      amortizaciones: [earlyRepaymentFactory({ fecha: '2024-06-01', cantidad: 3000, tipo: 'plazo' })],
+      amortizaciones: [
+        earlyRepaymentFactory({ fecha: '2024-06-01', cantidad: 3000, tipo: 'plazo' }),
+      ],
     });
     expect(calculateEarlyRepaymentSavings(loan).monthsSaved).toBeGreaterThan(0);
   });
