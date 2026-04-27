@@ -4,6 +4,32 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FinanceApp</title>
+  <style>
+    #v1-v2-banner {
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      padding: 7px 16px; background: #1a1d27; border-bottom: 2px solid #4d9fff;
+      font-family: 'DM Sans', sans-serif; font-size: 13px; color: #8b92b0;
+      position: sticky; top: 0; z-index: 9999;
+    }
+    #v1-v2-banner a { color: #4d9fff; text-decoration: none; font-weight: 600; }
+    #v1-v2-banner a:hover { text-decoration: underline; }
+    #v1-v2-banner button {
+      background: none; border: none; color: #8b92b0; cursor: pointer;
+      font-size: 18px; line-height: 1; padding: 2px 4px; margin-left: auto;
+    }
+  </style>
+  <script>
+    (function() {
+      if (localStorage.getItem('financeapp_v1_banner_dismissed')) return;
+      document.addEventListener('DOMContentLoaded', function() {
+        var b = document.createElement('div');
+        b.id = 'v1-v2-banner';
+        b.innerHTML = '<span>Hay una nueva versión disponible. <a href="v2/">🚀 Probar V2 (beta)</a></span>' +
+          '<button onclick="this.parentElement.remove();localStorage.setItem(\'financeapp_v1_banner_dismissed\',\'1\')" aria-label="Cerrar">×</button>';
+        document.body.insertBefore(b, document.body.firstChild);
+      });
+    })();
+  </script>
 
   <!-- ── Fonts ── -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+_site/
+.DS_Store
+*.local
+.env.local
+.env.*.local

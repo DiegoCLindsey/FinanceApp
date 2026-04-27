@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+_site/
+# V1 legacy files — formatted separately
+*.js
+!src/v2/**/*.js
