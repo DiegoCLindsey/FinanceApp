@@ -407,10 +407,18 @@ const FinanceMath = (() => {
     return hist.length > 0 ? hist[0].saldo : (acc.saldoInicial || 0);
   }
 
-  // Saldo en una fecha concreta: histórico más reciente ≤ fecha, si no saldoInicial.
+  // saldoInicial at fechaInicialSaldo is the authoritative anchor: entries before that
+  // date are superseded by it. All three LOCF callsites (here, chart, calcDesviacion)
+  // share this same logic so sources of truth stay unified.
   function saldoEnFecha(acc, fecha) {
-    const hist = [...(acc.historicoSaldos||[])].sort((a,b)=>b.fecha.localeCompare(a.fecha));
-    const entry = hist.find(h => h.fecha <= fecha);
+    const floor = acc.fechaInicialSaldo || '';
+    const entries = [];
+    if (floor) entries.push({ fecha: floor, saldo: acc.saldoInicial || 0 });
+    for (const h of (acc.historicoSaldos || [])) {
+      if (!floor || h.fecha >= floor) entries.push(h);
+    }
+    entries.sort((a,b) => b.fecha.localeCompare(a.fecha));
+    const entry = entries.find(h => h.fecha <= fecha);
     return entry ? entry.saldo : (acc.saldoInicial || 0);
   }
 
@@ -1060,12 +1068,15 @@ const FinanceMath = (() => {
   function calcDesviacion(extracto, accounts) {
     const today = new Date().toISOString().slice(0,10);
 
-    // Collect all unique dates across all accounts (past only), per-account deduplicated
+    // Collect all unique dates across all accounts (past only), per-account deduplicated.
+    // Same floor logic as saldoEnFecha: saldoInicial at fechaInicialSaldo is the anchor.
     const allDates = new Set();
     const dedupedByAcc = accounts.map(acc => {
+      const floor = acc.fechaInicialSaldo || '';
       const byD = {};
+      if (floor && floor <= today) byD[floor] = acc.saldoInicial || 0;
       for (const h of (acc.historicoSaldos||[])) {
-        if (h.fecha <= today) byD[h.fecha] = h.saldo;
+        if (h.fecha <= today && (!floor || h.fecha >= floor)) byD[h.fecha] = h.saldo;
       }
       Object.keys(byD).forEach(d => allDates.add(d));
       return byD;

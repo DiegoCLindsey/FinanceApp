@@ -708,11 +708,16 @@ const DashboardModule = (() => {
       const visibles = accounts.filter(a =>
         filtroAccounts.length === 0 || filtroAccounts.includes(a._id)
       );
-      // Recoger todas las fechas únicas; deduplicar por cuenta (último en inserción)
+      // Recoger todas las fechas únicas; deduplicar por cuenta.
+      // saldoInicial at fechaInicialSaldo is the anchor — pre-floor entries are excluded.
       const allDates = new Set();
       const dedupedHist = visibles.map(acc => {
+        const floor = acc.fechaInicialSaldo || '';
         const byD = {};
-        for (const h of (acc.historicoSaldos || [])) byD[h.fecha] = h.saldo; // último gana
+        if (floor) byD[floor] = acc.saldoInicial || 0;
+        for (const h of (acc.historicoSaldos || [])) {
+          if (!floor || h.fecha >= floor) byD[h.fecha] = h.saldo;
+        }
         for (const d of Object.keys(byD)) allDates.add(d);
         return byD;
       });
