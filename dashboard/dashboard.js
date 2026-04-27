@@ -58,7 +58,7 @@ const DashboardModule = (() => {
       extracto = extracto.map(e => e.sourceType==='expense' ? {...e, cuantia: inflMap.get(e.sourceId+'_'+e.fecha)||e.cuantia} : e);
       // Recompute saldoAcum
       const cuentasActivas2 = accounts.filter(a=>a.activo&&(filtroAccounts.length===0||filtroAccounts.includes(a._id)));
-      let s2 = cuentasActivas2.reduce((s,a)=>s+FinanceMath.saldoRealCuenta(a),0);
+      let s2 = cuentasActivas2.reduce((s,a)=>s+FinanceMath.saldoEnFecha(a, config.dashboardStart),0);
       extracto = extracto.map(ev=>{ const d=ev.tipo==='ingreso'?Math.abs(ev.cuantia):-Math.abs(ev.cuantia); s2+=d; return {...ev,delta:d,saldoAcum:s2}; });
     }
     const cuentasActivas=accounts.filter(a=>a.activo&&(filtroAccounts.length===0||filtroAccounts.includes(a._id)));
@@ -893,7 +893,7 @@ const DashboardModule = (() => {
           },
           y: {
             ticks: { color: '#555d77', callback: v => FinanceMath.eur(v) },
-            grid: { color: '#252a38' }
+            grid: { color: ctx => ctx.tick.value === 0 ? 'rgba(255,255,255,0.22)' : '#252a38' }
           }
         }
       }
