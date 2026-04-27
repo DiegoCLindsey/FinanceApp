@@ -407,19 +407,29 @@ const FinanceMath = (() => {
     return hist.length > 0 ? hist[0].saldo : (acc.saldoInicial || 0);
   }
 
-  // saldoInicial at fechaInicialSaldo is the authoritative anchor: entries before that
-  // date are superseded by it. All three LOCF callsites (here, chart, calcDesviacion)
-  // share this same logic so sources of truth stay unified.
+  // saldoInicial+fechaInicialSaldo is the authoritative anchor for its date and later.
+  // For dates BEFORE the anchor, the anchor doesn't apply — use raw historicoSaldos so
+  // that a recently-set saldoInicial (e.g. today's balance) is not wrongly projected
+  // back as the starting balance for older dashboardStart dates.
   function saldoEnFecha(acc, fecha) {
     const floor = acc.fechaInicialSaldo || '';
-    const entries = [];
-    if (floor) entries.push({ fecha: floor, saldo: acc.saldoInicial || 0 });
-    for (const h of (acc.historicoSaldos || [])) {
-      if (!floor || h.fecha >= floor) entries.push(h);
+
+    if (!floor || fecha >= floor) {
+      // On or after anchor: anchor supersedes any pre-floor entries
+      const entries = [];
+      if (floor) entries.push({ fecha: floor, saldo: acc.saldoInicial || 0 });
+      for (const h of (acc.historicoSaldos || [])) {
+        if (h.fecha >= floor) entries.push(h);
+      }
+      entries.sort((a,b) => b.fecha.localeCompare(a.fecha));
+      const entry = entries.find(h => h.fecha <= fecha);
+      return entry ? entry.saldo : (acc.saldoInicial || 0);
+    } else {
+      // Before anchor: use historicoSaldos as-is — saldoInicial belongs to a later date
+      const hist = [...(acc.historicoSaldos||[])].sort((a,b) => b.fecha.localeCompare(a.fecha));
+      const entry = hist.find(h => h.fecha <= fecha);
+      return entry ? entry.saldo : 0;
     }
-    entries.sort((a,b) => b.fecha.localeCompare(a.fecha));
-    const entry = entries.find(h => h.fecha <= fecha);
-    return entry ? entry.saldo : (acc.saldoInicial || 0);
   }
 
   // Núcleo bidireccional: retrocede desde fechaReferencia hacia dashboardStart invirtiendo

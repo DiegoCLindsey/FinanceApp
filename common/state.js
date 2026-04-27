@@ -52,7 +52,8 @@ const State = (() => {
       showMC:false, mcIteraciones:300, inflacionGlobal:0,
       tramos_irpf:[[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]],
       onboardingDone:false, showExecSummary:true, showCriticos:true,
-      colchonTipo:'meses', colchonFijo:0
+      colchonTipo:'meses', colchonFijo:0,
+      fechaReferencia: new Date().toISOString().slice(0,10)
     };
     for (const [k,v] of Object.entries(cfgDefs)) {
       if (state.config[k] === undefined) state.config[k] = v;
