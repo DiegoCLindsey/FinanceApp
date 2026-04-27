@@ -116,13 +116,21 @@ const FinanceMath = (() => {
     return rows;
   }
 
+  // Cache de tablas de amortización — clave basada en todos los inputs deterministas.
+  // Evita recalcular la misma tabla cientos de veces en MC y en optimizarAmortizaciones.
+  const _resumenCache = new Map();
   function resumenPrestamo(loan) {
-    const { capital, tin, meses, fechaInicio, comisionAmort, amortizaciones, comisionApertura } = loan;
-    const tabla = tablaAmortizacion(capital, tin, meses, fechaInicio, comisionAmort||0, amortizaciones||[], loan);
+    const amorts = loan.amortizaciones || [];
+    const key = `${loan.capital}|${loan.tin}|${loan.meses}|${loan.fechaInicio}|${loan.comisionAmort||0}|${loan.comisionApertura||0}|${loan.diaPago||''}|${amorts.map(a=>`${a.fecha}:${a.cantidad}:${a.tipo||''}`).join(';')}`;
+    if (_resumenCache.has(key)) return _resumenCache.get(key);
+    const { capital, tin, meses, fechaInicio, comisionAmort, comisionApertura } = loan;
+    const tabla = tablaAmortizacion(capital, tin, meses, fechaInicio, comisionAmort||0, amorts, loan);
     const totalIntereses = tabla.reduce((s,r)=>s+r.interes,0);
     const totalComAm = tabla.reduce((s,r)=>s+r.comisionAmort,0);
     const comAp = capital*((comisionApertura||0)/100);
-    return { cuota:cuotaMensual(capital,tin,meses), totalIntereses, tae:calcTAE(capital,tin,meses,comisionApertura||0), costoTotal:totalIntereses+totalComAm+comAp, comAp, totalComAm, fechaFin:(tabla.filter(r=>!r.esAmortizacion).slice(-1)[0]?.fecha||''), mesesReales:tabla.filter(r=>!r.esAmortizacion).length, tabla };
+    const result = { cuota:cuotaMensual(capital,tin,meses), totalIntereses, tae:calcTAE(capital,tin,meses,comisionApertura||0), costoTotal:totalIntereses+totalComAm+comAp, comAp, totalComAm, fechaFin:(tabla.filter(r=>!r.esAmortizacion).slice(-1)[0]?.fecha||''), mesesReales:tabla.filter(r=>!r.esAmortizacion).length, tabla };
+    _resumenCache.set(key, result);
+    return result;
   }
 
   function proyectarGastos(expenses, dateStart, dateEnd, filtroAccounts=null) {
@@ -259,48 +267,45 @@ const FinanceMath = (() => {
       if (!acc.activo || !acc.interes || acc.interes <= 0) continue;
       if (filtroAccounts && filtroAccounts.length>0 && !filtroAccounts.includes(acc._id)) continue;
       const dS = new Date(dateStart+'T00:00:00'), dE = new Date(dateEnd+'T00:00:00');
-      const periodoMs = { diario:86400000, semanal:7*86400000, mensual:30.44*86400000 }[acc.periodoCobro||'mensual'];
-      const pa = periodoMs / (365.25*86400000);
+      const periodoCobro = acc.periodoCobro || 'mensual';
+      const isMonthly = periodoCobro === 'mensual';
+      // Para mensual: aritmética de calendario (evita drift de 30.44 días)
+      // Para diario/semanal: ms fijos siguen siendo correctos
+      const periodoMsFixed = isMonthly ? null : { diario:86400000, semanal:7*86400000 }[periodoCobro] || 86400000;
+      const paFijo = isMonthly ? 1/12 : periodoMsFixed / (365.25*86400000);
 
-      // Saldo de arranque = histórico en o antes de dateStart
+      // Arranque desde el saldo conocido en dateStart, alineado con generarExtracto
       let saldoCuenta = saldoEnFecha(acc, dateStart);
 
-      // Movimientos que afectan a esta cuenta, ordenados cronológicamente.
-      // El delta se calcula aquí a partir de tipo+cuantia porque los eventos aún
-      // no tienen el campo .delta (ese lo añade generarExtracto después).
-      // Se incluyen: gastos/ingresos de esta cuenta, transferencias de/hacia esta cuenta.
       const movsCuenta = extractoSinIntereses
         .filter(e => e.cuenta === acc._id)
-        .map(e => ({
-          fecha: e.fecha,
-          delta: e.tipo === 'ingreso' ? Math.abs(e.cuantia) : -Math.abs(e.cuantia),
-        }))
+        .map(e => ({ fecha: e.fecha, delta: e.tipo==='ingreso' ? Math.abs(e.cuantia) : -Math.abs(e.cuantia) }))
         .sort((a, b) => a.fecha.localeCompare(b.fecha));
 
       let movIdx = 0;
       let d = new Date(dS);
 
       while (d <= dE) {
-        const periodoFin = new Date(Math.min(d.getTime() + periodoMs, dE.getTime() + 1));
+        // Siguiente inicio de periodo según aritmética correcta
+        const dNext = isMonthly
+          ? new Date(d.getFullYear(), d.getMonth()+1, d.getDate())
+          : new Date(d.getTime() + periodoMsFixed);
+        const periodoFin = new Date(Math.min(dNext.getTime(), dE.getTime() + 1));
         const periodoFinStr = periodoFin.toISOString().slice(0, 10);
 
-        // Aplicar movimientos que caen en este periodo para llegar al saldo al final del periodo
         let deltaTotal = 0;
         while (movIdx < movsCuenta.length && movsCuenta[movIdx].fecha < periodoFinStr) {
           deltaTotal += movsCuenta[movIdx].delta;
           movIdx++;
         }
 
-        // Saldo medio del periodo = media entre saldo inicio y saldo fin
-        // Saldo inicio = saldoCuenta (antes de aplicar deltas de este periodo)
-        // Saldo fin    = saldoCuenta + deltaTotal
         const saldoInicio = saldoCuenta;
         const saldoFin    = saldoCuenta + deltaTotal;
         const saldoMedio  = Math.max(0, (saldoInicio + saldoFin) / 2);
-
-        // Actualizar saldo para el siguiente periodo
         saldoCuenta = saldoFin;
 
+        // pa proporcional al periodo real (útil para el último periodo truncado)
+        const pa = isMonthly ? paFijo : (periodoFin.getTime() - d.getTime()) / (365.25*86400000);
         const ip = saldoMedio * (Math.pow(1 + acc.interes / 100, pa) - 1);
         if (ip > 0.001) {
           events.push({
@@ -315,7 +320,7 @@ const FinanceMath = (() => {
           });
         }
 
-        d = new Date(d.getTime() + periodoMs);
+        d = dNext;
       }
     }
     return events;
@@ -402,8 +407,7 @@ const FinanceMath = (() => {
     return hist.length > 0 ? hist[0].saldo : (acc.saldoInicial || 0);
   }
 
-  // Saldo en una fecha concreta: histórico más reciente <= fecha, si no saldoInicial
-  // Usado como punto de arranque de la proyección para alinearla con los datos reales.
+  // Saldo en una fecha concreta: histórico más reciente ≤ fecha, si no saldoInicial.
   function saldoEnFecha(acc, fecha) {
     const hist = [...(acc.historicoSaldos||[])].sort((a,b)=>b.fecha.localeCompare(a.fecha));
     const entry = hist.find(h => h.fecha <= fecha);
@@ -417,12 +421,11 @@ const FinanceMath = (() => {
     events = events.concat(proyectarGastos(gastos, config.dashboardStart, config.dashboardEnd, filtroAccounts));
     events = events.concat(proyectarPrestamos(loans, config.dashboardStart, config.dashboardEnd, filtroAccounts));
     events = events.concat(proyectarTransferencias(transferencias, config.dashboardStart, config.dashboardEnd, filtroAccounts));
-    // Pass the non-interest events so interest calc can use dynamic balances
     const intereses = proyectarInteresesCuentas(accounts, config.dashboardStart, config.dashboardEnd, filtroAccounts, events);
     events = events.concat(intereses);
     events.sort((a,b)=>a.fecha.localeCompare(b.fecha));
     const cuentasActivas = accounts.filter(a => a.activo && (!filtroAccounts || filtroAccounts.length===0 || filtroAccounts.includes(a._id)));
-    // Arranque: saldo histórico en o antes de dashboardStart (no el más reciente en general)
+    // Arranque desde el saldo conocido en dashboardStart, no desde el más reciente
     let saldo = cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, config.dashboardStart), 0);
     return events.map(ev => { const d = ev.tipo==='ingreso'?Math.abs(ev.cuantia):-Math.abs(ev.cuantia); saldo+=d; return {...ev, delta:d, saldoAcum:saldo}; });
   }
@@ -560,46 +563,80 @@ const FinanceMath = (() => {
 
   // ── Monte Carlo ──────────────────────────────────────────────────────────────
   function monteCarlo(loans, expenses, accounts, config, iteraciones=300) {
-    // Only for expenses with varianza > 0
     const varExpenses = expenses.filter(e => e.varianza > 0);
     if (varExpenses.length === 0) return null;
 
-    // Build date index
+    // Extracto base para establecer el grid de fechas
     const baseExtracto = generarExtracto(loans, expenses, accounts, config);
     if (baseExtracto.length === 0) return null;
-    const fechas = baseExtracto.map(e=>e.fecha);
+    // Fechas únicas ordenadas (puede haber varias eventos por fecha)
+    const fechas = [...new Set(baseExtracto.map(e=>e.fecha))].sort();
     const n = fechas.length;
-
-    // Accumulate saldo samples per date index
     const samples = Array.from({length:n}, ()=>[]);
 
+    // Box-Muller: muestras normales independientes
     const rand_normal = () => {
-      // Box-Muller
       const u1 = Math.random(), u2 = Math.random();
       return Math.sqrt(-2*Math.log(u1)) * Math.cos(2*Math.PI*u2);
     };
 
+    // ── Pre-computar eventos deterministas (préstamos + transferencias) ──────
+    // Estos no tienen varianza: calcularlos una vez en lugar de 300 veces.
+    const transferencias = expenses.filter(e => e.tipo === 'transferencia');
+    const loanEvents     = proyectarPrestamos(loans, config.dashboardStart, config.dashboardEnd);
+    const transferEvents = proyectarTransferencias(transferencias, config.dashboardStart, config.dashboardEnd);
+
+    // Mapa de varianza por sourceId para acceso O(1) por evento
+    const varMap = new Map(varExpenses.map(e => [e._id, { varianza: e.varianza, tipo: e.tipo }]));
+
+    // Eventos de gasto base (misma estructura para todas las iteraciones)
+    const gastos = expenses.filter(e => e.tipo !== 'transferencia');
+    const baseGastoEvents = proyectarGastos(gastos, config.dashboardStart, config.dashboardEnd);
+
+    // Saldo de arranque: consistente con generarExtracto
+    const cuentasActivas = accounts.filter(a => a.activo);
+    const saldoArranque = cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, config.dashboardStart), 0);
+
     for (let iter=0; iter<iteraciones; iter++) {
-      // Perturb expenses with varianza
-      const pertExpenses = expenses.map(e => {
-        if (!e.varianza || e.varianza===0) return e;
-        const sigma = Math.abs(e.cuantia) * (e.varianza/100);
+      // ── Perturbar cada OCURRENCIA de forma independiente (no por tipo de gasto) ──
+      // Esto produce dispersión que crece con el tiempo, como en la realidad.
+      const pertGastoEvents = baseGastoEvents.map(ev => {
+        const v = varMap.get(ev.sourceId);
+        if (!v) return ev;
+        const sigma = Math.abs(ev.cuantia) * (v.varianza / 100);
         const delta = rand_normal() * sigma;
-        return { ...e, cuantia: e.cuantia + (e.tipo==='gasto' ? delta : -delta) };
+        // gasto: delta positivo = más gasto = peor; ingreso: delta positivo = más ingreso = mejor
+        return { ...ev, cuantia: v.tipo === 'gasto' ? ev.cuantia + delta : ev.cuantia - delta };
       });
-      const ext = generarExtracto(loans, pertExpenses, accounts, config);
-      const dateMap = new Map(ext.map(ev=>[ev.fecha, ev.saldoAcum]));
+
+      // Combinar todos los eventos y acumular saldo
+      // Los intereses se omiten en MC (efecto de segundo orden, <<1% del total)
+      const allEvents = [...pertGastoEvents, ...loanEvents, ...transferEvents]
+        .sort((a,b) => a.fecha.localeCompare(b.fecha));
+
+      let saldo = saldoArranque;
+      const saldoPorFecha = new Map();
+      for (const ev of allEvents) {
+        saldo += ev.tipo === 'ingreso' ? Math.abs(ev.cuantia) : -Math.abs(ev.cuantia);
+        saldoPorFecha.set(ev.fecha, saldo);
+      }
+
+      // Mapear al grid con LOCF para fechas sin eventos propios
+      let lastSaldo = saldoArranque;
       for (let i=0; i<n; i++) {
-        const s = dateMap.get(fechas[i]);
-        if (s !== undefined) samples[i].push(s);
+        const s = saldoPorFecha.get(fechas[i]);
+        if (s !== undefined) lastSaldo = s;
+        samples[i].push(lastSaldo);
       }
     }
 
-    // Compute percentiles
+    // Percentiles con interpolación lineal (bandas suaves, sin escalones)
     const pct_fn = (arr, p) => {
       const sorted = [...arr].sort((a,b)=>a-b);
-      const idx = Math.floor((p/100)*(sorted.length-1));
-      return sorted[idx] ?? null;
+      const idx = (p/100) * (sorted.length - 1);
+      const lo = Math.floor(idx), hi = Math.ceil(idx);
+      if (lo === hi) return sorted[lo];
+      return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
     };
 
     return fechas.map((fecha, i) => {
@@ -1021,18 +1058,35 @@ const FinanceMath = (() => {
   }
 
   function calcDesviacion(extracto, accounts) {
-    // Sum all historico saldos by date across all accounts (same logic as the chart).
-    // This way the "real" value is the total portfolio at each date, comparable with
-    // extracto.saldoAcum which is also the total portfolio.
     const today = new Date().toISOString().slice(0,10);
-    const byFecha = {};
-    for (const acc of accounts) {
+
+    // Collect all unique dates across all accounts (past only), per-account deduplicated
+    const allDates = new Set();
+    const dedupedByAcc = accounts.map(acc => {
+      const byD = {};
       for (const h of (acc.historicoSaldos||[])) {
-        if (h.fecha > today) continue; // solo pasadas
-        if (!byFecha[h.fecha]) byFecha[h.fecha] = 0;
-        byFecha[h.fecha] += h.saldo;
+        if (h.fecha <= today) byD[h.fecha] = h.saldo;
       }
+      Object.keys(byD).forEach(d => allDates.add(d));
+      return byD;
+    });
+
+    // LOCF: for each date, carry forward each account's last known balance
+    const byFecha = {};
+    for (const fecha of [...allDates].sort()) {
+      let total = 0;
+      for (let ai = 0; ai < accounts.length; ai++) {
+        const entries = Object.entries(dedupedByAcc[ai]).filter(([d]) => d <= fecha);
+        if (entries.length > 0) {
+          entries.sort(([a],[b]) => b.localeCompare(a));
+          total += entries[0][1];
+        } else {
+          total += accounts[ai].saldoInicial || 0;
+        }
+      }
+      byFecha[fecha] = total;
     }
+
     const rows = [];
     for (const [fecha, saldoReal] of Object.entries(byFecha).sort(([a],[b])=>a.localeCompare(b))) {
       const ev = extracto.filter(e => e.fecha <= fecha);
