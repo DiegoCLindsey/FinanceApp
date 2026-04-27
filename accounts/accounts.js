@@ -6,13 +6,17 @@ const AccountsModule = (() => {
     view.innerHTML=`
       <div class="page-header">
         <h1 class="page-title">Cuentas <span>Bancarias</span></h1>
-        <button class="btn-primary" id="btn-new-acc">+ Nueva cuenta</button>
+        <div class="flex gap-8">
+          <button class="btn-secondary" id="btn-reset-base">↻ Actualizar saldo base</button>
+          <button class="btn-primary" id="btn-new-acc">+ Nueva cuenta</button>
+        </div>
       </div>
       <div class="grid-3" id="accounts-list">
         ${accounts.map(renderCard).join('')}
       </div>
       <div class="card mt-14" id="goals-section"></div>`;
     document.getElementById('btn-new-acc').onclick=()=>openForm();
+    document.getElementById('btn-reset-base').onclick=()=>resetSaldoBase();
     // Render Goals section
     const goalsSection = view.querySelector('#goals-section');
     if (goalsSection) GoalsModule.renderGoalsSection(goalsSection);
@@ -248,6 +252,26 @@ const AccountsModule = (() => {
     UI.toast('Eliminado');
     render();
     openHistorico(accId);
+  }
+
+  function resetSaldoBase() {
+    const accounts = State.get('accounts');
+    const activas = accounts.filter(a => a.activo);
+    if (!activas.length) { UI.toast('No hay cuentas activas','err'); return; }
+    const hoy = new Date().toISOString().slice(0,10);
+    const lineas = activas.map(a => {
+      const hist = [...(a.historicoSaldos||[])].sort((x,y)=>y.fecha.localeCompare(x.fecha));
+      const saldoActual = hist.length > 0 ? hist[0].saldo : (a.saldoInicial||0);
+      return `• ${a.nombre}: ${FinanceMath.eur(saldoActual)}`;
+    }).join('\n');
+    if (!UI.confirm(`¿Actualizar el saldo inicial de estas cuentas a su saldo actual (${hoy})?\n\n${lineas}\n\nEsto recalibra el punto de arranque del dashboard.`)) return;
+    for (const a of activas) {
+      const hist = [...(a.historicoSaldos||[])].sort((x,y)=>y.fecha.localeCompare(x.fecha));
+      const saldoActual = hist.length > 0 ? hist[0].saldo : (a.saldoInicial||0);
+      State.updateItem('accounts', a._id, { saldoInicial: saldoActual, fechaInicialSaldo: hoy });
+    }
+    UI.toast('Saldo base actualizado');
+    render();
   }
 
   return { render, saveAccount, openHistorico, saveHistorico, deleteHistorico, setAsPrincipal };

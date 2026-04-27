@@ -262,8 +262,8 @@ const FinanceMath = (() => {
       const periodoMs = { diario:86400000, semanal:7*86400000, mensual:30.44*86400000 }[acc.periodoCobro||'mensual'];
       const pa = periodoMs / (365.25*86400000);
 
-      // Saldo de arranque = último histórico real
-      let saldoCuenta = saldoRealCuenta(acc);
+      // Saldo de arranque = histórico en o antes de dateStart
+      let saldoCuenta = saldoEnFecha(acc, dateStart);
 
       // Movimientos que afectan a esta cuenta, ordenados cronológicamente.
       // El delta se calcula aquí a partir de tipo+cuantia porque los eventos aún
@@ -396,10 +396,18 @@ const FinanceMath = (() => {
     return totalMes * (config.colchonMeses||6);
   }
 
-  // Saldo real de arranque: último histórico si existe, sino saldoInicial
+  // Saldo real actual: último histórico si existe, sino saldoInicial
   function saldoRealCuenta(acc) {
     const hist = [...(acc.historicoSaldos||[])].sort((a,b)=>b.fecha.localeCompare(a.fecha));
     return hist.length > 0 ? hist[0].saldo : (acc.saldoInicial || 0);
+  }
+
+  // Saldo en una fecha concreta: histórico más reciente <= fecha, si no saldoInicial
+  // Usado como punto de arranque de la proyección para alinearla con los datos reales.
+  function saldoEnFecha(acc, fecha) {
+    const hist = [...(acc.historicoSaldos||[])].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+    const entry = hist.find(h => h.fecha <= fecha);
+    return entry ? entry.saldo : (acc.saldoInicial || 0);
   }
 
   function generarExtracto(loans, expenses, accounts, config, filtroAccounts=null) {
@@ -414,7 +422,8 @@ const FinanceMath = (() => {
     events = events.concat(intereses);
     events.sort((a,b)=>a.fecha.localeCompare(b.fecha));
     const cuentasActivas = accounts.filter(a => a.activo && (!filtroAccounts || filtroAccounts.length===0 || filtroAccounts.includes(a._id)));
-    let saldo = cuentasActivas.reduce((s, a) => s + saldoRealCuenta(a), 0);
+    // Arranque: saldo histórico en o antes de dashboardStart (no el más reciente en general)
+    let saldo = cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, config.dashboardStart), 0);
     return events.map(ev => { const d = ev.tipo==='ingreso'?Math.abs(ev.cuantia):-Math.abs(ev.cuantia); saldo+=d; return {...ev, delta:d, saldoAcum:saldo}; });
   }
 
@@ -1039,6 +1048,6 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, calcFondosPension, calcImpuestoPension, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, calcFondosPension, calcImpuestoPension, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 
