@@ -1,6 +1,7 @@
 import { BaseComponent } from '@/core/BaseComponent';
 import { appStore } from '@/core/store';
-import type { Expense, TipoMovimiento } from '@/types/domain';
+import { calculateBudgetProgress } from '@/finance-math/finance-math';
+import type { Expense, TipoMovimiento, BudgetProgress } from '@/types/domain';
 
 const eur = (n: number) =>
   new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(n);
@@ -30,7 +31,7 @@ export class ExpenseListView extends BaseComponent {
   }
 
   protected template(): string {
-    const { expenses, accounts } = appStore.getState();
+    const { expenses, accounts, config } = appStore.getState();
     const accountName = (id: string) => accounts.find((a) => a._id === id)?.nombre ?? id;
 
     if (expenses.length === 0) {
@@ -41,6 +42,8 @@ export class ExpenseListView extends BaseComponent {
           <p class="wip-card__desc">Registra tus ingresos, gastos y transferencias recurrentes para proyectar tu flujo de caja.</p>
         </div>`;
     }
+
+    const budgetProgress = calculateBudgetProgress(expenses, config);
 
     const active = expenses.filter((e) => e.activo);
     const inactive = expenses.filter((e) => !e.activo);
@@ -76,11 +79,47 @@ export class ExpenseListView extends BaseComponent {
           </div>
         </div>
 
+        ${budgetProgress.length > 0 ? this._budgets(budgetProgress) : ''}
+
         ${incomes.length > 0 ? this._group('Ingresos', incomes, accountName) : ''}
         ${gastos.length > 0 ? this._group('Gastos', gastos, accountName) : ''}
         ${transfers.length > 0 ? this._group('Transferencias', transfers, accountName) : ''}
         ${inactive.length > 0 ? this._group('Inactivos', inactive, accountName, true) : ''}
       </div>`;
+  }
+
+  private _budgets(items: BudgetProgress[]): string {
+    const rows = items
+      .map((b) => {
+        const tagLabel =
+          b.tag === '*' ? 'Total gastos' : b.tag === '__sin_tag__' ? 'Sin categoría' : b.tag;
+        const barColor =
+          b.estado === 'exceeded'
+            ? 'var(--accent-red)'
+            : b.estado === 'warning'
+              ? 'var(--accent-yellow)'
+              : 'var(--accent-green)';
+        const width = Math.min(b.pct, 100).toFixed(1);
+        const alertBadge = b.alertar ? '<span class="exp-badge exp-badge--alert">⚠</span>' : '';
+        return `
+          <div class="budget-row">
+            <div class="budget-row__top">
+              <span class="budget-row__tag">${tagLabel}${alertBadge}</span>
+              <span class="budget-row__amounts">${eur(b.gasto)} / ${eur(b.limite)}</span>
+            </div>
+            <div class="budget-row__bar">
+              <div class="budget-row__fill" style="width:${width}%;background:${barColor}"></div>
+            </div>
+            <div class="budget-row__pct" style="color:${barColor}">${b.pct.toFixed(0)}%</div>
+          </div>`;
+      })
+      .join('');
+
+    return `
+      <section class="budget-section">
+        <h2 class="exp-group__title">Presupuestos <span class="exp-group__count">${items.length}</span></h2>
+        <div class="budget-list">${rows}</div>
+      </section>`;
   }
 
   private _group(

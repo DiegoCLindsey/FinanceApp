@@ -1163,3 +1163,191 @@ body {
     min-width: 22px;
   }
 }
+
+/* ── 8-metric score detail ────────────────────────────────────────────────── */
+
+.db__metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.db__metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.db__metric-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.db__metric-label {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.db__metric-value {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.db__metric-bench {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.db__diagnosis {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  border-radius: 8px;
+  border-left: 3px solid var(--accent-yellow);
+}
+
+/* ── Emergency fund widget ────────────────────────────────────────────────── */
+
+.db__ef-widget {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.db__ef-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.db__ef-header .db__section-title {
+  margin-bottom: 0;
+}
+
+.db__ef-estado {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.db__ef-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.db__ef-bar {
+  flex: 1;
+  height: 10px;
+  background: var(--bg-elevated);
+  border-radius: 5px;
+  overflow: hidden;
+  position: relative;
+}
+
+.db__ef-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.4s ease;
+}
+
+.db__ef-target-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+  opacity: 0.6;
+}
+
+.db__ef-label {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.db__ef-action {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ── Budget progress bars ─────────────────────────────────────────────────── */
+
+.budget-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.budget-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.budget-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.budget-row__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.budget-row__tag {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.budget-row__amounts {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.budget-row__bar {
+  height: 6px;
+  background: var(--bg-elevated);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.budget-row__fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.budget-row__pct {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+.exp-badge--alert {
+  background: color-mix(in srgb, var(--accent-yellow) 20%, transparent);
+  color: var(--accent-yellow);
+}

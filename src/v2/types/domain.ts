@@ -219,15 +219,52 @@ export interface CriticalPoint {
   mensaje: string;
 }
 
-// ── Financial health score ────────────────────────────────────────────────────
+// ── Emergency fund status (#23) ──────────────────────────────────────────────
+export type EmergencyFundEstado = 'critico' | 'insuficiente' | 'adecuado' | 'excelente';
+
+export interface EmergencyFundStatus {
+  gastosBasicosMensuales: number;
+  colchonObjetivo: number;
+  saldoDisponible: number;
+  mesesCubiertos: number;
+  deficit: number;
+  superavit: number;
+  estado: EmergencyFundEstado;
+}
+
+// ── Budget progress (#19) ─────────────────────────────────────────────────────
+export interface BudgetProgress {
+  tag: string;
+  limite: number;
+  gasto: number; // projected spend this month
+  pct: number; // gasto / limite * 100
+  estado: 'ok' | 'warning' | 'exceeded';
+  alertar: boolean; // pct >= umbralAlerta
+}
+
+// ── Financial health score (#22 — 8 metrics) ─────────────────────────────────
 export interface FinancialScore {
-  total: number; // 0–100 weighted score
+  total: number; // 0–100+ weighted score
   label: 'Excelente' | 'Buena' | 'Regular' | 'Atención';
+  // Raw values
   ratioGastosFijos: number; // % of income
   tasaAhorro: number; // % of income saved
-  ratioDeuda: number; // % of income committed to loan payments
+  ratioDeuda: number; // % of income on loan payments
+  coberturaFondoEmergencia: number; // months covered by liquid assets
+  ratioLiquidez: number; // liquid assets / 12-month loan obligations
+  tendenciaAhorro: number | null; // % change vs prior period (null = no data)
+  fuentesIngreso: number; // count of distinct active income sources
+  // Monthly absolute values
   gastosFijosMes: number;
   ahorroMes: number;
   cuotasMes: number;
   ingresosMes: number;
+  // Per-metric scores (0–100)
+  scoreFijos: number;
+  scoreAhorro: number;
+  scoreDeuda: number;
+  scoreCoberturaFondo: number;
+  scoreLiquidez: number;
+  scoreTendencia: number;
+  scoreDiversificacion: number;
 }

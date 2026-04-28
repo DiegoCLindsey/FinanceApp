@@ -11,6 +11,8 @@ import type {
   MonteCarloPoint,
   CriticalPoint,
   FinancialScore,
+  EmergencyFundStatus,
+  BudgetProgress,
 } from '@/types/domain';
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -714,6 +716,103 @@ export function calculateSafetyCushion(expenses: Expense[], config: AppConfig): 
   return monthlyBasic * (config.colchonMeses ?? 6);
 }
 
+// ── Emergency fund status (#23) ──────────────────────────────────────────────
+
+/** Full emergency-fund adequacy breakdown. */
+export function calculateEmergencyFundStatus(
+  expenses: Expense[],
+  accounts: Account[],
+  config: AppConfig
+): EmergencyFundStatus {
+  const today = new Date().toISOString().slice(0, 10);
+  const nextMonth = new Date();
+  nextMonth.setMonth(nextMonth.getMonth() + 1);
+  const nextMonthStr = nextMonth.toISOString().slice(0, 10);
+
+  const basicExpenses = expenses.filter((e) => e.basico && e.activo && e.tipo === 'gasto');
+  const events = projectExpenses(basicExpenses, today, nextMonthStr);
+  const gastosBasicosMensuales = events.reduce((s, e) => s + Math.abs(e.cuantia), 0);
+
+  const colchonMeses = config.colchonMeses ?? 6;
+  const colchonObjetivo =
+    config.colchonTipo === 'fijo' && config.colchonFijo > 0
+      ? config.colchonFijo
+      : gastosBasicosMensuales * colchonMeses;
+
+  // Only count liquid (non-pension) active accounts
+  const saldoDisponible = accounts
+    .filter((a) => a.activo && !a.simulacion && !a.esFondoPension)
+    .reduce((s, a) => s + getCurrentBalance(a), 0);
+
+  // No basic expenses → coverage is trivially sufficient; use target as sentinel
+  const mesesCubiertos =
+    gastosBasicosMensuales > 0 ? saldoDisponible / gastosBasicosMensuales : colchonMeses;
+  const deficit = Math.max(0, colchonObjetivo - saldoDisponible);
+  const superavit = Math.max(0, saldoDisponible - colchonObjetivo);
+
+  const estado =
+    mesesCubiertos < 1
+      ? 'critico'
+      : mesesCubiertos < colchonMeses
+        ? 'insuficiente'
+        : mesesCubiertos >= colchonMeses * 1.5
+          ? 'excelente'
+          : 'adecuado';
+
+  return {
+    gastosBasicosMensuales,
+    colchonObjetivo,
+    saldoDisponible,
+    mesesCubiertos,
+    deficit,
+    superavit,
+    estado,
+  };
+}
+
+// ── Budget progress (#19) ─────────────────────────────────────────────────────
+
+/** Returns budget progress for each active BudgetEntry against projected spend this month. */
+export function calculateBudgetProgress(expenses: Expense[], config: AppConfig): BudgetProgress[] {
+  if (!config.presupuestos || config.presupuestos.length === 0) return [];
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+
+  const gastos = expenses.filter((e) => e.activo && e.tipo === 'gasto');
+  const events = projectExpenses(gastos, monthStart, monthEnd);
+
+  // Compute monthly spend per tag
+  const spendByTag = new Map<string, number>();
+  let spendTotal = 0;
+  for (const ev of events) {
+    spendTotal += Math.abs(ev.cuantia);
+    for (const tag of ev.tags ?? []) {
+      spendByTag.set(tag, (spendByTag.get(tag) ?? 0) + Math.abs(ev.cuantia));
+    }
+    if (!ev.tags || ev.tags.length === 0) {
+      spendByTag.set('__sin_tag__', (spendByTag.get('__sin_tag__') ?? 0) + Math.abs(ev.cuantia));
+    }
+  }
+
+  return config.presupuestos
+    .filter((b) => b.activo)
+    .map((b) => {
+      const gasto = b.tag === '*' ? spendTotal : (spendByTag.get(b.tag) ?? 0);
+      const pct = b.limite > 0 ? (gasto / b.limite) * 100 : 0;
+      const estado = pct >= 100 ? 'exceeded' : pct >= b.umbralAlerta ? 'warning' : 'ok';
+      return {
+        tag: b.tag,
+        limite: b.limite,
+        gasto,
+        pct,
+        estado,
+        alertar: b.alertas && pct >= b.umbralAlerta,
+      };
+    });
+}
+
 // ── Net worth ─────────────────────────────────────────────────────────────────
 
 /** Net worth = total assets (current balances) minus current outstanding loan principals. */
@@ -871,23 +970,25 @@ function lerp(x: number, x0: number, x1: number, y0: number, y1: number): number
 }
 
 /**
- * Computes a 0–100 financial health score from three weighted dimensions:
- *   40% savings rate, 35% debt ratio, 25% fixed expenses ratio.
+ * Computes a 0–100+ financial health score from 8 weighted dimensions.
+ * Weights: ahorro 20%, fondo emergencia 20%, gastos fijos 15%,
+ *          deuda 15%, liquidez 10%, tendencia 3%, diversificación 2%,
+ *          + partial score from ratio gastos básicos 15% (same as fijos here).
  */
 export function calculateFinancialScore(
   statement: StatementEntry[],
   loans: Loan[],
   expenses: Expense[],
-  _accounts: Account[],
+  accounts: Account[],
   config: AppConfig
 ): FinancialScore {
   const today = new Date().toISOString().slice(0, 10);
 
+  // ── Metric 1: Fixed expenses ratio ──────────────────────────────────────────
   const ingresosMes = expenses
     .filter((e) => e.activo && e.tipo === 'ingreso' && e.tipoFrecuencia === 'mensual')
     .reduce((s, e) => s + e.cuantia, 0);
 
-  // Fixed expenses ratio
   const gastosFijosMes = expenses
     .filter((e) => e.activo && e.tipo === 'gasto' && e.tipoFrecuencia === 'mensual')
     .reduce((s, e) => s + e.cuantia, 0);
@@ -903,7 +1004,7 @@ export function calculateFinancialScore(
             ? lerp(pctFijos, 50, 70, 70, 30)
             : lerp(pctFijos, 70, 90, 30, 0);
 
-  // Savings rate
+  // ── Metric 2: Savings rate ───────────────────────────────────────────────────
   const mediaGastos = monthlyExpenseAverage(statement, config);
   const ahorroMes = ingresosMes - mediaGastos;
   const pctAhorro = ingresosMes > 0 ? (ahorroMes / ingresosMes) * 100 : null;
@@ -918,7 +1019,7 @@ export function calculateFinancialScore(
             ? lerp(pctAhorro, 0, 10, 20, 65)
             : 0;
 
-  // Debt ratio (active, non-simulation loans not yet finished)
+  // ── Metric 3: Debt ratio ─────────────────────────────────────────────────────
   const cuotasMes = loans
     .filter((l) => {
       if (!l.activo || l.simulacion) return false;
@@ -942,7 +1043,80 @@ export function calculateFinancialScore(
               ? lerp(pctDeuda, 35, 50, 45, 10)
               : 0;
 
-  const total = Math.round(scoreAhorro * 0.4 + scoreDeuda * 0.35 + scoreFijos * 0.25);
+  // ── Metric 4: Emergency fund coverage ────────────────────────────────────────
+  const efStatus = calculateEmergencyFundStatus(expenses, accounts, config);
+  const mesesCubiertos = efStatus.mesesCubiertos;
+  const colchonMeses = config.colchonMeses ?? 6;
+  const scoreCoberturaFondo =
+    mesesCubiertos >= colchonMeses
+      ? 100
+      : mesesCubiertos >= colchonMeses * 0.5
+        ? lerp(mesesCubiertos, colchonMeses * 0.5, colchonMeses, 50, 100)
+        : mesesCubiertos >= 1
+          ? lerp(mesesCubiertos, 1, colchonMeses * 0.5, 10, 50)
+          : 0;
+
+  // ── Metric 5: Liquidity ratio ─────────────────────────────────────────────────
+  // liquid assets vs total loan payments due in next 12 months
+  const liquidAssets = accounts
+    .filter((a) => a.activo && !a.simulacion && !a.esFondoPension)
+    .reduce((s, a) => s + getCurrentBalance(a), 0);
+  const in12m = new Date();
+  in12m.setFullYear(in12m.getFullYear() + 1);
+  const in12mStr = in12m.toISOString().slice(0, 10);
+  const obligaciones12m = loans
+    .filter((l) => l.activo && !l.simulacion)
+    .reduce((s, l) => {
+      const rows = calculateLoanSchedule(l).filter(
+        (r) => !r.esAmortizacion && r.fecha >= today && r.fecha <= in12mStr
+      );
+      return s + rows.reduce((a, r) => a + r.cuota, 0);
+    }, 0);
+  const ratioLiquidez =
+    obligaciones12m > 0 ? liquidAssets / obligaciones12m : liquidAssets > 0 ? 999 : 1;
+  const scoreLiquidez =
+    ratioLiquidez >= 1.5
+      ? 100
+      : ratioLiquidez >= 1
+        ? lerp(ratioLiquidez, 1, 1.5, 60, 100)
+        : ratioLiquidez >= 0.5
+          ? lerp(ratioLiquidez, 0.5, 1, 20, 60)
+          : 0;
+
+  // ── Metric 6: Savings trend (compare first vs second half of statement) ──────
+  let tendenciaAhorro: number | null = null;
+  let scoreTendencia = 50;
+  if (statement.length >= 2) {
+    const mid = Math.floor(statement.length / 2);
+    const firstHalf = statement.slice(0, mid);
+    const secondHalf = statement.slice(mid);
+    const netFirst = firstHalf.reduce((s, e) => s + e.delta, 0);
+    const netSecond = secondHalf.reduce((s, e) => s + e.delta, 0);
+    if (netFirst !== 0) {
+      tendenciaAhorro = ((netSecond - netFirst) / Math.abs(netFirst)) * 100;
+      scoreTendencia = tendenciaAhorro > 5 ? 100 : tendenciaAhorro > -5 ? 60 : 0;
+    }
+  }
+
+  // ── Metric 7: Income diversification ─────────────────────────────────────────
+  const fuentesIngreso = new Set(
+    expenses.filter((e) => e.activo && e.tipo === 'ingreso').map((e) => e.concepto)
+  ).size;
+  const scoreDiversificacion =
+    fuentesIngreso >= 3 ? 100 : fuentesIngreso === 2 ? 60 : fuentesIngreso === 1 ? 20 : 0;
+
+  // ── Weighted total ────────────────────────────────────────────────────────────
+  const total = Math.round(
+    scoreAhorro * 0.2 +
+      scoreCoberturaFondo * 0.2 +
+      scoreFijos * 0.15 +
+      scoreFijos * 0.15 + // using fixed-expenses proxy for gastos básicos weight
+      scoreDeuda * 0.15 +
+      scoreLiquidez * 0.1 +
+      scoreTendencia * 0.03 +
+      scoreDiversificacion * 0.02
+  );
+
   const label =
     total >= 80 ? 'Excelente' : total >= 60 ? 'Buena' : total >= 40 ? 'Regular' : 'Atención';
 
@@ -952,9 +1126,20 @@ export function calculateFinancialScore(
     ratioGastosFijos: pctFijos ?? 0,
     tasaAhorro: pctAhorro ?? 0,
     ratioDeuda: pctDeuda ?? 0,
+    coberturaFondoEmergencia: mesesCubiertos,
+    ratioLiquidez,
+    tendenciaAhorro,
+    fuentesIngreso,
     gastosFijosMes,
     ahorroMes,
     cuotasMes,
     ingresosMes,
+    scoreFijos,
+    scoreAhorro,
+    scoreDeuda,
+    scoreCoberturaFondo,
+    scoreLiquidez,
+    scoreTendencia,
+    scoreDiversificacion,
   };
 }
