@@ -1,5 +1,7 @@
 import './app.css';
 import './views/DashboardView';
+import './views/LoanListView';
+import './views/ExpenseListView';
 
 // ── Theme initialisation ──────────────────────────────────────────────────────
 type Theme = 'dark' | 'light' | 'system';
@@ -72,6 +74,8 @@ function getActiveView(): string {
 
 function renderView(viewId: string, viewLabel: string): string {
   if (viewId === 'dashboard') return '<fin-dashboard></fin-dashboard>';
+  if (viewId === 'prestamos') return '<fin-loan-list></fin-loan-list>';
+  if (viewId === 'gastos') return '<fin-expense-list></fin-expense-list>';
   return renderWipView(viewLabel);
 }
 

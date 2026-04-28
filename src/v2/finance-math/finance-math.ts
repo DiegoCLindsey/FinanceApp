@@ -716,14 +716,27 @@ export function calculateSafetyCushion(expenses: Expense[], config: AppConfig): 
 
 // ── Net worth ─────────────────────────────────────────────────────────────────
 
-/** Net worth = total assets (current balances) minus outstanding loan principals. */
+/** Net worth = total assets (current balances) minus current outstanding loan principals. */
 export function calculateNetWorth(loans: Loan[], accounts: Account[]): number {
+  const today = new Date().toISOString().slice(0, 10);
   const totalAssets = accounts
     .filter((a) => a.activo)
     .reduce((s, a) => s + getCurrentBalance(a), 0);
   const totalDebt = loans
     .filter((l) => l.activo && !l.simulacion)
-    .reduce((s, l) => s + loanSummary(l).capitalPendiente, 0);
+    .reduce((s, l) => {
+      const schedule = calculateLoanSchedule(l);
+      // Find most recent paid installment to get current remaining principal
+      const paid = schedule.filter((r) => !r.esAmortizacion && r.fecha <= today);
+      if (paid.length === 0) {
+        // Loan hasn't started yet — full capital is outstanding
+        const earlyPaid = schedule
+          .filter((r) => r.esAmortizacion && r.fecha <= today)
+          .reduce((a, r) => a + r.amortizacion, 0);
+        return s + Math.max(0, l.capital - earlyPaid);
+      }
+      return s + paid[paid.length - 1].capitalPendiente;
+    }, 0);
   return totalAssets - totalDebt;
 }
 

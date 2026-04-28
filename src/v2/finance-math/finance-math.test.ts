@@ -8,8 +8,25 @@ import {
   loanSummary,
   calculateEarlyRepaymentSavings,
   calculateIRPF,
+  getCurrentBalance,
+  getBalanceAtDate,
+  projectExpenses,
+  projectLoanPayments,
+  projectTransfers,
+  generateStatement,
+  calculateSafetyCushion,
+  calculateNetWorth,
+  monthlyExpenseAverage,
+  detectCriticalPoints,
+  calculateFinancialScore,
 } from './finance-math';
-import { loanFactory, earlyRepaymentFactory } from '@/test-utils/factories';
+import {
+  loanFactory,
+  earlyRepaymentFactory,
+  expenseFactory,
+  accountFactory,
+  configFactory,
+} from '@/test-utils/factories';
 
 // ── resolvePaymentDate ────────────────────────────────────────────────────────
 describe('resolvePaymentDate', () => {
@@ -264,5 +281,415 @@ describe('calculateIRPF', () => {
 
   it('is consistent: higher income always results in higher tax', () => {
     expect(calculateIRPF(30000, tramos)).toBeGreaterThan(calculateIRPF(20000, tramos));
+  });
+});
+
+// ── getCurrentBalance / getBalanceAtDate ──────────────────────────────────────
+describe('getCurrentBalance', () => {
+  it('returns saldoInicial when no history', () => {
+    const acc = accountFactory({ saldoInicial: 1000, historicoSaldos: [] });
+    expect(getCurrentBalance(acc)).toBe(1000);
+  });
+
+  it('returns the most recent historico entry', () => {
+    const acc = accountFactory({
+      saldoInicial: 1000,
+      historicoSaldos: [
+        { _id: 'h1', fecha: '2024-01-01', saldo: 1500 },
+        { _id: 'h2', fecha: '2024-06-01', saldo: 2000 },
+        { _id: 'h3', fecha: '2024-03-01', saldo: 1800 },
+      ],
+    });
+    expect(getCurrentBalance(acc)).toBe(2000);
+  });
+});
+
+describe('getBalanceAtDate', () => {
+  it('returns saldoInicial when no history precedes fecha', () => {
+    const acc = accountFactory({
+      saldoInicial: 500,
+      historicoSaldos: [{ _id: 'h1', fecha: '2024-06-01', saldo: 800 }],
+    });
+    expect(getBalanceAtDate(acc, '2024-01-01')).toBe(500);
+  });
+
+  it('returns the most recent historico entry on or before fecha', () => {
+    const acc = accountFactory({
+      saldoInicial: 500,
+      historicoSaldos: [
+        { _id: 'h1', fecha: '2024-01-01', saldo: 800 },
+        { _id: 'h2', fecha: '2024-06-01', saldo: 1200 },
+      ],
+    });
+    expect(getBalanceAtDate(acc, '2024-03-01')).toBe(800);
+    expect(getBalanceAtDate(acc, '2024-06-01')).toBe(1200);
+    expect(getBalanceAtDate(acc, '2024-12-31')).toBe(1200);
+  });
+});
+
+// ── projectExpenses ───────────────────────────────────────────────────────────
+describe('projectExpenses', () => {
+  it('projects a monthly expense once per month in a 3-month window', () => {
+    const exp = expenseFactory({
+      fechaInicio: '2024-01-01',
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+      diaPago: 'dia:1',
+    });
+    const events = projectExpenses([exp], '2024-01-01', '2024-03-31');
+    expect(events).toHaveLength(3);
+    expect(events[0].fecha).toBe('2024-01-01');
+    expect(events[1].fecha).toBe('2024-02-01');
+    expect(events[2].fecha).toBe('2024-03-01');
+  });
+
+  it('projects a one-off extraordinary expense exactly once', () => {
+    const exp = expenseFactory({
+      fechaInicio: '2024-02-15',
+      tipoFrecuencia: 'extraordinario',
+    });
+    const events = projectExpenses([exp], '2024-01-01', '2024-12-31');
+    expect(events).toHaveLength(1);
+    expect(events[0].fecha).toBe('2024-02-15');
+  });
+
+  it('skips inactive expenses', () => {
+    const exp = expenseFactory({ activo: false });
+    expect(projectExpenses([exp], '2024-01-01', '2024-12-31')).toHaveLength(0);
+  });
+
+  it('skips transfer-type expenses', () => {
+    const exp = expenseFactory({ tipo: 'transferencia' });
+    expect(projectExpenses([exp], '2024-01-01', '2024-12-31')).toHaveLength(0);
+  });
+
+  it('respects filtroAccounts — excludes expenses on other accounts', () => {
+    const exp = expenseFactory({ cuenta: 'account-2' });
+    const events = projectExpenses([exp], '2024-01-01', '2024-12-31', ['account-1']);
+    expect(events).toHaveLength(0);
+  });
+
+  it('stops projecting after fechaFin', () => {
+    const exp = expenseFactory({
+      fechaInicio: '2024-01-01',
+      fechaFin: '2024-02-28',
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+      diaPago: 'dia:1',
+    });
+    const events = projectExpenses([exp], '2024-01-01', '2024-12-31');
+    expect(events).toHaveLength(2); // Jan + Feb only
+  });
+});
+
+// ── projectLoanPayments ───────────────────────────────────────────────────────
+describe('projectLoanPayments', () => {
+  it('projects N installment events for an N-month loan inside the window', () => {
+    const loan = loanFactory({ capital: 12000, tin: 5, meses: 12, fechaInicio: '2024-01-01' });
+    const events = projectLoanPayments([loan], '2024-01-01', '2024-12-31');
+    const installments = events.filter((e) => e.sourceType === 'loan');
+    expect(installments).toHaveLength(12);
+  });
+
+  it('all loan payment events have negative cuantia', () => {
+    const loan = loanFactory({ capital: 12000, tin: 5, meses: 6, fechaInicio: '2024-01-01' });
+    const events = projectLoanPayments([loan], '2024-01-01', '2024-12-31');
+    events
+      .filter((e) => e.sourceType === 'loan')
+      .forEach((e) => {
+        expect(e.cuantia).toBeLessThan(0);
+      });
+  });
+
+  it('skips inactive loans', () => {
+    const loan = loanFactory({ activo: false });
+    expect(projectLoanPayments([loan], '2024-01-01', '2024-12-31')).toHaveLength(0);
+  });
+});
+
+// ── projectTransfers ──────────────────────────────────────────────────────────
+describe('projectTransfers', () => {
+  it('generates a debit (transfer-out) and credit (transfer-in) pair', () => {
+    const exp = expenseFactory({
+      tipo: 'transferencia',
+      tipoFrecuencia: 'extraordinario',
+      fechaInicio: '2024-03-15',
+      cuenta: 'acc-a',
+      cuentaDestino: 'acc-b',
+      cuantia: 500,
+    });
+    const events = projectTransfers([exp], '2024-01-01', '2024-12-31');
+    expect(events).toHaveLength(2);
+    const out = events.find((e) => e.sourceType === 'transfer-out')!;
+    const inn = events.find((e) => e.sourceType === 'transfer-in')!;
+    expect(out.tipo).toBe('gasto');
+    expect(inn.tipo).toBe('ingreso');
+    expect(out.cuantia).toBe(500);
+    expect(inn.cuantia).toBe(500);
+  });
+
+  it('skips non-transfer expenses', () => {
+    const exp = expenseFactory({ tipo: 'gasto' });
+    expect(projectTransfers([exp], '2024-01-01', '2024-12-31')).toHaveLength(0);
+  });
+});
+
+// ── generateStatement ─────────────────────────────────────────────────────────
+describe('generateStatement', () => {
+  it('produces a sorted list of entries with a running saldoAcum', () => {
+    const acc = accountFactory({ saldoInicial: 5000, historicoSaldos: [] });
+    const exp = expenseFactory({
+      cuantia: 100,
+      tipo: 'gasto',
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+      diaPago: 'dia:1',
+      fechaInicio: '2024-01-01',
+      cuenta: acc._id,
+    });
+    const cfg = configFactory({ dashboardStart: '2024-01-01', dashboardEnd: '2024-03-31' });
+    const stmt = generateStatement([], [exp], [acc], cfg);
+
+    expect(stmt.length).toBeGreaterThan(0);
+    // Entries are sorted by date
+    for (let i = 1; i < stmt.length; i++) {
+      expect(stmt[i].fecha >= stmt[i - 1].fecha).toBe(true);
+    }
+    // saldoAcum decreases by 100 each month (expense)
+    expect(stmt[0].saldoAcum).toBeCloseTo(4900, 0);
+    expect(stmt[1].saldoAcum).toBeCloseTo(4800, 0);
+  });
+
+  it('includes both expense and loan payment events', () => {
+    const acc = accountFactory({ saldoInicial: 20000, historicoSaldos: [] });
+    const loan = loanFactory({
+      capital: 12000,
+      tin: 5,
+      meses: 3,
+      fechaInicio: '2024-01-01',
+      cuenta: acc._id,
+    });
+    const exp = expenseFactory({
+      cuantia: 50,
+      cuenta: acc._id,
+      fechaInicio: '2024-01-15',
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+      diaPago: 'dia:15',
+    });
+    const cfg = configFactory({ dashboardStart: '2024-01-01', dashboardEnd: '2024-03-31' });
+    const stmt = generateStatement([loan], [exp], [acc], cfg);
+    const types = new Set(stmt.map((e) => e.sourceType));
+    expect(types.has('loan')).toBe(true);
+    expect(types.has('expense')).toBe(true);
+  });
+
+  it('delta is positive for income, negative for expense', () => {
+    const acc = accountFactory({ saldoInicial: 10000 });
+    const income = expenseFactory({
+      tipo: 'ingreso',
+      cuantia: 200,
+      cuenta: acc._id,
+      fechaInicio: '2024-01-01',
+      tipoFrecuencia: 'extraordinario',
+    });
+    const expense = expenseFactory({
+      tipo: 'gasto',
+      cuantia: 100,
+      cuenta: acc._id,
+      fechaInicio: '2024-01-02',
+      tipoFrecuencia: 'extraordinario',
+    });
+    const cfg = configFactory({ dashboardStart: '2024-01-01', dashboardEnd: '2024-01-31' });
+    const stmt = generateStatement([], [income, expense], [acc], cfg);
+    expect(stmt.find((e) => e.tipo === 'gasto')!.delta).toBeLessThan(0);
+    expect(stmt.find((e) => e.tipo === 'ingreso')!.delta).toBeGreaterThan(0);
+  });
+});
+
+// ── calculateSafetyCushion ────────────────────────────────────────────────────
+describe('calculateSafetyCushion', () => {
+  it('returns colchonFijo when colchonTipo is fijo', () => {
+    const cfg = configFactory({ colchonTipo: 'fijo', colchonFijo: 3000 });
+    expect(calculateSafetyCushion([], cfg)).toBe(3000);
+  });
+
+  it('returns 0 when no basic expenses exist', () => {
+    const exp = expenseFactory({ basico: false });
+    const cfg = configFactory({ colchonTipo: 'meses', colchonMeses: 6 });
+    expect(calculateSafetyCushion([exp], cfg)).toBe(0);
+  });
+
+  it('returns N months of basic expenses', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const exp = expenseFactory({
+      basico: true,
+      activo: true,
+      tipo: 'gasto',
+      cuantia: 100,
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+      fechaInicio: today,
+    });
+    const cfg = configFactory({ colchonTipo: 'meses', colchonMeses: 6 });
+    const cushion = calculateSafetyCushion([exp], cfg);
+    expect(cushion).toBeGreaterThan(0);
+  });
+});
+
+// ── calculateNetWorth ─────────────────────────────────────────────────────────
+describe('calculateNetWorth', () => {
+  it('equals total assets when there are no loans', () => {
+    const acc = accountFactory({ saldoInicial: 5000 });
+    expect(calculateNetWorth([], [acc])).toBe(5000);
+  });
+
+  it('subtracts outstanding loan principal from total assets', () => {
+    const acc = accountFactory({ saldoInicial: 20000 });
+    // Long-term future loan so principal is still outstanding
+    const futureStart = new Date();
+    futureStart.setMonth(futureStart.getMonth() + 1);
+    const loan = loanFactory({
+      capital: 10000,
+      tin: 3,
+      meses: 360,
+      fechaInicio: futureStart.toISOString().slice(0, 10),
+    });
+    const worth = calculateNetWorth([loan], [acc]);
+    expect(worth).toBeLessThan(20000);
+    expect(worth).toBeGreaterThan(9000); // sanity check: assets - full debt
+  });
+
+  it('ignores simulation loans', () => {
+    const acc = accountFactory({ saldoInicial: 5000 });
+    const loan = loanFactory({ capital: 3000, simulacion: true });
+    expect(calculateNetWorth([loan], [acc])).toBe(5000);
+  });
+});
+
+// ── monthlyExpenseAverage ─────────────────────────────────────────────────────
+describe('monthlyExpenseAverage', () => {
+  it('returns average monthly spend over the dashboard window', () => {
+    const acc = accountFactory({ saldoInicial: 50000 });
+    const exp = expenseFactory({
+      cuantia: 300,
+      tipo: 'gasto',
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+      diaPago: 'dia:1',
+      fechaInicio: '2024-01-01',
+      cuenta: acc._id,
+    });
+    const cfg = configFactory({ dashboardStart: '2024-01-01', dashboardEnd: '2024-12-31' });
+    const stmt = generateStatement([], [exp], [acc], cfg);
+    const avg = monthlyExpenseAverage(stmt, cfg);
+    expect(avg).toBeCloseTo(300, 0);
+  });
+});
+
+// ── detectCriticalPoints ──────────────────────────────────────────────────────
+describe('detectCriticalPoints', () => {
+  it('returns empty array when balance never drops below cushion', () => {
+    const acc = accountFactory({ saldoInicial: 10000 });
+    const cfg = configFactory({ dashboardStart: '2024-01-01', dashboardEnd: '2024-03-31' });
+    const stmt = generateStatement([], [], [acc], cfg);
+    expect(detectCriticalPoints(stmt, 1000)).toHaveLength(0);
+  });
+
+  it('flags saldo_negativo when balance crosses zero', () => {
+    const acc = accountFactory({ saldoInicial: 100 });
+    const exp = expenseFactory({
+      cuantia: 200,
+      tipo: 'gasto',
+      tipoFrecuencia: 'extraordinario',
+      fechaInicio: '2024-01-15',
+      cuenta: acc._id,
+    });
+    const cfg = configFactory({ dashboardStart: '2024-01-01', dashboardEnd: '2024-01-31' });
+    const stmt = generateStatement([], [exp], [acc], cfg);
+    const pts = detectCriticalPoints(stmt, 0);
+    expect(pts.some((p) => p.tipo === 'saldo_negativo')).toBe(true);
+  });
+
+  it('flags bajo_colchon when balance drops below cushion threshold', () => {
+    const acc = accountFactory({ saldoInicial: 500 });
+    const exp = expenseFactory({
+      cuantia: 200,
+      tipo: 'gasto',
+      tipoFrecuencia: 'extraordinario',
+      fechaInicio: '2024-01-15',
+      cuenta: acc._id,
+    });
+    const cfg = configFactory({ dashboardStart: '2024-01-01', dashboardEnd: '2024-01-31' });
+    const stmt = generateStatement([], [exp], [acc], cfg);
+    const pts = detectCriticalPoints(stmt, 400);
+    expect(pts.some((p) => p.tipo === 'bajo_colchon')).toBe(true);
+  });
+});
+
+// ── calculateFinancialScore ───────────────────────────────────────────────────
+describe('calculateFinancialScore', () => {
+  it('returns total in 0–100 range', () => {
+    const acc = accountFactory({ saldoInicial: 20000 });
+    const income = expenseFactory({
+      tipo: 'ingreso',
+      cuantia: 3000,
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+    });
+    const expense = expenseFactory({
+      tipo: 'gasto',
+      cuantia: 1000,
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+    });
+    const cfg = configFactory();
+    const stmt = generateStatement([], [income, expense], [acc], cfg);
+    const score = calculateFinancialScore(stmt, [], [income, expense], [acc], cfg);
+    expect(score.total).toBeGreaterThanOrEqual(0);
+    expect(score.total).toBeLessThanOrEqual(100);
+  });
+
+  it('returns Excelente label when savings rate is high and no debt', () => {
+    const acc = accountFactory({ saldoInicial: 50000 });
+    const income = expenseFactory({
+      tipo: 'ingreso',
+      cuantia: 5000,
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+    });
+    const expense = expenseFactory({
+      tipo: 'gasto',
+      cuantia: 500,
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+    });
+    const cfg = configFactory();
+    const stmt = generateStatement([], [income, expense], [acc], cfg);
+    const score = calculateFinancialScore(stmt, [], [income, expense], [acc], cfg);
+    expect(score.label).toBe('Excelente');
+    expect(score.total).toBeGreaterThanOrEqual(80);
+  });
+
+  it('exposes ingresosMes, gastosFijosMes, ahorroMes, cuotasMes', () => {
+    const income = expenseFactory({
+      tipo: 'ingreso',
+      cuantia: 3000,
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+    });
+    const expense = expenseFactory({
+      tipo: 'gasto',
+      cuantia: 800,
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+    });
+    const acc = accountFactory({ saldoInicial: 10000 });
+    const cfg = configFactory();
+    const stmt = generateStatement([], [income, expense], [acc], cfg);
+    const score = calculateFinancialScore(stmt, [], [income, expense], [acc], cfg);
+    expect(score.ingresosMes).toBe(3000);
+    expect(score.gastosFijosMes).toBe(800);
+    expect(score.cuotasMes).toBe(0);
   });
 });
