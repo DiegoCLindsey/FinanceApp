@@ -2,6 +2,8 @@ import './app.css';
 import './views/DashboardView';
 import './views/LoanListView';
 import './views/ExpenseListView';
+import './views/AccountsView';
+import './views/CalendarView';
 
 // ── Theme initialisation ──────────────────────────────────────────────────────
 type Theme = 'dark' | 'light' | 'system';
@@ -76,6 +78,8 @@ function renderView(viewId: string, viewLabel: string): string {
   if (viewId === 'dashboard') return '<fin-dashboard></fin-dashboard>';
   if (viewId === 'prestamos') return '<fin-loan-list></fin-loan-list>';
   if (viewId === 'gastos') return '<fin-expense-list></fin-expense-list>';
+  if (viewId === 'cuentas') return '<fin-account-list></fin-account-list>';
+  if (viewId === 'calendario') return '<fin-calendar></fin-calendar>';
   return renderWipView(viewLabel);
 }
 
