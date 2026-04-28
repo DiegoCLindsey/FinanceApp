@@ -42,6 +42,7 @@ export class LoanListView extends BaseComponent {
 
         ${active.length > 0 ? this._section('Activos', active, today) : ''}
         ${sims.length > 0 ? this._section('Simulaciones', sims, today) : ''}
+        ${active.length > 0 ? this._debtTimeline(active, today) : ''}
       </div>`;
   }
 
@@ -128,6 +129,114 @@ export class LoanListView extends BaseComponent {
             : ''
         }
       </div>`;
+  }
+  private _debtTimeline(loans: Loan[], today: string): string {
+    // Gather timeline data for each loan
+    type LoanBar = {
+      nombre: string;
+      start: string;
+      end: string;
+      color: string;
+      interestTotal: number;
+      cuota: number;
+    };
+    const COLORS = [
+      'var(--accent-blue)',
+      'var(--accent-yellow)',
+      'var(--accent-green)',
+      'var(--accent-red)',
+      '#c084fc',
+    ];
+
+    const bars: LoanBar[] = loans
+      .map((l, i) => {
+        const schedule = calculateLoanSchedule(l);
+        const regular = schedule.filter((r) => !r.esAmortizacion);
+        const end = regular.at(-1)?.fecha ?? today;
+        const s = loanSummary(l);
+        return {
+          nombre: l.nombre,
+          start: l.fechaInicio,
+          end,
+          color: COLORS[i % COLORS.length],
+          interestTotal: s.totalIntereses,
+          cuota: s.cuotaMensual,
+        };
+      })
+      .filter((b) => b.end >= today);
+
+    if (bars.length === 0) return '';
+
+    const timelineStart = today;
+    const timelineEnd = bars.reduce((max, b) => (b.end > max ? b.end : max), today);
+    const spanMs = new Date(timelineEnd).getTime() - new Date(timelineStart).getTime();
+
+    const leftPct = (date: string): number => {
+      const ms = Math.max(0, new Date(date).getTime() - new Date(timelineStart).getTime());
+      return spanMs > 0 ? (ms / spanMs) * 100 : 0;
+    };
+    const widthPct = (start: string, end: string): number => {
+      const s = Math.max(new Date(timelineStart).getTime(), new Date(start).getTime());
+      const e = new Date(end).getTime();
+      return spanMs > 0 ? (Math.max(0, e - s) / spanMs) * 100 : 0;
+    };
+
+    const totalDeuda = loans.reduce((s, l) => {
+      const schedule = calculateLoanSchedule(l);
+      const paid = schedule.filter((r) => !r.esAmortizacion && r.fecha <= today);
+      return s + (paid.length > 0 ? paid[paid.length - 1].capitalPendiente : l.capital);
+    }, 0);
+
+    const totalCuota = bars.reduce((s, b) => s + b.cuota, 0);
+    const totalIntereses = bars.reduce((s, b) => s + b.interestTotal, 0);
+
+    const barRows = bars
+      .map((b) => {
+        const left = leftPct(b.start).toFixed(1);
+        const width = widthPct(b.start, b.end).toFixed(1);
+        const [ey, em] = b.end.split('-');
+        return `
+          <div class="gantt-row">
+            <span class="gantt-row__label">${b.nombre}</span>
+            <div class="gantt-track">
+              <div class="gantt-bar" style="left:${left}%;width:${width}%;background:${b.color}"
+                title="${b.nombre} · hasta ${fmtDate(b.end)} · ${eur(b.cuota)}/mes"></div>
+              <div class="gantt-today"></div>
+            </div>
+            <span class="gantt-row__end">${em}/${ey.slice(2)}</span>
+          </div>`;
+      })
+      .join('');
+
+    const [fy, fm] = timelineEnd.split('-');
+
+    return `
+      <section class="debt-timeline">
+        <h2 class="loan-section__title">🎯 Timeline — Libre de deudas</h2>
+
+        <div class="debt-timeline__kpis">
+          <div class="debt-timeline__kpi">
+            <span class="debt-timeline__kpi-label">Deuda total actual</span>
+            <span class="debt-timeline__kpi-value" style="color:var(--accent-red)">${eur(totalDeuda)}</span>
+          </div>
+          <div class="debt-timeline__kpi">
+            <span class="debt-timeline__kpi-label">Cuota mensual total</span>
+            <span class="debt-timeline__kpi-value">${eur(totalCuota)}</span>
+          </div>
+          <div class="debt-timeline__kpi">
+            <span class="debt-timeline__kpi-label">Intereses totales restantes</span>
+            <span class="debt-timeline__kpi-value" style="color:var(--accent-red)">${eur(totalIntereses)}</span>
+          </div>
+          <div class="debt-timeline__kpi">
+            <span class="debt-timeline__kpi-label">Libre de deudas</span>
+            <span class="debt-timeline__kpi-value" style="color:var(--accent-green)">${fm}/${fy}</span>
+          </div>
+        </div>
+
+        <div class="gantt">
+          ${barRows}
+        </div>
+      </section>`;
   }
 }
 

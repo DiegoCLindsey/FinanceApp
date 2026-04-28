@@ -268,3 +268,32 @@ export interface FinancialScore {
   scoreTendencia: number;
   scoreDiversificacion: number;
 }
+
+// ── IRPF fiscal projection (#28) ─────────────────────────────────────────────
+export interface FiscalProjection {
+  baseImponible: number; // annual sum of sujetoIRPF income
+  cuotaIRPF: number; // tax from configured brackets
+  tipoMarginal: number; // highest bracket rate (%) applied
+  tipoEfectivo: number; // cuotaIRPF / baseImponible * 100
+  limiteDeduccionPension: number; // min(8000, 30% × rendimientos netos)
+  pensionContribuidoAnyo: number; // sum of pension contributions this year
+  margenDeduccionPension: number; // limiteDeduccionPension - pensionContribuidoAnyo
+  ahorroFiscalPension: number; // margen × tipoMarginal / 100
+}
+
+// ── Multi-scenario forecast (#25) ─────────────────────────────────────────────
+export interface ScenarioParams {
+  nombre: string;
+  color: string;
+  variacionIngresos: number; // % (e.g. +10 = incomes × 1.10)
+  variacionGastos: number; // % (e.g. +15 = expenses × 1.15)
+}
+
+export interface ScenarioPoint {
+  nombre: string;
+  color: string;
+  saldoA3M: number;
+  saldoA6M: number;
+  saldoA1A: number;
+  saldoA3A: number;
+}

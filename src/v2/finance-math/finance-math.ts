@@ -13,6 +13,9 @@ import type {
   FinancialScore,
   EmergencyFundStatus,
   BudgetProgress,
+  FiscalProjection,
+  ScenarioParams,
+  ScenarioPoint,
 } from '@/types/domain';
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -1142,4 +1145,120 @@ export function calculateFinancialScore(
     scoreTendencia,
     scoreDiversificacion,
   };
+}
+
+// ── IRPF fiscal projection (#28) ─────────────────────────────────────────────
+
+/** Projects annual IRPF liability and pension deduction opportunity. */
+export function calculateFiscalProjection(
+  expenses: Expense[],
+  accounts: Account[],
+  config: AppConfig
+): FiscalProjection {
+  const today = new Date().toISOString().slice(0, 10);
+  const yearStart = today.slice(0, 4) + '-01-01';
+  const yearEnd = today.slice(0, 4) + '-12-31';
+
+  // Annual income subject to IRPF from monthly recurring income
+  const irpfIncomes = expenses.filter((e) => e.activo && e.tipo === 'ingreso' && e.sujetoIRPF);
+  const events = projectExpenses(irpfIncomes, yearStart, yearEnd);
+  const baseImponible = events.reduce((s, e) => s + e.cuantia, 0);
+
+  const cuotaIRPF = calculateIRPF(baseImponible, config.tramos_irpf ?? []);
+
+  // Find the marginal bracket
+  const sorted = [...(config.tramos_irpf ?? [])].sort((a, b) => a[0] - b[0]);
+  let tipoMarginal = sorted[0]?.[1] ?? 0;
+  for (const [min, rate] of sorted) {
+    if (baseImponible >= min) tipoMarginal = rate;
+  }
+
+  const tipoEfectivo = baseImponible > 0 ? (cuotaIRPF / baseImponible) * 100 : 0;
+
+  // Pension deduction limit: min(8000, 30% of net income)
+  const limiteDeduccionPension = Math.min(8000, baseImponible * 0.3);
+
+  // Pension contributions made this year from pension fund accounts
+  const pensionContribuidoAnyo = accounts
+    .filter((a) => a.esFondoPension)
+    .reduce((s, a) => {
+      const anyo = today.slice(0, 4);
+      return (
+        s +
+        a.aportaciones.filter((p) => p.fecha.startsWith(anyo)).reduce((x, p) => x + p.cantidad, 0)
+      );
+    }, 0);
+
+  const margenDeduccionPension = Math.max(0, limiteDeduccionPension - pensionContribuidoAnyo);
+  const ahorroFiscalPension = (margenDeduccionPension * tipoMarginal) / 100;
+
+  return {
+    baseImponible,
+    cuotaIRPF,
+    tipoMarginal,
+    tipoEfectivo,
+    limiteDeduccionPension,
+    pensionContribuidoAnyo,
+    margenDeduccionPension,
+    ahorroFiscalPension,
+  };
+}
+
+// ── Multi-scenario forecast (#25) ─────────────────────────────────────────────
+
+/** Returns saldo at a given number of months ahead from the statement. */
+function saldoAtMonths(statement: StatementEntry[], months: number): number {
+  const target = new Date();
+  target.setMonth(target.getMonth() + months);
+  const key = target.toISOString().slice(0, 10);
+  const entries = statement.filter((e) => e.fecha <= key);
+  return entries.length > 0 ? entries[entries.length - 1].saldoAcum : 0;
+}
+
+/** Projects 3 scenarios (pessimistic/realistic/optimistic) and returns comparison table. */
+export function projectScenarios(
+  loans: Loan[],
+  expenses: Expense[],
+  accounts: Account[],
+  config: AppConfig,
+  scenarios?: ScenarioParams[]
+): ScenarioPoint[] {
+  const defaultScenarios: ScenarioParams[] = scenarios ?? [
+    { nombre: 'Pesimista', color: '#ff4d6d', variacionIngresos: -10, variacionGastos: 15 },
+    { nombre: 'Realista', color: '#4d9fff', variacionIngresos: 0, variacionGastos: 0 },
+    { nombre: 'Optimista', color: '#00e5a0', variacionIngresos: 10, variacionGastos: -10 },
+  ];
+
+  // Build a 3-year window
+  const today = new Date().toISOString().slice(0, 10);
+  const end3Y = new Date();
+  end3Y.setFullYear(end3Y.getFullYear() + 3);
+  const windowConfig = {
+    ...config,
+    dashboardStart: today,
+    dashboardEnd: end3Y.toISOString().slice(0, 10),
+  };
+
+  return defaultScenarios.map((sc) => {
+    // Apply income/expense multipliers
+    const modifiedExpenses: Expense[] = expenses.map((e) => {
+      if (e.tipo === 'ingreso') {
+        return { ...e, cuantia: e.cuantia * (1 + sc.variacionIngresos / 100) };
+      }
+      if (e.tipo === 'gasto') {
+        return { ...e, cuantia: e.cuantia * (1 + sc.variacionGastos / 100) };
+      }
+      return e;
+    });
+
+    const statement = generateStatement(loans, modifiedExpenses, accounts, windowConfig);
+    return {
+      nombre: sc.nombre,
+      color: sc.color,
+      saldoA3M: saldoAtMonths(statement, 3),
+      saldoA6M: saldoAtMonths(statement, 6),
+      saldoA1A: saldoAtMonths(statement, 12),
+      saldoA3A: saldoAtMonths(statement, 36),
+    };
+  });
 }

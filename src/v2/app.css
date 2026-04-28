@@ -1351,3 +1351,356 @@ body {
   background: color-mix(in srgb, var(--accent-yellow) 20%, transparent);
   color: var(--accent-yellow);
 }
+
+/* ── Debt-free Gantt timeline (#27) ──────────────────────────────────────── */
+
+.debt-timeline {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.debt-timeline__kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.debt-timeline__kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.debt-timeline__kpi-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.debt-timeline__kpi-value {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.gantt {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gantt-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gantt-row__label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gantt-track {
+  flex: 1;
+  height: 20px;
+  background: var(--bg-elevated);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+
+.gantt-bar {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 4px;
+  opacity: 0.85;
+  min-width: 2px;
+}
+
+.gantt-today {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--text-primary);
+  opacity: 0.4;
+}
+
+.gantt-row__end {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  min-width: 40px;
+  text-align: right;
+}
+
+/* ── IRPF view (#28) ─────────────────────────────────────────────────────── */
+
+.irpf {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.irpf-disclaimer {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--accent-yellow) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-yellow) 25%, transparent);
+  border-radius: 8px;
+}
+
+.irpf-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.irpf-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.irpf-section__title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.irpf-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-primary);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.irpf-row:last-child {
+  border-bottom: none;
+}
+
+.irpf-row--muted {
+  opacity: 0.45;
+}
+
+.irpf-row--total {
+  font-weight: 700;
+  font-size: 15px;
+  padding-top: 10px;
+  border-top: 2px solid var(--border);
+  border-bottom: none;
+}
+
+.irpf-action {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.irpf-action--pension {
+  border-color: color-mix(in srgb, var(--accent-green) 30%, transparent);
+}
+
+.irpf-action__icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.irpf-action__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.irpf-action__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.irpf-action__desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.irpf-action__saving {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent-green);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  align-self: center;
+}
+
+/* ── Multi-scenario forecast (#25) ───────────────────────────────────────── */
+
+.forecast {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.forecast-legend {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.forecast-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.forecast-legend__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.forecast-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.forecast-params {
+  margin-top: 8px;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.forecast-table-wrap {
+  overflow-x: auto;
+}
+
+.forecast-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.forecast-table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.forecast-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.forecast-table tr:last-child td {
+  border-bottom: none;
+}
+
+.forecast-scenario-name {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.forecast-cell {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-align: right;
+}
+
+.forecast-bars {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.forecast-bars__title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.forecast-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.forecast-bar-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  min-width: 90px;
+}
+
+.forecast-bar-track {
+  flex: 1;
+  height: 12px;
+  background: var(--bg-elevated);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.forecast-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.4s ease;
+}
+
+.forecast-bar-value {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  min-width: 100px;
+  text-align: right;
+  white-space: nowrap;
+}

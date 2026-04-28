@@ -4,6 +4,8 @@ import './views/LoanListView';
 import './views/ExpenseListView';
 import './views/AccountsView';
 import './views/CalendarView';
+import './views/IrpfView';
+import './views/ForecastView';
 
 // ── Theme initialisation ──────────────────────────────────────────────────────
 type Theme = 'dark' | 'light' | 'system';
@@ -30,6 +32,8 @@ const NAV_ITEMS = [
   { id: 'prestamos', label: '🏦 Préstamos' },
   { id: 'cuentas', label: '💳 Cuentas' },
   { id: 'calendario', label: '📅 Calendario' },
+  { id: 'previsiones', label: '🔮 Previsiones' },
+  { id: 'fiscal', label: '🧾 Fiscal IRPF' },
 ];
 
 // Derives the V1 root from the Vite base URL (/FinanceApp/v2/ → /FinanceApp/)
@@ -80,6 +84,8 @@ function renderView(viewId: string, viewLabel: string): string {
   if (viewId === 'gastos') return '<fin-expense-list></fin-expense-list>';
   if (viewId === 'cuentas') return '<fin-account-list></fin-account-list>';
   if (viewId === 'calendario') return '<fin-calendar></fin-calendar>';
+  if (viewId === 'previsiones') return '<fin-forecast></fin-forecast>';
+  if (viewId === 'fiscal') return '<fin-irpf></fin-irpf>';
   return renderWipView(viewLabel);
 }
 
