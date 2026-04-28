@@ -73,8 +73,11 @@ jobs:
             --exclude='.env*' \
             . _site/
 
-          # V2: Vite build output
-          cp -r dist/* _site/v2/
+          # V2: copy build output (use -a + trailing dot to avoid glob issues)
+          cp -a dist/. _site/v2/
+
+          echo "=== _site/v2/ contents ==="
+          ls -la _site/v2/
 
       # ── 7. Upload & deploy ────────────────────────────────────────────────────
       - name: Setup GitHub Pages
