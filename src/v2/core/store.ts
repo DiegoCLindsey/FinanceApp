@@ -1,4 +1,5 @@
 import type { AppState, AppConfig, Loan, Expense, Account, Goal } from '@/types/domain';
+import { hasV1Data, migrateFromV1 } from './v1Bridge';
 
 // ── Default state ─────────────────────────────────────────────────────────────
 
@@ -126,7 +127,25 @@ export class Store<T extends object> {
 
 export const STORAGE_KEY = 'financeapp_v2_state';
 
-export const appStore = new Store<AppState>(EMPTY_STATE, STORAGE_KEY);
+// On first launch: if no V2 state exists but V1 data does, migrate automatically.
+function resolveInitialState(): AppState {
+  try {
+    const existing = localStorage.getItem(STORAGE_KEY);
+    if (existing) return JSON.parse(existing) as AppState;
+    if (hasV1Data()) {
+      const migrated = migrateFromV1();
+      if (migrated) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+        return migrated;
+      }
+    }
+  } catch {
+    // localStorage unavailable (SSR / test) — fall through to empty state
+  }
+  return EMPTY_STATE;
+}
+
+export const appStore = new Store<AppState>(resolveInitialState(), STORAGE_KEY);
 
 // ── Typed selectors ──────────────────────────────────────────────────────────
 

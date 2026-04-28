@@ -1,4 +1,5 @@
 import './app.css';
+import './views/DashboardView';
 
 // ── Theme initialisation ──────────────────────────────────────────────────────
 type Theme = 'dark' | 'light' | 'system';
@@ -69,6 +70,11 @@ function getActiveView(): string {
   return location.hash.replace('#', '') || 'dashboard';
 }
 
+function renderView(viewId: string, viewLabel: string): string {
+  if (viewId === 'dashboard') return '<fin-dashboard></fin-dashboard>';
+  return renderWipView(viewLabel);
+}
+
 function render(): void {
   const view = getActiveView();
   const viewLabel = NAV_ITEMS.find((n) => n.id === view)?.label ?? view;
@@ -80,7 +86,7 @@ function render(): void {
     <div class="app-shell">
       ${renderSidebar(view)}
       <main class="main-content">
-        ${renderWipView(viewLabel)}
+        ${renderView(view, viewLabel)}
       </main>
     </div>
   `;

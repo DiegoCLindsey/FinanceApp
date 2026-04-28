@@ -171,25 +171,63 @@ export interface LoanSummary {
   capitalPendiente: number;
 }
 
-export interface ExtractoEntry {
+// ── Projected cash-flow events ───────────────────────────────────────────────
+export type EventSourceType =
+  | 'expense'
+  | 'loan'
+  | 'loan-amort'
+  | 'transfer-out'
+  | 'transfer-in'
+  | 'account-interest'
+  | 'pension-tax';
+
+export interface ProjectedEvent {
   fecha: string;
   concepto: string;
-  cuantia: number; // Negative = expense/outflow, positive = income/inflow
+  cuantia: number;
   tipo: TipoMovimiento;
+  tags: string[];
   cuenta: string;
-  cuentaDestino?: string;
-  tag?: string;
-  saldoProyectado?: number;
+  sourceId: string;
+  sourceType: EventSourceType;
+  simulacion?: boolean;
 }
 
+// StatementEntry adds running-balance fields after generateStatement()
+export interface StatementEntry extends ProjectedEvent {
+  delta: number; // Signed: positive = inflow, negative = outflow
+  saldoAcum: number; // Running total balance
+}
+
+// ── Monte Carlo ───────────────────────────────────────────────────────────────
+export interface MonteCarloPoint {
+  x: number; // Unix timestamp ms
+  p10: number;
+  p25: number;
+  p50: number;
+  p75: number;
+  p90: number;
+}
+
+// ── Critical points ──────────────────────────────────────────────────────────
+export type CriticalPointType = 'saldo_negativo' | 'bajo_colchon' | 'recuperacion_colchon';
+
+export interface CriticalPoint {
+  tipo: CriticalPointType;
+  fecha: string;
+  saldo: number;
+  mensaje: string;
+}
+
+// ── Financial health score ────────────────────────────────────────────────────
 export interface FinancialScore {
-  total: number; // 0–100
-  ratioGastosFijos: number;
-  ratioGastosBasicos: number;
-  tasaAhorro: number;
-  ratioDeuda: number;
-  coberturaColchon: number;
-  ratioLiquidez: number;
-  tendenciaAhorro: number;
-  diversificacionIngresos: number;
+  total: number; // 0–100 weighted score
+  label: 'Excelente' | 'Buena' | 'Regular' | 'Atención';
+  ratioGastosFijos: number; // % of income
+  tasaAhorro: number; // % of income saved
+  ratioDeuda: number; // % of income committed to loan payments
+  gastosFijosMes: number;
+  ahorroMes: number;
+  cuotasMes: number;
+  ingresosMes: number;
 }
