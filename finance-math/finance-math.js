@@ -481,6 +481,7 @@ const FinanceMath = (() => {
     allEvents = allEvents.concat(proyectarTransferencias(transferencias, config.dashboardStart, config.dashboardEnd, filtroAccounts));
     const intereses = proyectarInteresesCuentas(accounts, config.dashboardStart, config.dashboardEnd, filtroAccounts, allEvents);
     allEvents = allEvents.concat(intereses);
+    allEvents = allEvents.concat(proyectarRetencionesFiscales(expenses, config, config.dashboardStart, config.dashboardEnd, filtroAccounts));
     allEvents.sort((a,b) => a.fecha.localeCompare(b.fecha));
     const cuentasActivas = accounts.filter(a => a.activo && (!filtroAccounts || filtroAccounts.length===0 || filtroAccounts.includes(a._id)));
     return _aplicarSaldoRef(allEvents, cuentasActivas, config);
@@ -581,15 +582,15 @@ const FinanceMath = (() => {
   }
 
   // Proyectar retencion IRPF como gastos mensuales para ingresos de trabajo
-  function proyectarRetencionesFiscales(expenses, config, dateStart, dateEnd) {
+  function proyectarRetencionesFiscales(expenses, config, dateStart, dateEnd, filtroAccounts=null) {
     const events = [];
     const tramos = config.tramos_irpf || [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]];
     for (const exp of expenses) {
       if (!exp.activo || exp.tipo !== 'ingreso' || !exp.sujetoIRPF) continue;
       const salarioAnual = exp.cuantia * (exp.tipoFrecuencia==='mensual' ? 12 : 1);
       const ret = retencionMensual(salarioAnual, tramos);
-      const mockGastoFiscal = { ...exp, _id: exp._id+'_irpf', concepto: `Retención IRPF (${exp.concepto})`, tipo:'gasto', cuantia: ret, tags:['irpf','fiscal'], basico:false };
-      const evs = proyectarGastos([mockGastoFiscal], dateStart, dateEnd);
+      const mockGastoFiscal = { ...exp, _id: exp._id+'_irpf', concepto: `IRPF salario ${exp.concepto}`, tipo:'gasto', cuantia: ret, tags:['irpf','fiscal'], basico:false };
+      const evs = proyectarGastos([mockGastoFiscal], dateStart, dateEnd, filtroAccounts);
       events.push(...evs);
     }
     return events;
