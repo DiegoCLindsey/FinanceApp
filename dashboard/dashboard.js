@@ -45,10 +45,10 @@ const DashboardModule = (() => {
     destroyCharts();
     const view=document.getElementById('view-dashboard');
     const config=State.get('config');
-    const loans=State.get('loans'), expenses=State.get('expenses'), accounts=State.get('accounts');
+    const loans=State.get('loans'), expenses=State.get('expenses'), accounts=State.get('accounts'), nominas=State.get('nominas')||[];
 
     // Apply inflation and IRPF on top of base extracto
-    let extracto=FinanceMath.generarExtracto(loans,expenses,accounts,config, filtroAccounts.length>0?filtroAccounts:null);
+    let extracto=FinanceMath.generarExtracto(loans,expenses,accounts,config, filtroAccounts.length>0?filtroAccounts:null, nominas);
     const inflGlobal = config.inflacionGlobal||0;
     if (inflGlobal > 0 || expenses.some(e=>e.inflacion>0)) {
       // Re-run with inflated cuantias — apply factor to gasto events from expense source
@@ -86,7 +86,7 @@ const DashboardModule = (() => {
     const cfgMesActual = { ...config, dashboardStart: mesIni, dashboardEnd: mesFin };
     const extractoMesActual = FinanceMath.generarExtracto(
       loans, expenses, accounts, cfgMesActual,
-      filtroAccounts.length > 0 ? filtroAccounts : null
+      filtroAccounts.length > 0 ? filtroAccounts : null, nominas
     );
     // Mismo filtro que el gráfico breakdown: sin transferencias
     const evsMesActual = extractoMesActual.filter(e =>

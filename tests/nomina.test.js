@@ -249,6 +249,166 @@ test('net cash per month = cuantia - IRPF retention', () => {
   assert.ok(net < INCOME_IRPF.cuantia, 'net salary should be less than gross');
 });
 
+// ── Tests: proyectarNominas ───────────────────────────────────────────────────
+console.log('\nproyectarNominas');
+
+const _EXTRA_PAGA_MONTHS = [5, 11, 2, 8];
+
+function proyectarNominas(nominas, config, dateStart, dateEnd, filtroAccounts=null) {
+  const events = [];
+  const tramos = config.tramos_irpf || TRAMOS_DEFAULT;
+  const dS = new Date(dateStart+'T00:00:00');
+  const dE = new Date(dateEnd+'T00:00:00');
+  for (const nom of nominas) {
+    if (!nom.activo) continue;
+    const cuenta = nom.cuenta || 'default';
+    if (filtroAccounts && filtroAccounts.length > 0 && !filtroAccounts.includes(cuenta)) continue;
+    const brutoAnual = nom.bruto || 0;
+    const nPagas = Math.max(1, nom.nPagas || 12);
+    const brutoPorPaga = brutoAnual / nPagas;
+    const irpfAnual = nom.irpfModo === 'manual'
+      ? brutoAnual * ((nom.irpfPct || 0) / 100)
+      : calcIRPF(brutoAnual, tramos);
+    const irpfPorPaga = irpfAnual / nPagas;
+    const ingresoPorPaga = nom.representacion === 'simplificado'
+      ? (brutoPorPaga - irpfPorPaga) : brutoPorPaga;
+    const dI = new Date((nom.fechaInicio || dateStart)+'T00:00:00');
+    const dF = nom.fechaFin ? new Date(nom.fechaFin+'T00:00:00') : dE;
+    const pushPago = (fecha) => {
+      events.push({ fecha, concepto: nom.nombre, cuantia: ingresoPorPaga, tipo: 'ingreso', cuenta, tags: nom.tags||[], sourceId: nom._id, sourceType: 'nomina' });
+      if (nom.representacion === 'detallado' && irpfPorPaga > 0) {
+        events.push({ fecha, concepto: `IRPF ${nom.nombre}`, cuantia: irpfPorPaga, tipo: 'gasto', cuenta, tags: ['irpf','fiscal'], sourceId: nom._id+'_irpf', sourceType: 'nomina' });
+      }
+    };
+    if (nPagas <= 12) {
+      const step = nPagas === 12 ? 1 : Math.round(12 / nPagas);
+      const dayOfMonth = dI.getDate();
+      let year = dI.getFullYear(), month = dI.getMonth();
+      for (let iter = 0; iter < 300; iter++) {
+        const lastDay = new Date(year, month+1, 0).getDate();
+        const d = new Date(year, month, Math.min(dayOfMonth, lastDay));
+        if (d > dE || d > dF) break;
+        if (d >= dS && d >= dI) pushPago(d.toISOString().slice(0,10));
+        month += step;
+        if (month >= 12) { year += Math.floor(month/12); month = month % 12; }
+      }
+    } else {
+      const nExtra = nPagas - 12;
+      const dayOfMonth = dI.getDate();
+      let year = dI.getFullYear(), month = dI.getMonth();
+      for (let iter = 0; iter < 300; iter++) {
+        const lastDay = new Date(year, month+1, 0).getDate();
+        const d = new Date(year, month, Math.min(dayOfMonth, lastDay));
+        if (d > dE || d > dF) break;
+        if (d >= dS && d >= dI) pushPago(d.toISOString().slice(0,10));
+        month++;
+        if (month >= 12) { year++; month = 0; }
+      }
+      const yStart = Math.max(dI.getFullYear(), dS.getFullYear());
+      const yEnd   = Math.min((nom.fechaFin ? dF : dE).getFullYear(), dE.getFullYear());
+      for (let y = yStart; y <= yEnd; y++) {
+        for (const em of _EXTRA_PAGA_MONTHS.slice(0, nExtra)) {
+          const d = new Date(y, em, 15);
+          if (d >= dS && d <= dE && d >= dI && d <= dF) pushPago(d.toISOString().slice(0,10));
+        }
+      }
+    }
+  }
+  return events;
+}
+
+const NOM_12 = {
+  _id: 'n1', activo: true, nombre: 'Empresa', bruto: 36000, nPagas: 12,
+  irpfModo: 'auto', irpfPct: 0, representacion: 'detallado',
+  fechaInicio: '2026-01-01', fechaFin: null, cuenta: 'default', tags: ['nomina']
+};
+const NOM_14 = { ...NOM_12, _id: 'n2', nPagas: 14 };
+const NOM_SIMPLE = { ...NOM_12, _id: 'n3', representacion: 'simplificado' };
+const NOM_MANUAL = { ...NOM_12, _id: 'n4', irpfModo: 'manual', irpfPct: 20 };
+
+test('12-paga nómina generates 12 income events per year', () => {
+  const evs = proyectarNominas([NOM_12], BASE_CONFIG, DATE_START, DATE_END).filter(e=>e.tipo==='ingreso');
+  assert.strictEqual(evs.length, 12);
+});
+
+test('12-paga detallado generates 12 IRPF expense events', () => {
+  const evs = proyectarNominas([NOM_12], BASE_CONFIG, DATE_START, DATE_END).filter(e=>e.tipo==='gasto');
+  assert.strictEqual(evs.length, 12);
+});
+
+test('12-paga income amount = bruto / 12', () => {
+  const irpfAnual = calcIRPF(NOM_12.bruto, TRAMOS_DEFAULT);
+  const expected = NOM_12.bruto / 12;
+  const evs = proyectarNominas([NOM_12], BASE_CONFIG, DATE_START, DATE_END).filter(e=>e.tipo==='ingreso');
+  assert.ok(approxEq(evs[0].cuantia, expected), `expected ${expected}, got ${evs[0].cuantia}`);
+});
+
+test('14-paga nómina generates 14 income events per year (12 monthly + 2 extra)', () => {
+  const evs = proyectarNominas([NOM_14], BASE_CONFIG, DATE_START, DATE_END).filter(e=>e.tipo==='ingreso');
+  assert.strictEqual(evs.length, 14);
+});
+
+test('14-paga income amount = bruto / 14 per event', () => {
+  const expected = NOM_14.bruto / 14;
+  const evs = proyectarNominas([NOM_14], BASE_CONFIG, DATE_START, DATE_END).filter(e=>e.tipo==='ingreso');
+  assert.ok(evs.every(e => approxEq(e.cuantia, expected)), `expected ${expected}, got ${evs[0]?.cuantia}`);
+});
+
+test('simplificado mode: income amount = neto per paga, no IRPF expense', () => {
+  const irpfAnual = calcIRPF(NOM_SIMPLE.bruto, TRAMOS_DEFAULT);
+  const expectedNeto = (NOM_SIMPLE.bruto - irpfAnual) / 12;
+  const evs = proyectarNominas([NOM_SIMPLE], BASE_CONFIG, DATE_START, DATE_END);
+  const ingresos = evs.filter(e => e.tipo === 'ingreso');
+  const gastos   = evs.filter(e => e.tipo === 'gasto');
+  assert.ok(approxEq(ingresos[0].cuantia, expectedNeto), `expected ${expectedNeto}, got ${ingresos[0].cuantia}`);
+  assert.strictEqual(gastos.length, 0, 'simplificado should not emit IRPF expenses');
+});
+
+test('manual IRPF mode uses specified percentage', () => {
+  const expectedIRPF = (NOM_MANUAL.bruto * 0.20) / 12;
+  const evs = proyectarNominas([NOM_MANUAL], BASE_CONFIG, DATE_START, DATE_END).filter(e=>e.tipo==='gasto');
+  assert.ok(approxEq(evs[0].cuantia, expectedIRPF), `expected ${expectedIRPF}, got ${evs[0].cuantia}`);
+});
+
+test('inactive nómina generates no events', () => {
+  const evs = proyectarNominas([{...NOM_12, activo:false}], BASE_CONFIG, DATE_START, DATE_END);
+  assert.strictEqual(evs.length, 0);
+});
+
+test('filtroAccounts excludes nómina on different account', () => {
+  const evs = proyectarNominas([NOM_12], BASE_CONFIG, DATE_START, DATE_END, ['other']);
+  assert.strictEqual(evs.length, 0);
+});
+
+test('nómina outside date range generates no events', () => {
+  const evs = proyectarNominas([{...NOM_12, fechaInicio:'2027-01-01'}], BASE_CONFIG, DATE_START, DATE_END);
+  assert.strictEqual(evs.length, 0);
+});
+
+test('nómina with fechaFin stops generating events after it', () => {
+  const nom = { ...NOM_12, fechaFin: '2026-06-30' };
+  const evs = proyectarNominas([nom], BASE_CONFIG, DATE_START, DATE_END).filter(e=>e.tipo==='ingreso');
+  assert.ok(evs.length <= 6, `expected ≤6, got ${evs.length}`);
+  assert.ok(evs.every(e => e.fecha <= '2026-06-30'));
+});
+
+test('detallado IRPF expense has irpf tag', () => {
+  const evs = proyectarNominas([NOM_12], BASE_CONFIG, DATE_START, DATE_END).filter(e=>e.tipo==='gasto');
+  assert.ok(evs.every(e => e.tags.includes('irpf')));
+});
+
+test('total annual income from 12-paga = bruto (gross)', () => {
+  const evs = proyectarNominas([NOM_12], BASE_CONFIG, DATE_START, DATE_END).filter(e=>e.tipo==='ingreso');
+  const total = evs.reduce((s,e)=>s+e.cuantia, 0);
+  assert.ok(approxEq(total, NOM_12.bruto, 1), `expected ${NOM_12.bruto}, got ${total}`);
+});
+
+test('total annual income from 14-paga = bruto (gross)', () => {
+  const evs = proyectarNominas([NOM_14], BASE_CONFIG, DATE_START, DATE_END).filter(e=>e.tipo==='ingreso');
+  const total = evs.reduce((s,e)=>s+e.cuantia, 0);
+  assert.ok(approxEq(total, NOM_14.bruto, 1), `expected ${NOM_14.bruto}, got ${total}`);
+});
+
 // ── Summary ───────────────────────────────────────────────────────────────────
 console.log(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

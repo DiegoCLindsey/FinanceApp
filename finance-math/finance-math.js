@@ -472,7 +472,85 @@ const FinanceMath = (() => {
     return _aplicarSaldoRef([...events].sort((a,b) => a.fecha.localeCompare(b.fecha)), cuentasActivas, config);
   }
 
-  function generarExtracto(loans, expenses, accounts, config, filtroAccounts=null) {
+  // Extra paga months for nPagas > 12: June(5), December(11), March(2), September(8)
+  const _EXTRA_PAGA_MONTHS = [5, 11, 2, 8];
+
+  function proyectarNominas(nominas, config, dateStart, dateEnd, filtroAccounts=null) {
+    const events = [];
+    const tramos = config.tramos_irpf || [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]];
+    const dS = new Date(dateStart+'T00:00:00');
+    const dE = new Date(dateEnd+'T00:00:00');
+
+    for (const nom of nominas) {
+      if (!nom.activo) continue;
+      const cuenta = nom.cuenta || 'default';
+      if (filtroAccounts && filtroAccounts.length > 0 && !filtroAccounts.includes(cuenta)) continue;
+
+      const brutoAnual = nom.bruto || 0;
+      const nPagas = Math.max(1, nom.nPagas || 12);
+      const brutoPorPaga = brutoAnual / nPagas;
+
+      const irpfAnual = nom.irpfModo === 'manual'
+        ? brutoAnual * ((nom.irpfPct || 0) / 100)
+        : calcIRPF(brutoAnual, tramos);
+      const irpfPorPaga = irpfAnual / nPagas;
+
+      // In simplificado mode: show net; in detallado: show gross + separate IRPF expense
+      const ingresoPorPaga = nom.representacion === 'simplificado'
+        ? (brutoPorPaga - irpfPorPaga)
+        : brutoPorPaga;
+
+      const dI = new Date((nom.fechaInicio || dateStart)+'T00:00:00');
+      const dF = nom.fechaFin ? new Date(nom.fechaFin+'T00:00:00') : dE;
+
+      const pushPago = (fecha) => {
+        events.push({ fecha, concepto: nom.nombre, cuantia: ingresoPorPaga, tipo: 'ingreso', cuenta, tags: nom.tags||[], sourceId: nom._id, sourceType: 'nomina' });
+        if (nom.representacion === 'detallado' && irpfPorPaga > 0) {
+          events.push({ fecha, concepto: `IRPF ${nom.nombre}`, cuantia: irpfPorPaga, tipo: 'gasto', cuenta, tags: ['irpf','fiscal'], sourceId: nom._id+'_irpf', sourceType: 'nomina' });
+        }
+      };
+
+      if (nPagas <= 12) {
+        // Equally-spaced payments: step = floor(12/nPagas) months
+        const step = nPagas === 12 ? 1 : Math.round(12 / nPagas);
+        const dayOfMonth = dI.getDate();
+        let year = dI.getFullYear(), month = dI.getMonth();
+        for (let iter = 0; iter < 300; iter++) {
+          const lastDay = new Date(year, month+1, 0).getDate();
+          const d = new Date(year, month, Math.min(dayOfMonth, lastDay));
+          if (d > dE || d > dF) break;
+          if (d >= dS && d >= dI) pushPago(d.toISOString().slice(0,10));
+          month += step;
+          if (month >= 12) { year += Math.floor(month/12); month = month % 12; }
+        }
+      } else {
+        // 12 regular monthly payments + (nPagas-12) additional extra pagas
+        const nExtra = nPagas - 12;
+        const dayOfMonth = dI.getDate();
+        let year = dI.getFullYear(), month = dI.getMonth();
+        for (let iter = 0; iter < 300; iter++) {
+          const lastDay = new Date(year, month+1, 0).getDate();
+          const d = new Date(year, month, Math.min(dayOfMonth, lastDay));
+          if (d > dE || d > dF) break;
+          if (d >= dS && d >= dI) pushPago(d.toISOString().slice(0,10));
+          month++;
+          if (month >= 12) { year++; month = 0; }
+        }
+        // Extra pagas on day 15 of their designated months (in addition to regular)
+        const yStart = Math.max(dI.getFullYear(), dS.getFullYear());
+        const yEnd   = Math.min((nom.fechaFin ? dF : dE).getFullYear(), dE.getFullYear());
+        for (let y = yStart; y <= yEnd; y++) {
+          for (const em of _EXTRA_PAGA_MONTHS.slice(0, nExtra)) {
+            const d = new Date(y, em, 15);
+            if (d >= dS && d <= dE && d >= dI && d <= dF) pushPago(d.toISOString().slice(0,10));
+          }
+        }
+      }
+    }
+    return events;
+  }
+
+  function generarExtracto(loans, expenses, accounts, config, filtroAccounts=null, nominas=[]) {
     const gastos = expenses.filter(e=>e.tipo!=='transferencia');
     const transferencias = expenses.filter(e=>e.tipo==='transferencia');
     let allEvents = [];
@@ -482,6 +560,7 @@ const FinanceMath = (() => {
     const intereses = proyectarInteresesCuentas(accounts, config.dashboardStart, config.dashboardEnd, filtroAccounts, allEvents);
     allEvents = allEvents.concat(intereses);
     allEvents = allEvents.concat(proyectarRetencionesFiscales(expenses, config, config.dashboardStart, config.dashboardEnd, filtroAccounts));
+    allEvents = allEvents.concat(proyectarNominas(nominas, config, config.dashboardStart, config.dashboardEnd, filtroAccounts));
     allEvents.sort((a,b) => a.fecha.localeCompare(b.fecha));
     const cuentasActivas = accounts.filter(a => a.activo && (!filtroAccounts || filtroAccounts.length===0 || filtroAccounts.includes(a._id)));
     return _aplicarSaldoRef(allEvents, cuentasActivas, config);
@@ -1151,6 +1230,6 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcFondosPension, calcImpuestoPension, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcFondosPension, calcImpuestoPension, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 
