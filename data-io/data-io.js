@@ -4,15 +4,18 @@ const DataIO = (() => {
   // ── Export ──────────────────────────────────────────────────────────────────
   function exportJSON() {
     const snapshot = {
-      _v: 1,
+      _v: 2,
       _app: 'financeapp',
       _ts: new Date().toISOString(),
-      loans:     State.get('loans')     || [],
-      expenses:  State.get('expenses')  || [],
-      accounts:  State.get('accounts')  || [],
-      history:   State.get('history')   || [],
-      goals:     State.get('goals')     || [],
-      config:    State.get('config')    || {},
+      loans:      State.get('loans')      || [],
+      expenses:   State.get('expenses')   || [],
+      accounts:   State.get('accounts')   || [],
+      history:    State.get('history')    || [],
+      goals:      State.get('goals')      || [],
+      nominas:    State.get('nominas')    || [],
+      inflacion:  State.get('inflacion')  || [],
+      escenarios: State.get('escenarios') || [],
+      config:     State.get('config')     || {},
     };
     const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
@@ -45,12 +48,15 @@ const DataIO = (() => {
       UI.toast('Archivo inválido', 'err'); return;
     }
     // Accept both raw state dump and versioned backup
-    const loans     = data.loans     || [];
-    const expenses  = data.expenses  || [];
-    const accounts  = data.accounts  || [];
-    const history   = data.history   || [];
-    const goals     = data.goals     || [];
-    const config    = data.config    || {};
+    const loans      = data.loans      || [];
+    const expenses   = data.expenses   || [];
+    const accounts   = data.accounts   || [];
+    const history    = data.history    || [];
+    const goals      = data.goals      || [];
+    const nominas    = data.nominas    || [];
+    const inflacion  = data.inflacion  || [];
+    const escenarios = data.escenarios || [];
+    const config     = data.config     || {};
 
     if (!Array.isArray(loans) || !Array.isArray(expenses)) {
       UI.toast('Formato de backup no reconocido', 'err'); return;
@@ -63,12 +69,15 @@ const DataIO = (() => {
     }
 
     // Apply to state
-    State.set('loans',     loans);
-    State.set('expenses',  expenses);
-    State.set('accounts',  accounts);
-    State.set('history',   history);
-    State.set('goals',     goals);
-    State.set('config',    config);
+    State.set('loans',      loans);
+    State.set('expenses',   expenses);
+    State.set('accounts',   accounts);
+    State.set('history',    history);
+    State.set('goals',      goals);
+    State.set('nominas',    nominas);
+    State.set('inflacion',  inflacion);
+    State.set('escenarios', escenarios);
+    State.set('config',     config);
 
     // Run migrations
     State.ensureDefaultAccount();
