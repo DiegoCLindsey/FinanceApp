@@ -8,9 +8,10 @@ const State = (() => {
   const DEFAULT_ACCOUNT = { _id: 'default', nombre: 'Default', saldo: 0, saldoInicial: 0, fechaInicialSaldo: new Date().toISOString().slice(0,10), interes: 0, periodoCobro: 'mensual', descripcion: 'Cuenta principal', activo: true, simulacion: false, historicoSaldos: [], esCuentaPrincipal: true };
   const DEFAULT_STATE = {
     loans: [], expenses: [], accounts: [DEFAULT_ACCOUNT], history: [],
-    nominas: [],   // [{_id,nombre,bruto,nPagas,irpfModo,irpfPct,representacion,fechaInicio,fechaFin,cuenta,activo,tags}]
-    goals: [],     // [{_id,nombre,targetAmount,targetDate,cuentaId,color}]
-    inflacion: [], // [{_id, year, tasa}] — tasas anuales por periodo
+    nominas: [],    // [{_id,nombre,bruto,nPagas,irpfModo,irpfPct,representacion,fechaInicio,fechaFin,cuenta,activo,tags}]
+    goals: [],      // [{_id,nombre,targetAmount,targetDate,cuentaId,color}]
+    inflacion: [],  // [{_id, year, tasa}] — tasas anuales por periodo
+    escenarios: [], // [{_id,nombre,color,descripcion,fechaFin,inversiones:[]}]
     config: {
       dashboardStart: new Date().toISOString().slice(0,10),
       dashboardEnd: new Date(Date.now() + 365*24*60*60*1000).toISOString().slice(0,10),
@@ -24,6 +25,7 @@ const State = (() => {
       showExecSummary: true,
       colchonTipo: 'meses',   // 'meses' | 'fijo'
       colchonFijo: 0,         // € cuando colchonTipo='fijo'
+      escenarioActivo: null,  // _id del escenario activo o null (realidad base)
     }
   };
   let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -58,23 +60,31 @@ const State = (() => {
       colchonTipo:'meses', colchonFijo:0,
       fechaReferencia: new Date().toISOString().slice(0,10),
       usarInflacion: false,
+      escenarioActivo: null,
     };
     for (const [k,v] of Object.entries(cfgDefs)) {
       if (state.config[k] === undefined) state.config[k] = v;
     }
     // Migrate: ensure expenses have basico, varianza and historialPrecios fields
-    state.expenses = (state.expenses || []).map(e => ({ basico: false, varianza: 0, inflacion: 0, historialPrecios: [], ...e }));
+    state.expenses = (state.expenses || []).map(e => ({ basico: false, varianza: 0, inflacion: 0, historialPrecios: [], escenarioId: null, ...e }));
     // Migrate: ensure loans have new fields
-    state.loans = (state.loans || []).map(l => ({ tipoTasa: 'fijo', mostrarFechaFinEnDashboard: true, ...l }));
+    state.loans = (state.loans || []).map(l => ({
+      tipoTasa: 'fijo', mostrarFechaFinEnDashboard: true, escenarioId: null,
+      ...l,
+      amortizaciones: (l.amortizaciones||[]).map(a => ({ escenarioId: null, ...a })),
+    }));
     // Ensure new collections
     if (!Array.isArray(state.goals)) state.goals = [];
     if (!Array.isArray(state.nominas)) state.nominas = [];
     if (!Array.isArray(state.inflacion)) state.inflacion = [];
+    if (!Array.isArray(state.escenarios)) state.escenarios = [];
+    // Migrate escenarios: ensure inversiones array
+    state.escenarios = state.escenarios.map(e => ({ inversiones: [], ...e }));
     // Migrate nominas: ensure required fields including group and IPC fields
     state.nominas = state.nominas.map(n => ({
       activo: true, nPagas: 12, irpfModo: 'auto', irpfPct: 0,
       representacion: 'detallado', tags: [], fechaFin: null, cuenta: 'default',
-      grupoNomina: '', mesActualizacionIPC: null, varianza: 0,
+      grupoNomina: '', mesActualizacionIPC: null, varianza: 0, escenarioId: null,
       ...n
     }));
     // Migrate goals: add new fields if missing

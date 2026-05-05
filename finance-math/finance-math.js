@@ -1401,6 +1401,84 @@ const FinanceMath = (() => {
     return { resultados, saldoBase, fechaObjetivo: fechaObj };
   }
 
+  // ── Escenarios ───────────────────────────────────────────────────────────────
+  // Filtra loans/expenses/nominas según el escenario activo.
+  // null = modo base: solo items sin escenarioId (realidad).
+  // 'esc_X' = modo escenario: base + items del escenario X.
+  function filtrarPorEscenario(loans, expenses, nominas, escenarioActivo) {
+    if (!escenarioActivo) {
+      return {
+        loans: loans
+          .filter(l => !l.escenarioId)
+          .map(l => ({ ...l, amortizaciones: (l.amortizaciones||[]).filter(a => !a.escenarioId) })),
+        expenses: expenses.filter(e => !e.escenarioId),
+        nominas:  nominas.filter(n => !n.escenarioId),
+      };
+    }
+    return {
+      loans: loans
+        .filter(l => !l.escenarioId || l.escenarioId === escenarioActivo)
+        .map(l => ({
+          ...l,
+          amortizaciones: (l.amortizaciones||[]).filter(a => !a.escenarioId || a.escenarioId === escenarioActivo),
+        })),
+      expenses: expenses.filter(e => !e.escenarioId || e.escenarioId === escenarioActivo),
+      nominas:  nominas.filter(n => !n.escenarioId || n.escenarioId === escenarioActivo),
+    };
+  }
+
+  // Proyecta inversiones de un escenario como eventos de ingresos/gastos.
+  // inv.tipo: 'capital_inicial' (capital fijo que genera intereses)
+  //           'aportacion_periodica' (aportación mensual + interés compuesto sobre acumulado)
+  function proyectarInversiones(inversiones, dateStart, dateEnd) {
+    const events = [];
+    for (const inv of (inversiones || [])) {
+      const cuenta = inv.cuenta || 'default';
+      const effStart = (inv.inicio && inv.inicio > dateStart) ? inv.inicio : dateStart;
+      const effEnd   = (inv.fin   && inv.fin   < dateEnd)    ? inv.fin   : dateEnd;
+      if (effStart > effEnd) continue;
+      const tirMensual = Math.pow(1 + (inv.tir || 0) / 100, 1 / 12) - 1;
+      let d = new Date(effStart + 'T00:00:00');
+      d = new Date(d.getFullYear(), d.getMonth(), 15);
+      const dFin = new Date(effEnd + 'T00:00:00');
+
+      if (inv.tipo === 'capital_inicial') {
+        let saldo = inv.importe || 0;
+        while (d <= dFin) {
+          const interes = saldo * tirMensual;
+          saldo += interes;
+          if (interes >= 0.01) events.push({
+            fecha: d.toISOString().slice(0,10),
+            concepto: inv.nombre || 'Rendimiento inversión',
+            cuantia: interes, tipo: 'ingreso', tags: ['inversion'],
+            cuenta, sourceType: 'inversion', sourceId: inv._id,
+          });
+          d = new Date(d.getFullYear(), d.getMonth()+1, 15);
+        }
+      } else if (inv.tipo === 'aportacion_periodica') {
+        let saldo = 0;
+        while (d <= dFin) {
+          const fechaStr = d.toISOString().slice(0,10);
+          events.push({
+            fecha: fechaStr, concepto: inv.nombre || 'Aportación periódica',
+            cuantia: inv.importe || 0, tipo: 'gasto', tags: ['inversion'],
+            cuenta, sourceType: 'inversion-aportacion', sourceId: inv._id,
+          });
+          saldo += inv.importe || 0;
+          const interes = saldo * tirMensual;
+          saldo += interes;
+          if (interes >= 0.01) events.push({
+            fecha: fechaStr, concepto: (inv.nombre || 'Inversión') + ' – rendimiento',
+            cuantia: interes, tipo: 'ingreso', tags: ['inversion'],
+            cuenta, sourceType: 'inversion-rendimiento', sourceId: inv._id,
+          });
+          d = new Date(d.getFullYear(), d.getMonth()+1, 15);
+        }
+      }
+    }
+    return events;
+  }
+
   function calcDesviacion(extracto, accounts) {
     const today = new Date().toISOString().slice(0,10);
 
@@ -1449,6 +1527,6 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcFondosPension, calcImpuestoPension, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcFondosPension, calcImpuestoPension, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 

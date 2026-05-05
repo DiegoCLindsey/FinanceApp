@@ -45,7 +45,14 @@ const DashboardModule = (() => {
     destroyCharts();
     const view=document.getElementById('view-dashboard');
     const config=State.get('config');
-    const loans=State.get('loans'), expenses=State.get('expenses'), accounts=State.get('accounts'), nominas=State.get('nominas')||[];
+    const allLoans=State.get('loans'), allExpenses=State.get('expenses'), accounts=State.get('accounts'), allNominas=State.get('nominas')||[];
+
+    // Filter by active scenario
+    const escenarioActivo = config.escenarioActivo || null;
+    const filtered = FinanceMath.filtrarPorEscenario(allLoans, allExpenses, allNominas, escenarioActivo);
+    const loans    = filtered.loans;
+    const expenses = filtered.expenses;
+    const nominas  = filtered.nominas;
 
     // Apply inflation on top of base extracto
     const inflGlobal    = config.inflacionGlobal||0;
@@ -54,6 +61,15 @@ const DashboardModule = (() => {
     // When usarInflacion is active, generarExtracto already includes inflation events;
     // only apply the legacy per-expense inflation factor when the module is NOT active.
     let extracto=FinanceMath.generarExtracto(loans,expenses,accounts,config, filtroAccounts.length>0?filtroAccounts:null, nominas, inflPeriodos);
+    // Add investments from active scenario
+    if (escenarioActivo) {
+      const esc = (State.get('escenarios')||[]).find(e=>e._id===escenarioActivo);
+      if (esc && esc.inversiones && esc.inversiones.length > 0) {
+        const invEvents = FinanceMath.proyectarInversiones(esc.inversiones, config.dashboardStart, config.dashboardEnd);
+        const combined  = [...extracto, ...invEvents].sort((a,b)=>a.fecha.localeCompare(b.fecha));
+        extracto = FinanceMath.recomputarSaldoAcum(combined, accounts, config, filtroAccounts.length>0?filtroAccounts:null);
+      }
+    }
     if (!usarInflacion) {
       const debeInflar = inflGlobal > 0 || expenses.some(e=>e.inflacion>0);
       if (debeInflar) {
@@ -197,6 +213,19 @@ const DashboardModule = (() => {
       <div class="page-header">
         <h1 class="page-title">Cuadro de <span>Mando</span></h1>
       </div>
+
+      ${escenarioActivo ? (() => {
+        const esc = (State.get('escenarios')||[]).find(e=>e._id===escenarioActivo);
+        const color = esc?.color || '#6366f1';
+        return `<div class="card mb-14" style="padding:10px 16px;background:rgba(99,102,241,0.07);border:1px solid ${color}44;display:flex;align-items:center;gap:12px">
+          <span style="font-size:16px">🔭</span>
+          <div style="flex:1;font-size:13px">
+            <span style="font-weight:600;color:${color}">Escenario: ${esc?.nombre||escenarioActivo}</span>
+            ${esc?.descripcion ? `<span style="color:var(--text3);margin-left:8px">${esc.descripcion}</span>` : ''}
+          </div>
+          <button class="btn-secondary btn-sm" onclick="EscenariosModule.desactivar();Router.navigate('dashboard')">✕ Salir</button>
+        </div>`;
+      })() : ''}
 
       <!-- Config (colapsable) -->
       <div class="card" style="margin-bottom:14px">
