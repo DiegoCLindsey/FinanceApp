@@ -49,6 +49,47 @@ const AccountsModule = (() => {
     const saldoActual = lastHist ? lastHist.saldo : (acc.saldo||0);
     const pension = acc.esFondoPension ? FinanceMath.calcFondosPension(acc) : null;
 
+    // Remuneration summary: projected interest for the dashboard period
+    const remuneracionBlock = (() => {
+      if (!acc.activo || !acc.interes || acc.interes <= 0) return '';
+      const config = State.get('config');
+      const usarInflacion = config.usarInflacion || false;
+      const inflPeriodos  = State.get('inflacion') || [];
+      const dS = config.dashboardStart;
+      const dE = config.dashboardEnd;
+      const dStart = new Date(dS+'T00:00:00'), dEnd = new Date(dE+'T00:00:00');
+      const meses = Math.max(1, (dEnd - dStart) / (30.44 * 86400000));
+      // Simple interest estimate using saldo actual and annualized rate
+      const saldoBase = FinanceMath.saldoEnFecha(acc, dS);
+      const interesAnual = acc.interes / 100;
+      const interesEstimado = saldoBase * (Math.pow(1 + interesAnual, meses / 12) - 1);
+
+      let realBlock = '';
+      if (usarInflacion && inflPeriodos.length > 0) {
+        const factorInfl = FinanceMath.calcFactorInflacion(inflPeriodos, dS, dE);
+        const perdidaPoder = saldoBase * (factorInfl - 1);
+        const beneficioReal = interesEstimado - perdidaPoder;
+        const color = beneficioReal >= 0 ? 'var(--accent)' : 'var(--red)';
+        realBlock = `
+          <div class="flex justify-between mt-6">
+            <span class="text-sm" style="color:var(--text2)">Pérdida poder adq.</span>
+            <span class="num neg">${FinanceMath.eur(perdidaPoder)}</span>
+          </div>
+          <div class="flex justify-between mt-6">
+            <span class="text-sm" style="font-weight:600">Beneficio real</span>
+            <span class="num" style="color:${color};font-weight:600">${FinanceMath.eur(beneficioReal)}</span>
+          </div>`;
+      }
+
+      return `<div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border2)">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Remuneración estimada (${dS.slice(0,7)} → ${dE.slice(0,7)})</div>
+        <div class="flex justify-between">
+          <span class="text-sm" style="color:var(--text2)">Intereses brutos</span>
+          <span class="num pos">${FinanceMath.eur(interesEstimado)}</span>
+        </div>${realBlock}
+      </div>`;
+    })();
+
     const pensionBlock = pension ? `
       <div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--yellow-dark, #7a6010)">
         <div class="flex justify-between mb-6">
@@ -95,6 +136,7 @@ const AccountsModule = (() => {
         <div class="stat-card"><div class="stat-label">Saldo actual</div><div class="stat-value">${FinanceMath.eur(saldoActual)}</div>${lastHist?`<div class="stat-sub">Registro: ${lastHist.fecha}</div>`:'<div class="stat-sub" style="color:var(--text3)">Sin histórico</div>'}</div>
       </div>
       ${acc.interes>0?`<div class="flex gap-8 flex-wrap mb-8"><span class="badge badge-active">${acc.interes}% rentabilidad</span><span class="badge badge-blue">Cap. ${acc.periodoCobro}</span></div>`:'<div class="mb-8"><span class="badge badge-inactive">Sin remuneración</span></div>'}
+      ${remuneracionBlock}
       ${pensionBlock}
       ${hist.length>0?`<div class="text-sm mt-8">${hist.length} punto${hist.length>1?'s':''} en histórico · último ${lastHist.fecha}</div>`:'<div class="text-sm" style="color:var(--text3)">Sin histórico</div>'}
       ${acc.descripcion?`<div class="mt-8 text-sm">${acc.descripcion}</div>`:''}

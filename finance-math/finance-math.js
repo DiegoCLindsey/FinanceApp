@@ -133,6 +133,18 @@ const FinanceMath = (() => {
     return result;
   }
 
+  // Cuantía efectiva de un gasto: usa la media del año más reciente del historial
+  // de precios si existe, sino la cuantía configurada.
+  function _cuantiaEfectivaExp(exp) {
+    const hist = (exp.historialPrecios || []).filter(h => h.cuantia > 0);
+    if (!hist.length) return exp.cuantia;
+    const sorted = [...hist].sort((a, b) => b.fecha.localeCompare(a.fecha));
+    const lastYear = new Date(sorted[0].fecha + 'T00:00:00').getFullYear();
+    const entries  = sorted.filter(h => new Date(h.fecha + 'T00:00:00').getFullYear() === lastYear);
+    if (!entries.length) return exp.cuantia;
+    return entries.reduce((s, h) => s + h.cuantia, 0) / entries.length;
+  }
+
   function proyectarGastos(expenses, dateStart, dateEnd, filtroAccounts=null) {
     const events = [];
     const dS = new Date(dateStart+'T00:00:00'), dE = new Date(dateEnd+'T00:00:00');
@@ -141,8 +153,9 @@ const FinanceMath = (() => {
       if (filtroAccounts && filtroAccounts.length>0 && !filtroAccounts.includes(exp.cuenta||'default')) continue;
       const dI = new Date((exp.fechaInicio||dateStart)+'T00:00:00');
       const dF = exp.fechaFin ? new Date(exp.fechaFin+'T00:00:00') : dE;
+      const cuantia = _cuantiaEfectivaExp(exp);
       const push = (fecha) => events.push({
-        fecha, concepto:exp.concepto, cuantia:exp.cuantia, tipo:exp.tipo,
+        fecha, concepto:exp.concepto, cuantia, tipo:exp.tipo,
         tags:exp.tags, cuenta:exp.cuenta||'default', sourceId:exp._id, sourceType:'expense'
       });
 
@@ -475,35 +488,77 @@ const FinanceMath = (() => {
   // Extra paga months for nPagas > 12: June(5), December(11), March(2), September(8)
   const _EXTRA_PAGA_MONTHS = [5, 11, 2, 8];
 
-  function proyectarNominas(nominas, config, dateStart, dateEnd, filtroAccounts=null) {
+  function proyectarNominas(nominas, config, dateStart, dateEnd, filtroAccounts=null, inflacionPeriodos=[]) {
     const events = [];
     const tramos = config.tramos_irpf || [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]];
     const dS = new Date(dateStart+'T00:00:00');
     const dE = new Date(dateEnd+'T00:00:00');
+    const usarIPC = inflacionPeriodos.length > 0;
+
+    // Group nóminas by grupoNomina for IRPF marginal stacking.
+    // Nóminas without a group (empty string) are standalone.
+    const grupos = {};
+    for (const nom of nominas) {
+      const g = nom.grupoNomina || '';
+      if (!grupos[g]) grupos[g] = [];
+      grupos[g].push(nom);
+    }
+    // Sort each group by base bruto descending so higher-earners stack first
+    for (const g of Object.keys(grupos)) {
+      grupos[g].sort((a, b) => (b.bruto || 0) - (a.bruto || 0));
+    }
+
+    // Returns the IPC-adjusted bruto anual for nom at a given payment date.
+    // Counts how many annual IPC update months have passed since the nómina start.
+    function brutoAjustado(nom, fechaStr) {
+      if (!usarIPC || !nom.mesActualizacionIPC) return nom.bruto || 0;
+      const startStr = nom.fechaInicio || dateStart;
+      const startD   = new Date(startStr + 'T00:00:00');
+      const payD     = new Date(fechaStr  + 'T00:00:00');
+      let nUpdates   = 0;
+      for (let y = startD.getFullYear(); y <= payD.getFullYear(); y++) {
+        const ud = new Date(y, (nom.mesActualizacionIPC - 1), 1);
+        if (ud > startD && ud <= payD) nUpdates++;
+      }
+      if (nUpdates === 0) return nom.bruto || 0;
+      // Compound nUpdates full years of inflation from the nómina start
+      const toDate = new Date(startD.getFullYear() + nUpdates, 0, 1).toISOString().slice(0, 10);
+      return (nom.bruto || 0) * calcFactorInflacion(inflacionPeriodos, startStr, toDate);
+    }
+
+    // Returns the IRPF anual for nom at a payment date, accounting for group stacking.
+    // Nóminas in the same group have their IRPF computed on the marginal base
+    // (sum of brutos of all group members with a higher base bruto + this bruto).
+    function irpfAnualNomina(nom, fechaStr) {
+      const bruto = brutoAjustado(nom, fechaStr);
+      if (nom.irpfModo === 'manual') return bruto * ((nom.irpfPct || 0) / 100);
+      const g = nom.grupoNomina || '';
+      if (!g) return calcIRPF(bruto, tramos);
+      // Stack: sum of active group members whose base bruto is strictly higher
+      const baseAcum = grupos[g]
+        .filter(n => n.activo && n._id !== nom._id && (n.bruto || 0) > (nom.bruto || 0))
+        .reduce((s, n) => s + brutoAjustado(n, fechaStr), 0);
+      return calcIRPF(baseAcum + bruto, tramos) - calcIRPF(baseAcum, tramos);
+    }
 
     for (const nom of nominas) {
       if (!nom.activo) continue;
       const cuenta = nom.cuenta || 'default';
       if (filtroAccounts && filtroAccounts.length > 0 && !filtroAccounts.includes(cuenta)) continue;
 
-      const brutoAnual = nom.bruto || 0;
       const nPagas = Math.max(1, nom.nPagas || 12);
-      const brutoPorPaga = brutoAnual / nPagas;
-
-      const irpfAnual = nom.irpfModo === 'manual'
-        ? brutoAnual * ((nom.irpfPct || 0) / 100)
-        : calcIRPF(brutoAnual, tramos);
-      const irpfPorPaga = irpfAnual / nPagas;
-
-      // In simplificado mode: show net; in detallado: show gross + separate IRPF expense
-      const ingresoPorPaga = nom.representacion === 'simplificado'
-        ? (brutoPorPaga - irpfPorPaga)
-        : brutoPorPaga;
-
       const dI = new Date((nom.fechaInicio || dateStart)+'T00:00:00');
       const dF = nom.fechaFin ? new Date(nom.fechaFin+'T00:00:00') : dE;
 
+      // Bruto and IRPF are computed per-payment to account for IPC adjustment and group stacking
       const pushPago = (fecha) => {
+        const bruto        = brutoAjustado(nom, fecha);
+        const irpf         = irpfAnualNomina(nom, fecha);
+        const brutoPorPaga = bruto / nPagas;
+        const irpfPorPaga  = irpf  / nPagas;
+        const ingresoPorPaga = nom.representacion === 'simplificado'
+          ? (brutoPorPaga - irpfPorPaga)
+          : brutoPorPaga;
         events.push({ fecha, concepto: nom.nombre, cuantia: ingresoPorPaga, tipo: 'ingreso', cuenta, tags: nom.tags||[], sourceId: nom._id, sourceType: 'nomina' });
         if (nom.representacion === 'detallado' && irpfPorPaga > 0) {
           events.push({ fecha, concepto: `IRPF ${nom.nombre}`, cuantia: irpfPorPaga, tipo: 'gasto', cuenta, tags: ['irpf','fiscal'], sourceId: nom._id+'_irpf', sourceType: 'nomina' });
@@ -550,7 +605,79 @@ const FinanceMath = (() => {
     return events;
   }
 
-  function generarExtracto(loans, expenses, accounts, config, filtroAccounts=null, nominas=[]) {
+  // ── Inflación: gasto incremental por encarecimiento del coste de vida ────────
+  // Para cada mes, calcula cuánto más cuesta (en términos reales) la cesta de gastos
+  // respecto a su precio base, acumulando inflación desde la fecha de inicio del gasto.
+  function proyectarInflacionGastos(expenses, inflacionPeriodos, dateStart, dateEnd, filtroAccounts=null, principalCuenta='default') {
+    const events = [];
+    if (!inflacionPeriodos || inflacionPeriodos.length === 0) return events;
+    const dS      = new Date(dateStart + 'T00:00:00');
+    const dE      = new Date(dateEnd   + 'T00:00:00');
+    const hoyStr  = new Date().toISOString().slice(0, 10);
+    const gastosMensuales = expenses.filter(e =>
+      e.activo && e.tipo === 'gasto' && e.tipoFrecuencia === 'mensual'
+    );
+    let d = new Date(dS.getFullYear(), dS.getMonth(), 1);
+    while (d <= dE) {
+      const year = d.getFullYear(), month = d.getMonth();
+      const mesLabel = year + '-' + String(month + 1).padStart(2, '0');
+      const mesIni   = mesLabel + '-01';
+      const mesFin   = new Date(year, month + 1, 0).toISOString().slice(0, 10);
+      const mesMid   = new Date(year, month, 15).toISOString().slice(0, 10);
+      let totalInflacion = 0;
+      for (const exp of gastosMensuales) {
+        if (filtroAccounts && filtroAccounts.length > 0 && !filtroAccounts.includes(exp.cuenta || 'default')) continue;
+        if (exp.fechaInicio && exp.fechaInicio > mesFin) continue;
+        if (exp.fechaFin    && exp.fechaFin < mesIni)    continue;
+        const base   = exp.fechaInicio || hoyStr;
+        const factor = calcFactorInflacion(inflacionPeriodos, base, mesMid);
+        if (factor <= 1) continue;
+        const freq = Math.max(1, exp.frecuencia || 1);
+        totalInflacion += _cuantiaEfectivaExp(exp) * (factor - 1) / freq;
+      }
+      if (totalInflacion > 0.01) {
+        events.push({
+          fecha: mesMid, concepto: 'Incremento coste de vida', cuantia: totalInflacion,
+          tipo: 'gasto', tags: ['inflacion'], cuenta: principalCuenta,
+          sourceId: 'inflacion_vida_' + mesLabel, sourceType: 'inflacion',
+        });
+      }
+      d = new Date(year, month + 1, 1);
+    }
+    return events;
+  }
+
+  // ── Inflación: pérdida de poder adquisitivo de los ahorros ───────────────────
+  // Para cada mes, calcula la erosión del saldo por la inflación.
+  function proyectarPerdidaAhorro(saldoInicial, inflacionPeriodos, dateStart, dateEnd, principalCuenta='default') {
+    const events = [];
+    if (!inflacionPeriodos || inflacionPeriodos.length === 0 || saldoInicial <= 0) return events;
+    const dS     = new Date(dateStart + 'T00:00:00');
+    const dE     = new Date(dateEnd   + 'T00:00:00');
+    const sorted = [...inflacionPeriodos].sort((a, b) => a.year - b.year);
+    let d = new Date(dS.getFullYear(), dS.getMonth(), 1);
+    while (d <= dE) {
+      const year = d.getFullYear(), month = d.getMonth();
+      const mesLabel = year + '-' + String(month + 1).padStart(2, '0');
+      const mesMid   = new Date(year, month, 15).toISOString().slice(0, 10);
+      const candidates = sorted.filter(r => r.year <= year);
+      const record     = candidates.length > 0 ? candidates[candidates.length - 1] : sorted[0];
+      const tasaAnual  = record ? record.tasa / 100 : 0;
+      const tasaMensual = Math.pow(1 + tasaAnual, 1 / 12) - 1;
+      const perdida = saldoInicial * tasaMensual;
+      if (perdida > 0.01) {
+        events.push({
+          fecha: mesMid, concepto: 'Pérdida ahorro por inflación', cuantia: perdida,
+          tipo: 'gasto', tags: ['inflacion'], cuenta: principalCuenta,
+          sourceId: 'inflacion_ahorro_' + mesLabel, sourceType: 'inflacion',
+        });
+      }
+      d = new Date(year, month + 1, 1);
+    }
+    return events;
+  }
+
+  function generarExtracto(loans, expenses, accounts, config, filtroAccounts=null, nominas=[], inflacionPeriodos=[]) {
     const gastos = expenses.filter(e=>e.tipo!=='transferencia');
     const transferencias = expenses.filter(e=>e.tipo==='transferencia');
     let allEvents = [];
@@ -560,7 +687,15 @@ const FinanceMath = (() => {
     const intereses = proyectarInteresesCuentas(accounts, config.dashboardStart, config.dashboardEnd, filtroAccounts, allEvents);
     allEvents = allEvents.concat(intereses);
     allEvents = allEvents.concat(proyectarRetencionesFiscales(expenses, config, config.dashboardStart, config.dashboardEnd, filtroAccounts));
-    allEvents = allEvents.concat(proyectarNominas(nominas, config, config.dashboardStart, config.dashboardEnd, filtroAccounts));
+    allEvents = allEvents.concat(proyectarNominas(nominas, config, config.dashboardStart, config.dashboardEnd, filtroAccounts, inflacionPeriodos));
+    // When inflation module is active, add cost-of-living increase and savings erosion events
+    if (config.usarInflacion && inflacionPeriodos.length > 0) {
+      const principalId = (accounts.find(a => a.activo && a.esCuentaPrincipal) || accounts.find(a => a.activo) || {_id:'default'})._id;
+      allEvents = allEvents.concat(proyectarInflacionGastos(gastos, inflacionPeriodos, config.dashboardStart, config.dashboardEnd, filtroAccounts, principalId));
+      const cuentasAct = accounts.filter(a => a.activo && (!filtroAccounts || filtroAccounts.length===0 || filtroAccounts.includes(a._id)));
+      const saldoIni   = cuentasAct.reduce((s, a) => s + saldoEnFecha(a, config.dashboardStart), 0);
+      allEvents = allEvents.concat(proyectarPerdidaAhorro(saldoIni, inflacionPeriodos, config.dashboardStart, config.dashboardEnd, principalId));
+    }
     allEvents.sort((a,b) => a.fecha.localeCompare(b.fecha));
     const cuentasActivas = accounts.filter(a => a.activo && (!filtroAccounts || filtroAccounts.length===0 || filtroAccounts.includes(a._id)));
     return _aplicarSaldoRef(allEvents, cuentasActivas, config);
@@ -626,18 +761,67 @@ const FinanceMath = (() => {
   // ── Inflación aplicada a gastos ─────────────────────────────────────────────
   // proyectarGastos ya itera mes a mes; la inflación se aplica multiplicando
   // la cuantía por (1+inf)^(añosDesdeInicio). Lo hacemos como post-proceso:
-  function aplicarInflacion(events, expenses, inflacionGlobal) {
+  // ── Inflación por periodos ───────────────────────────────────────────────────
+  // periodos: [{year, tasa}] — tasa en %. Calcula el factor de inflación
+  // acumulada entre fromDate y toDate (compuesto año a año).
+  // Si toDate <= fromDate devuelve 1. Usa el último tipo conocido para años futuros.
+  function calcFactorInflacion(periodos, fromDate, toDate) {
+    if (!periodos || periodos.length === 0) return 1;
+    const from = new Date(fromDate + 'T00:00:00');
+    const to   = new Date(toDate   + 'T00:00:00');
+    if (to <= from) return 1;
+
+    const sorted = [...periodos].sort((a, b) => a.year - b.year);
+
+    let factor  = 1;
+    let current = new Date(from);
+
+    while (current < to) {
+      const year = current.getFullYear();
+      // Tasa aplicable: el registro más reciente <= year, o el primero si no hay ninguno anterior
+      const candidates = sorted.filter(r => r.year <= year);
+      const record     = candidates.length > 0 ? candidates[candidates.length - 1] : sorted[0];
+      const tasa       = (record ? record.tasa : 0) / 100;
+
+      // Fin del año actual o fin del periodo, lo que llegue antes
+      const yearEnd   = new Date(year + 1, 0, 1);
+      const periodEnd = yearEnd < to ? yearEnd : to;
+
+      const dias = (periodEnd - current) / (1000 * 60 * 60 * 24);
+      factor *= Math.pow(1 + tasa, dias / 365.25);
+      current = periodEnd;
+    }
+
+    return factor;
+  }
+
+  // Precio nominal ajustado a valor real (hoy) descontando la inflación acumulada
+  function ajustarPrecioReal(importe, periodos, fromDate, toDate) {
+    const factor = calcFactorInflacion(periodos, fromDate, toDate);
+    return factor > 0 ? importe / factor : importe;
+  }
+
+  function aplicarInflacion(events, expenses, inflacionGlobal, inflacionPeriodos=null, usarInflacion=false) {
     const now = new Date();
+    const hoyStr = now.toISOString().slice(0, 10);
     return events.map(ev => {
       const exp = expenses.find(e => e._id === ev.sourceId);
       if (!exp) return ev;
-      const inf = (exp.inflacion > 0 ? exp.inflacion : inflacionGlobal) / 100;
-      if (inf === 0) return ev;
-      const base = new Date((exp.fechaInicio||now.toISOString().slice(0,10))+'T00:00:00');
-      const evDate = new Date(ev.fecha+'T00:00:00');
-      const años = Math.max(0, (evDate - base) / (365.25*86400000));
-      const factor = Math.pow(1 + inf, años);
-      return { ...ev, cuantia: ev.tipo==='gasto' ? ev.cuantia * factor : ev.cuantia };
+
+      let factor;
+      if (usarInflacion && inflacionPeriodos && inflacionPeriodos.length > 0) {
+        const base = exp.fechaInicio || hoyStr;
+        factor = calcFactorInflacion(inflacionPeriodos, base, ev.fecha);
+      } else {
+        const inf = (exp.inflacion > 0 ? exp.inflacion : inflacionGlobal) / 100;
+        if (inf === 0) return ev;
+        const base    = new Date((exp.fechaInicio || hoyStr) + 'T00:00:00');
+        const evDate  = new Date(ev.fecha + 'T00:00:00');
+        const años    = Math.max(0, (evDate - base) / (365.25 * 86400000));
+        factor = Math.pow(1 + inf, años);
+      }
+
+      return { ...ev, cuantia: ev.tipo === 'gasto' ? ev.cuantia * factor : ev.cuantia };
     });
   }
 
@@ -698,9 +882,10 @@ const FinanceMath = (() => {
   }
 
   // ── Monte Carlo ──────────────────────────────────────────────────────────────
-  function monteCarlo(loans, expenses, accounts, config, iteraciones=300) {
+  function monteCarlo(loans, expenses, accounts, config, iteraciones=300, nominas=[]) {
     const varExpenses = expenses.filter(e => e.varianza > 0);
-    if (varExpenses.length === 0) return null;
+    const varNominas  = (nominas || []).filter(n => n.activo && (n.varianza || 0) > 0);
+    if (varExpenses.length === 0 && varNominas.length === 0) return null;
 
     // MC sólo cubre el futuro (>= fechaReferencia) — el pasado es determinista
     const raw = config.fechaReferencia || config.dashboardStart;
@@ -715,8 +900,10 @@ const FinanceMath = (() => {
     const varMap = new Map(varExpenses.map(e => [e._id, { varianza: e.varianza, tipo: e.tipo }]));
     const gastos = expenses.filter(e => e.tipo !== 'transferencia');
     const baseGastoEvents = proyectarGastos(gastos, fechaRef, config.dashboardEnd);
+    const baseNominaEvents = proyectarNominas(nominas, config, fechaRef, config.dashboardEnd);
+    const nominaVarMap = new Map(varNominas.map(n => [n._id, n.varianza]));
 
-    const allBaseEvents = [...baseGastoEvents, ...loanEvents, ...transferEvents]
+    const allBaseEvents = [...baseGastoEvents, ...baseNominaEvents, ...loanEvents, ...transferEvents]
       .sort((a,b) => a.fecha.localeCompare(b.fecha));
     if (allBaseEvents.length === 0) return null;
 
@@ -738,7 +925,20 @@ const FinanceMath = (() => {
         return { ...ev, cuantia: v.tipo === 'gasto' ? ev.cuantia + delta : ev.cuantia - delta };
       });
 
-      const allEvents = [...pertGastoEvents, ...loanEvents, ...transferEvents]
+      // Perturb nómina income events by their varianza
+      const pertNominaEvents = baseNominaEvents.map(ev => {
+        if (ev.sourceType !== 'nomina') return ev;
+        // sourceId for IRPF events ends with '_irpf'; extract base nómina id
+        const nomId = ev.sourceId.replace(/_irpf$/, '');
+        const vPct  = nominaVarMap.get(nomId);
+        if (!vPct) return ev;
+        const sigma = Math.abs(ev.cuantia) * (vPct / 100);
+        const delta = rand_normal() * sigma;
+        // IRPF is a gasto (negative), nómina is ingreso; perturb in opposite directions
+        return { ...ev, cuantia: ev.tipo === 'ingreso' ? ev.cuantia + delta : ev.cuantia - delta };
+      });
+
+      const allEvents = [...pertGastoEvents, ...pertNominaEvents, ...loanEvents, ...transferEvents]
         .sort((a,b) => a.fecha.localeCompare(b.fecha));
 
       let saldo = saldoRef;
@@ -1249,6 +1449,6 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcFondosPension, calcImpuestoPension, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcFondosPension, calcImpuestoPension, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 

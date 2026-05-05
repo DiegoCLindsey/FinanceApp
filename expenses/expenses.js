@@ -63,6 +63,7 @@ const ExpensesModule = (() => {
       const be=view.querySelector(`[data-edit-exp="${exp._id}"]`); if(be)be.onclick=()=>openForm(exp._id);
       const bd=view.querySelector(`[data-del-exp="${exp._id}"]`); if(bd)bd.onclick=()=>deleteExpense(exp._id);
       const tog=view.querySelector(`[data-tog-exp="${exp._id}"]`); if(tog)tog.onchange=e=>{State.updateItem('expenses',exp._id,{activo:e.target.checked});render();};
+      const bh=view.querySelector(`[data-hist-exp="${exp._id}"]`); if(bh)bh.onclick=()=>openHistorialPrecios(exp._id);
     });
   }
 
@@ -90,8 +91,23 @@ const ExpensesModule = (() => {
     const cuentaLabel = isTransfer
       ? `${State.accountName(exp.cuenta||'default')} → ${State.accountName(exp.cuentaDestino||'default')}`
       : State.accountName(exp.cuenta||'default');
+
+    // Show price history badge if there are entries
+    const hist = exp.historialPrecios || [];
+    const histBadge = hist.length > 0 ? (() => {
+      const sorted = [...hist].filter(h=>h.cuantia>0).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+      if (!sorted.length) return '';
+      const lastYear = new Date(sorted[0].fecha+'T00:00:00').getFullYear();
+      const entries  = sorted.filter(h=>new Date(h.fecha+'T00:00:00').getFullYear()===lastYear);
+      const avg      = entries.reduce((s,h)=>s+h.cuantia,0)/entries.length;
+      return `<span class="badge" style="background:rgba(99,179,237,0.12);color:#63b3ed" title="${entries.length} entrada(s) en ${lastYear}">Ø ${FinanceMath.eur(avg)}</span>`;
+    })() : '';
+
     return `<div class="exp-table-row">
-      <div><div style="font-weight:500">${exp.concepto}</div><div class="tag-list mt-8">${(exp.tags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}</div></div>
+      <div>
+        <div style="font-weight:500">${exp.concepto}</div>
+        <div class="tag-list mt-4">${(exp.tags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}${histBadge}</div>
+      </div>
       <div>${tipoBadge}</div>
       <div class="num ${exp.tipo==='ingreso'?'pos':isTransfer?'':'neg'}">${isTransfer?'⇄ ':''}${FinanceMath.eur(exp.cuantia)}</div>
       <div class="text-sm">${freq}</div>
@@ -102,6 +118,7 @@ const ExpensesModule = (() => {
         ${expirado?'<span class="badge badge-inactive">Exp.</span>':''}
       </div>
       <div class="flex gap-8">
+        ${!isTransfer?`<button class="btn-icon" data-hist-exp="${exp._id}" title="Historial de precios" style="font-size:15px">📋</button>`:''}
         <button class="btn-icon" data-edit-exp="${exp._id}"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button>
         <button class="btn-danger" data-del-exp="${exp._id}">✕</button>
       </div>
@@ -200,5 +217,70 @@ const ExpensesModule = (() => {
 
   function deleteExpense(id) { if(!UI.confirm('¿Eliminar?'))return; State.removeItem('expenses',id); UI.toast('Eliminado'); render(); }
 
-  return { render, saveExpense, deleteExpense, clearFilters };
+  function openHistorialPrecios(expId) {
+    const exp = State.get('expenses').find(e=>e._id===expId);
+    if (!exp) return;
+    const hist = [...(exp.historialPrecios||[])].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+
+    // Compute annual average of latest year for preview
+    const avgHint = (() => {
+      const valid = hist.filter(h=>h.cuantia>0);
+      if (!valid.length) return '';
+      const lastYear = new Date(valid[0].fecha+'T00:00:00').getFullYear();
+      const entries  = valid.filter(h=>new Date(h.fecha+'T00:00:00').getFullYear()===lastYear);
+      const avg      = entries.reduce((s,h)=>s+h.cuantia,0)/entries.length;
+      return `<div class="auth-hint mb-12" style="font-size:12px">Media del último año (${lastYear}): <strong>${FinanceMath.eur(avg)}</strong> · Usada como cuantía base en proyecciones.</div>`;
+    })();
+
+    const rows = hist.map(h=>`
+      <div class="flex gap-8 items-center" style="padding:6px 0;border-bottom:1px solid var(--border)">
+        <span class="text-sm" style="min-width:100px;color:var(--text2)">${h.fecha}</span>
+        <span class="num" style="flex:1">${FinanceMath.eur(h.cuantia)}</span>
+        <span class="text-sm" style="flex:2;color:var(--text3)">${h.nota||''}</span>
+        <button class="btn-danger btn-sm" onclick="ExpensesModule._deleteHistorialEntry('${expId}','${h._id}')">✕</button>
+      </div>`).join('');
+
+    const html=`
+      <div class="card-title">${exp.concepto} — Historial de precios</div>
+      ${avgHint}
+      <div style="max-height:220px;overflow-y:auto;margin-bottom:16px">
+        ${hist.length===0?'<div class="text-sm" style="padding:20px;text-align:center;color:var(--text3)">Sin entradas. Añade precios reales de facturas para mejorar las proyecciones.</div>':rows}
+      </div>
+      <div class="divider"></div>
+      <div style="font-weight:600;font-size:13px;margin-bottom:8px">Añadir entrada</div>
+      <div class="grid-3">
+        ${UI.input('hp-fecha','Fecha','date',new Date().toISOString().slice(0,10))}
+        ${UI.input('hp-cuantia','Importe real (€)','number','',exp.cuantia||'')}
+        ${UI.input('hp-nota','Nota (opcional)','text','','Factura enero...')}
+      </div>
+      <div class="flex gap-8 mt-12" style="justify-content:flex-end">
+        <button class="btn-secondary" onclick="UI.closeModal()">Cerrar</button>
+        <button class="btn-primary" onclick="ExpensesModule._addHistorialEntry('${expId}')">Añadir</button>
+      </div>`;
+    UI.openModal(html, 'Historial de precios');
+  }
+
+  function _addHistorialEntry(expId) {
+    const fecha  = document.getElementById('hp-fecha').value;
+    const cuantia = parseFloat(document.getElementById('hp-cuantia').value);
+    const nota   = document.getElementById('hp-nota')?.value.trim()||'';
+    if (!fecha || isNaN(cuantia) || cuantia <= 0) { UI.toast('Fecha e importe requeridos','err'); return; }
+    const exp  = State.get('expenses').find(e=>e._id===expId);
+    const hist = [...(exp.historialPrecios||[]), { _id: Date.now().toString(36), fecha, cuantia, nota }];
+    State.updateItem('expenses', expId, { historialPrecios: hist });
+    UI.toast('Entrada añadida');
+    render();
+    openHistorialPrecios(expId);
+  }
+
+  function _deleteHistorialEntry(expId, hId) {
+    const exp  = State.get('expenses').find(e=>e._id===expId);
+    const hist = (exp.historialPrecios||[]).filter(h=>h._id!==hId);
+    State.updateItem('expenses', expId, { historialPrecios: hist });
+    UI.toast('Eliminado');
+    render();
+    openHistorialPrecios(expId);
+  }
+
+  return { render, saveExpense, deleteExpense, clearFilters, openHistorialPrecios, _addHistorialEntry, _deleteHistorialEntry };
 })();
