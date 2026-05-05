@@ -96,11 +96,16 @@ const LoansModule = (() => {
 
     let costoRealTotal = null;
     if (conInflac) {
-      const filasNorm = res.tabla.filter(r => !r.esAmortizacion);
-      costoRealTotal = filasNorm.reduce((s, r) => {
+      // Discount ALL cash outflows: regular cuotas AND explicit amortization payments.
+      // Omitting amortizations caused the benefit to be grossly overstated when a large
+      // early payoff was registered (nominal included the lump sum; real didn't).
+      costoRealTotal = res.tabla.reduce((s, r) => {
         const f = FinanceMath.calcFactorInflacion(periodos, hoyStr, r.fecha);
-        return s + (f > 0 ? r.cuota / f : r.cuota);
+        const amount = r.esAmortizacion ? (r.amortizacion + r.comisionAmort) : r.cuota;
+        return s + (f > 0 ? amount / f : amount);
       }, 0);
+      // Opening commission is paid at loan inception — add at nominal value
+      costoRealTotal += res.comAp || 0;
     }
 
     return `<div class="loan-card" id="loan-${loan._id}" style="${completado?'opacity:0.65':''}">
