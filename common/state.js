@@ -62,18 +62,19 @@ const State = (() => {
     for (const [k,v] of Object.entries(cfgDefs)) {
       if (state.config[k] === undefined) state.config[k] = v;
     }
-    // Migrate: ensure expenses have basico and varianza fields
-    state.expenses = (state.expenses || []).map(e => ({ basico: false, varianza: 0, inflacion: 0, ...e }));
+    // Migrate: ensure expenses have basico, varianza and historialPrecios fields
+    state.expenses = (state.expenses || []).map(e => ({ basico: false, varianza: 0, inflacion: 0, historialPrecios: [], ...e }));
     // Migrate: ensure loans have new fields
     state.loans = (state.loans || []).map(l => ({ tipoTasa: 'fijo', mostrarFechaFinEnDashboard: true, ...l }));
     // Ensure new collections
     if (!Array.isArray(state.goals)) state.goals = [];
     if (!Array.isArray(state.nominas)) state.nominas = [];
     if (!Array.isArray(state.inflacion)) state.inflacion = [];
-    // Migrate nominas: ensure required fields
+    // Migrate nominas: ensure required fields including group and IPC fields
     state.nominas = state.nominas.map(n => ({
       activo: true, nPagas: 12, irpfModo: 'auto', irpfPct: 0,
       representacion: 'detallado', tags: [], fechaFin: null, cuenta: 'default',
+      grupoNomina: '', mesActualizacionIPC: null, varianza: 0,
       ...n
     }));
     // Migrate goals: add new fields if missing

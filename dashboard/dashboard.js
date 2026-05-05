@@ -47,20 +47,22 @@ const DashboardModule = (() => {
     const config=State.get('config');
     const loans=State.get('loans'), expenses=State.get('expenses'), accounts=State.get('accounts'), nominas=State.get('nominas')||[];
 
-    // Apply inflation and IRPF on top of base extracto
-    let extracto=FinanceMath.generarExtracto(loans,expenses,accounts,config, filtroAccounts.length>0?filtroAccounts:null, nominas);
+    // Apply inflation on top of base extracto
     const inflGlobal    = config.inflacionGlobal||0;
     const usarInflacion = config.usarInflacion||false;
     const inflPeriodos  = State.get('inflacion') || [];
-    const debeInflar    = usarInflacion ? inflPeriodos.length > 0 : (inflGlobal > 0 || expenses.some(e=>e.inflacion>0));
-    if (debeInflar) {
-      // Re-run with inflated cuantias — apply factor to gasto events from expense source
-      const allExpEvents = extracto.filter(e=>e.sourceType==='expense');
-      const inflated = FinanceMath.aplicarInflacion(allExpEvents, expenses, inflGlobal, inflPeriodos, usarInflacion);
-      const inflMap = new Map(inflated.map(e=>[e.sourceId+'_'+e.fecha, e.cuantia]));
-      extracto = extracto.map(e => e.sourceType==='expense' ? {...e, cuantia: inflMap.get(e.sourceId+'_'+e.fecha)||e.cuantia} : e);
-      // Recompute saldoAcum bidireccional desde fechaReferencia
-      extracto = FinanceMath.recomputarSaldoAcum(extracto, accounts, config, filtroAccounts.length>0?filtroAccounts:null);
+    // When usarInflacion is active, generarExtracto already includes inflation events;
+    // only apply the legacy per-expense inflation factor when the module is NOT active.
+    let extracto=FinanceMath.generarExtracto(loans,expenses,accounts,config, filtroAccounts.length>0?filtroAccounts:null, nominas, inflPeriodos);
+    if (!usarInflacion) {
+      const debeInflar = inflGlobal > 0 || expenses.some(e=>e.inflacion>0);
+      if (debeInflar) {
+        const allExpEvents = extracto.filter(e=>e.sourceType==='expense');
+        const inflated = FinanceMath.aplicarInflacion(allExpEvents, expenses, inflGlobal, null, false);
+        const inflMap = new Map(inflated.map(e=>[e.sourceId+'_'+e.fecha, e.cuantia]));
+        extracto = extracto.map(e => e.sourceType==='expense' ? {...e, cuantia: inflMap.get(e.sourceId+'_'+e.fecha)||e.cuantia} : e);
+        extracto = FinanceMath.recomputarSaldoAcum(extracto, accounts, config, filtroAccounts.length>0?filtroAccounts:null);
+      }
     }
     const cuentasActivas=accounts.filter(a=>a.activo&&(filtroAccounts.length===0||filtroAccounts.includes(a._id)));
     const saldoBase=cuentasActivas.reduce((s,a)=>s+FinanceMath.saldoRealCuenta(a),0);
@@ -89,7 +91,7 @@ const DashboardModule = (() => {
     const cfgMesActual = { ...config, dashboardStart: mesIni, dashboardEnd: mesFin };
     const extractoMesActual = FinanceMath.generarExtracto(
       loans, expenses, accounts, cfgMesActual,
-      filtroAccounts.length > 0 ? filtroAccounts : null, nominas
+      filtroAccounts.length > 0 ? filtroAccounts : null, nominas, inflPeriodos
     );
     // Mismo filtro que el gráfico breakdown: sin transferencias
     const evsMesActual = extractoMesActual.filter(e =>
@@ -769,7 +771,7 @@ const DashboardModule = (() => {
     // Monte Carlo bands
     let mcDatasets = [];
     if (config.showMC && expenses.some(e=>e.varianza>0)) {
-      const mcResult = FinanceMath.monteCarlo(loans, expenses, accounts, config, config.mcIteraciones||300);
+      const mcResult = FinanceMath.monteCarlo(loans, expenses, accounts, config, config.mcIteraciones||300, nominas);
       if (mcResult && mcResult.length > 0) {
         mcDatasets = [
           { label:'MC p10', data:mcResult.map(r=>({x:r.x,y:r.p10})), borderColor:'transparent', backgroundColor:'rgba(77,159,255,0.05)', fill:'+1', borderWidth:0, pointRadius:0, tension:0.3, order:11 },
