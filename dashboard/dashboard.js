@@ -49,10 +49,12 @@ const DashboardModule = (() => {
 
     // Filter by active scenario
     const escenarioActivo = config.escenarioActivo || null;
-    const filtered = FinanceMath.filtrarPorEscenario(allLoans, allExpenses, allNominas, escenarioActivo);
+    const filtered = FinanceMath.filtrarPorEscenario(allLoans, allExpenses, allNominas, accounts, escenarioActivo);
     const loans    = filtered.loans;
     const expenses = filtered.expenses;
     const nominas  = filtered.nominas;
+    // Use filtered accounts for projection (scenario accounts only appear when active)
+    const accountsForExtracto = escenarioActivo ? filtered.accounts : accounts;
 
     // Apply inflation on top of base extracto
     const inflGlobal    = config.inflacionGlobal||0;
@@ -60,16 +62,7 @@ const DashboardModule = (() => {
     const inflPeriodos  = State.get('inflacion') || [];
     // When usarInflacion is active, generarExtracto already includes inflation events;
     // only apply the legacy per-expense inflation factor when the module is NOT active.
-    let extracto=FinanceMath.generarExtracto(loans,expenses,accounts,config, filtroAccounts.length>0?filtroAccounts:null, nominas, inflPeriodos);
-    // Add investments from active scenario
-    if (escenarioActivo) {
-      const esc = (State.get('escenarios')||[]).find(e=>e._id===escenarioActivo);
-      if (esc && esc.inversiones && esc.inversiones.length > 0) {
-        const invEvents = FinanceMath.proyectarInversiones(esc.inversiones, config.dashboardStart, config.dashboardEnd);
-        const combined  = [...extracto, ...invEvents].sort((a,b)=>a.fecha.localeCompare(b.fecha));
-        extracto = FinanceMath.recomputarSaldoAcum(combined, accounts, config, filtroAccounts.length>0?filtroAccounts:null);
-      }
-    }
+    let extracto=FinanceMath.generarExtracto(loans,expenses,accountsForExtracto,config, filtroAccounts.length>0?filtroAccounts:null, nominas, inflPeriodos);
     if (!usarInflacion) {
       const debeInflar = inflGlobal > 0 || expenses.some(e=>e.inflacion>0);
       if (debeInflar) {
@@ -80,10 +73,10 @@ const DashboardModule = (() => {
         extracto = FinanceMath.recomputarSaldoAcum(extracto, accounts, config, filtroAccounts.length>0?filtroAccounts:null);
       }
     }
-    const cuentasActivas=accounts.filter(a=>a.activo&&(filtroAccounts.length===0||filtroAccounts.includes(a._id)));
+    const cuentasActivas=accountsForExtracto.filter(a=>a.activo&&(filtroAccounts.length===0||filtroAccounts.includes(a._id)));
     const saldoBase=cuentasActivas.reduce((s,a)=>s+FinanceMath.saldoRealCuenta(a),0);
     const saldoFinal=extracto.length>0?extracto[extracto.length-1].saldoAcum:saldoBase;
-    const saldoHoy=FinanceMath.saldoHoy(extracto, accounts, filtroAccounts.length>0?filtroAccounts:null);
+    const saldoHoy=FinanceMath.saldoHoy(extracto, accountsForExtracto, filtroAccounts.length>0?filtroAccounts:null);
     const totalGastos=extracto.filter(e=>e.tipo==='gasto').reduce((s,e)=>s+Math.abs(e.cuantia),0);
     const totalIngresos=extracto.filter(e=>e.tipo==='ingreso').reduce((s,e)=>s+Math.abs(e.cuantia),0);
     const mediaMensual=FinanceMath.mediaMensualGastos(extracto, config);
@@ -106,7 +99,7 @@ const DashboardModule = (() => {
     // Extracto específico del mes actual (misma lógica: filtroAccounts, saldoReal, sin transferencias)
     const cfgMesActual = { ...config, dashboardStart: mesIni, dashboardEnd: mesFin };
     const extractoMesActual = FinanceMath.generarExtracto(
-      loans, expenses, accounts, cfgMesActual,
+      loans, expenses, accountsForExtracto, cfgMesActual,
       filtroAccounts.length > 0 ? filtroAccounts : null, nominas, inflPeriodos
     );
     // Mismo filtro que el gráfico breakdown: sin transferencias

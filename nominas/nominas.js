@@ -212,10 +212,8 @@ const NominasModule = (() => {
         ${UI.input('nf-fecha-ini', 'Fecha inicio', 'date', n?.fechaInicio||new Date().toISOString().slice(0,10))}
         ${UI.input('nf-fecha-fin', 'Fecha fin (opcional)', 'date', n?.fechaFin||'')}
       </div>
-      <div class="grid-2 mt-8">
-        ${UI.accountSelect('nf-cuenta', 'Cuenta', n?.cuenta||State.getPrincipalAccountId())}
-        ${EscenariosModule.selectHtml('nf-escenario', n?.escenarioId||'')}
-      </div>
+      <div class="mt-8">${UI.accountSelect('nf-cuenta', 'Cuenta', n?.cuenta||State.getPrincipalAccountId())}</div>
+      ${EscenariosModule.checkboxesHtml(n?.escenarioIds||[])}
       <div id="nf-preview" class="card mt-16" style="background:var(--surface2);padding:12px;font-size:13px"></div>
       <div class="flex gap-8 mt-16" style="justify-content:flex-end">
         <button class="btn-secondary" onclick="UI.closeModal()">Cancelar</button>
@@ -290,7 +288,7 @@ const NominasModule = (() => {
       grupoNomina:      document.getElementById('nf-grupo').value.trim(),
       mesActualizacionIPC: mesIPC,
       varianza:         parseFloat(document.getElementById('nf-varianza').value) || 0,
-      escenarioId:      document.getElementById('nf-escenario')?.value || null,
+      escenarioIds:     EscenariosModule.readCheckedEscenarios(),
     };
     if (!nom.nombre || nom.bruto <= 0) { UI.toast('Nombre y bruto anual son obligatorios', 'err'); return; }
     if (id) { State.updateItem('nominas', id, nom); UI.toast('Nómina actualizada'); }

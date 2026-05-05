@@ -165,7 +165,7 @@ const ExpensesModule = (() => {
           <span class="text-sm" style="margin-left:6px">Calcula y proyecta la retención mensual</span>
         </div>
       </div>
-      <div class="mt-8">${EscenariosModule.selectHtml('ef-escenario', exp?.escenarioId||'')}</div>
+      ${EscenariosModule.checkboxesHtml(exp?.escenarioIds||[])}
       <div class="form-row mt-8">
         <label class="form-label">Activo</label>
         <label class="toggle"><input type="checkbox" id="ef-activo" ${exp?.activo!==false?'checked':''}/><span class="toggle-slider"></span></label>
@@ -209,7 +209,7 @@ const ExpensesModule = (() => {
       inflacion:     isTransfer ? 0 : (parseFloat(document.getElementById('ef-inflacion')?.value)||0),
       sujetoIRPF:    !isTransfer && (document.getElementById('ef-sujetoIRPF')?.checked||false),
       tags:          isTransfer ? ['transferencia'] : (document.getElementById('ef-tags')?.value||'').split(',').map(t=>t.trim()).filter(Boolean),
-      escenarioId:   document.getElementById('ef-escenario')?.value || null,
+      escenarioIds:  EscenariosModule.readCheckedEscenarios(),
     };
     if (!exp.concepto||isNaN(exp.cuantia)) { UI.toast('Concepto y cuantía obligatorios','err'); return; }
     if (id) { State.updateItem('expenses',id,exp); UI.toast('Actualizado'); }

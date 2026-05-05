@@ -5,7 +5,7 @@ const AccountsModule = (() => {
     const accounts=State.get('accounts');
     view.innerHTML=`
       <div class="page-header">
-        <h1 class="page-title">Cuentas <span>Bancarias</span></h1>
+        <h1 class="page-title">Cuentas e <span>Inversiones</span></h1>
         <div class="flex gap-8">
           <button class="btn-secondary" id="btn-reset-base">↻ Actualizar saldo base</button>
           <button class="btn-primary" id="btn-new-acc">+ Nueva cuenta</button>
@@ -121,6 +121,7 @@ const AccountsModule = (() => {
           ${isPrincipal?'<span class="badge badge-blue" title="Cuenta seleccionada por defecto en nuevos gastos">Principal</span>':''}
           ${acc.esFondoPension?'<span class="badge" style="background:rgba(255,209,102,0.15);color:var(--yellow)">🔒 Pensión</span>':''}
           ${acc.simulacion?'<span class="badge badge-sim">SIM</span>':''}
+          ${(acc.escenarioIds||[]).map(id=>`<span class="badge badge-yellow">🔭 ${EscenariosModule.escenarioName(id)}</span>`).join('')}
         </div>
         <div class="flex gap-8">
           ${!isPrincipal?`<button class="btn-icon" data-principal-acc="${acc._id}" title="Marcar como cuenta principal" style="font-size:14px">★</button>`:''}
@@ -187,6 +188,7 @@ const AccountsModule = (() => {
         <label class="form-label">Activa</label><label class="toggle"><input type="checkbox" id="ac-activo" ${acc?.activo!==false?'checked':''}/><span class="toggle-slider"></span></label>
         <label class="form-label" style="margin-left:12px">Simulación</label><label class="toggle"><input type="checkbox" id="ac-sim" ${acc?.simulacion?'checked':''}/><span class="toggle-slider"></span></label>
       </div>
+      ${EscenariosModule.checkboxesHtml(acc?.escenarioIds||[])}
       <div class="flex gap-8 mt-16" style="justify-content:flex-end">
         <button class="btn-secondary" onclick="UI.closeModal()">Cancelar</button>
         <button class="btn-primary" onclick="AccountsModule.saveAccount('${id||''}')">Guardar</button>
@@ -207,6 +209,7 @@ const AccountsModule = (() => {
       descripcion:    document.getElementById('ac-desc').value.trim(),
       activo:         document.getElementById('ac-activo').checked,
       simulacion:     document.getElementById('ac-sim').checked,
+      escenarioIds:   EscenariosModule.readCheckedEscenarios(),
       esFondoPension,
       bloqueoMeses:   esFondoPension ? (parseInt(document.getElementById('ac-bloqueo')?.value)||120) : 120,
       impuestoRetirada: esFondoPension ? (parseFloat(document.getElementById('ac-impuesto-ret')?.value)||0) : 0,

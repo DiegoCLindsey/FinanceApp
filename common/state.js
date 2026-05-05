@@ -66,25 +66,34 @@ const State = (() => {
       if (state.config[k] === undefined) state.config[k] = v;
     }
     // Migrate: ensure expenses have basico, varianza and historialPrecios fields
-    state.expenses = (state.expenses || []).map(e => ({ basico: false, varianza: 0, inflacion: 0, historialPrecios: [], escenarioId: null, ...e }));
+    // escenarioId (singular) → escenarioIds (array) migration
+    const _migrEscIds = item => {
+      if (Array.isArray(item.escenarioIds)) return item; // already migrated
+      const ids = item.escenarioId ? [item.escenarioId] : [];
+      const { escenarioId, ...rest } = item;
+      return { ...rest, escenarioIds: ids };
+    };
+    state.expenses = (state.expenses || []).map(e => _migrEscIds({ basico: false, varianza: 0, inflacion: 0, historialPrecios: [], ...e }));
     // Migrate: ensure loans have new fields
-    state.loans = (state.loans || []).map(l => ({
-      tipoTasa: 'fijo', mostrarFechaFinEnDashboard: true, escenarioId: null,
-      ...l,
-      amortizaciones: (l.amortizaciones||[]).map(a => ({ escenarioId: null, ...a })),
-    }));
+    state.loans = (state.loans || []).map(l => {
+      const lm = _migrEscIds({ tipoTasa: 'fijo', mostrarFechaFinEnDashboard: true, ...l });
+      lm.amortizaciones = (l.amortizaciones||[]).map(a => _migrEscIds(a));
+      return lm;
+    });
+    // Migrate: ensure accounts have escenarioIds
+    state.accounts = state.accounts.map(a => _migrEscIds(a));
     // Ensure new collections
     if (!Array.isArray(state.goals)) state.goals = [];
     if (!Array.isArray(state.nominas)) state.nominas = [];
     if (!Array.isArray(state.inflacion)) state.inflacion = [];
     if (!Array.isArray(state.escenarios)) state.escenarios = [];
-    // Migrate escenarios: ensure inversiones array
-    state.escenarios = state.escenarios.map(e => ({ inversiones: [], ...e }));
+    // Migrate escenarios: drop inversiones (replaced by account-based investments)
+    state.escenarios = state.escenarios.map(({ inversiones, ...e }) => e);
     // Migrate nominas: ensure required fields including group and IPC fields
-    state.nominas = state.nominas.map(n => ({
+    state.nominas = state.nominas.map(n => _migrEscIds({
       activo: true, nPagas: 12, irpfModo: 'auto', irpfPct: 0,
       representacion: 'detallado', tags: [], fechaFin: null, cuenta: 'default',
-      grupoNomina: '', mesActualizacionIPC: null, varianza: 0, escenarioId: null,
+      grupoNomina: '', mesActualizacionIPC: null, varianza: 0,
       ...n
     }));
     // Migrate goals: add new fields if missing

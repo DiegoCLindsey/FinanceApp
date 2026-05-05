@@ -1402,28 +1402,25 @@ const FinanceMath = (() => {
   }
 
   // ── Escenarios ───────────────────────────────────────────────────────────────
-  // Filtra loans/expenses/nominas según el escenario activo.
-  // null = modo base: solo items sin escenarioId (realidad).
-  // 'esc_X' = modo escenario: base + items del escenario X.
-  function filtrarPorEscenario(loans, expenses, nominas, escenarioActivo) {
-    if (!escenarioActivo) {
-      return {
-        loans: loans
-          .filter(l => !l.escenarioId)
-          .map(l => ({ ...l, amortizaciones: (l.amortizaciones||[]).filter(a => !a.escenarioId) })),
-        expenses: expenses.filter(e => !e.escenarioId),
-        nominas:  nominas.filter(n => !n.escenarioId),
-      };
-    }
+  // Filtra loans/expenses/nominas/accounts según el escenario activo.
+  // Items con escenarioIds=[] son "base" (realidad), siempre visibles.
+  // Items con escenarioIds=['X',...] solo aparecen cuando el escenario X está activo.
+  // null = modo base: solo items base.
+  // 'esc_X' = modo escenario: base + items que incluyen esc_X en su lista.
+  function filtrarPorEscenario(loans, expenses, nominas, accounts, escenarioActivo) {
+    const esBase   = item => !(item.escenarioIds || []).length;
+    const enEsc    = item => escenarioActivo && (item.escenarioIds || []).includes(escenarioActivo);
+    const visible  = item => esBase(item) || enEsc(item);
     return {
       loans: loans
-        .filter(l => !l.escenarioId || l.escenarioId === escenarioActivo)
+        .filter(visible)
         .map(l => ({
           ...l,
-          amortizaciones: (l.amortizaciones||[]).filter(a => !a.escenarioId || a.escenarioId === escenarioActivo),
+          amortizaciones: (l.amortizaciones||[]).filter(visible),
         })),
-      expenses: expenses.filter(e => !e.escenarioId || e.escenarioId === escenarioActivo),
-      nominas:  nominas.filter(n => !n.escenarioId || n.escenarioId === escenarioActivo),
+      expenses: expenses.filter(visible),
+      nominas:  nominas.filter(visible),
+      accounts: accounts.filter(visible),
     };
   }
 

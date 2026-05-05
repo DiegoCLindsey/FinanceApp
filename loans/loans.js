@@ -121,7 +121,7 @@ const LoansModule = (() => {
           ${completado?'<span class="badge badge-active" style="background:rgba(0,229,160,0.15);color:var(--accent)">✓ Finalizado</span>':''}
           ${loan.simulacion?'<span class="badge badge-sim">SIM</span>':''}
           ${!loan.activo?'<span class="badge badge-inactive">Inactivo</span>':''}
-          ${loan.escenarioId?`<span class="badge badge-yellow" title="Escenario">🔭 ${EscenariosModule.escenarioName(loan.escenarioId)}</span>`:''}
+          ${(loan.escenarioIds||[]).map(id=>`<span class="badge badge-yellow">🔭 ${EscenariosModule.escenarioName(id)}</span>`).join('')}
           <span class="badge badge-blue">${State.accountName(loan.cuenta||'default')}</span>
           ${diaPagoLabel?`<span class="badge badge-inactive">📅 ${diaPagoLabel}</span>`:''}
           <span class="badge ${loan.tipoTasa==='variable'?'badge-orange':'badge-inactive'}">${loan.tipoTasa==='variable'?'Tipo variable':'Tipo fijo'}</span>
@@ -253,7 +253,7 @@ const LoansModule = (() => {
             <span class="num">${FinanceMath.eur(am.cantidad)}</span>
             <span class="badge ${am.simulacion?'badge-sim':'badge-active'}">${am.simulacion?'SIM':'REAL'}</span>
             <span class="badge badge-blue">${am.tipo==='plazo'?'↓ plazo':'↓ cuota'}</span>
-            ${am.escenarioId?`<span class="badge badge-yellow" title="Escenario: ${EscenariosModule.escenarioName(am.escenarioId)}">🔭 ${EscenariosModule.escenarioName(am.escenarioId)}</span>`:''}
+            ${(am.escenarioIds||[]).map(id=>`<span class="badge badge-yellow">🔭 ${EscenariosModule.escenarioName(id)}</span>`).join('')}
 
             <button class="btn-icon" onclick="LoansModule.openAmortForm('${loan._id}','${am._id}')"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button>
             <button class="btn-danger btn-sm" onclick="LoansModule.deleteAmort('${loan._id}','${am._id}')">✕</button>
@@ -278,9 +278,7 @@ const LoansModule = (() => {
       <div class="mt-8">
         ${UI.select('f-tipo-tasa','Tipo de interés',[['fijo','Tipo fijo (la cuota no varía con la inflación)'],['variable','Tipo variable (la cuota puede subir con el mercado)']], loan?.tipoTasa||'fijo')}
       </div>
-      <div class="mt-8">
-        ${EscenariosModule.selectHtml('f-escenario', loan?.escenarioId||'')}
-      </div>
+      ${EscenariosModule.checkboxesHtml(loan?.escenarioIds||[])}
       <div class="form-row mt-8">
         <label class="form-label">Simulación</label>
         <label class="toggle"><input type="checkbox" id="f-sim" ${loan?.simulacion?'checked':''}/><span class="toggle-slider"></span></label>
@@ -311,7 +309,7 @@ const LoansModule = (() => {
       activo:                    document.getElementById('f-activo').checked,
       mostrarFechaFinEnDashboard:document.getElementById('f-mostrar-fin').checked,
       tipoTasa:                  document.getElementById('f-tipo-tasa').value,
-      escenarioId:               document.getElementById('f-escenario')?.value || null,
+      escenarioIds:              EscenariosModule.readCheckedEscenarios(),
     };
     if (!loan.nombre||isNaN(loan.capital)||isNaN(loan.tin)||isNaN(loan.meses)) {
       UI.toast('Completa los campos obligatorios','err'); return;
@@ -332,7 +330,7 @@ const LoansModule = (() => {
     const html = `
       <div class="grid-2">${UI.input('am-fecha','Fecha','date',am?.fecha||new Date().toISOString().slice(0,10))}${UI.input('am-cant','Cantidad (€)','number',am?.cantidad||'','10000')}</div>
       <div class="mt-8">${UI.select('am-tipo','Efecto',[['cuota','Reducir cuota (mantener plazo)'],['plazo','Reducir plazo (mantener cuota)']], am?.tipo||'cuota')}</div>
-      <div class="mt-8">${EscenariosModule.selectHtml('am-escenario', am?.escenarioId||'')}</div>
+      ${EscenariosModule.checkboxesHtml(am?.escenarioIds||[])}
       <div class="form-row mt-8">
         <label class="form-label">Simulación</label>
         <label class="toggle"><input type="checkbox" id="am-sim" ${am?.simulacion?'checked':''}/><span class="toggle-slider"></span></label>
@@ -351,15 +349,15 @@ const LoansModule = (() => {
     const cantidad = parseFloat(document.getElementById('am-cant').value);
     const tipo     = document.getElementById('am-tipo').value;
     const sim      = document.getElementById('am-sim').checked;
-    const escId    = document.getElementById('am-escenario')?.value || null;
+    const escIds   = EscenariosModule.readCheckedEscenarios();
     if (!fecha||isNaN(cantidad)||cantidad<=0) { UI.toast('Fecha y cantidad requeridas','err'); return; }
     const loan = State.get('loans').find(l=>l._id===loanId);
     let amorts = [...(loan.amortizaciones||[])];
     if (amortId) {
-      amorts = amorts.map(a => a._id===amortId ? {...a, fecha, cantidad, tipo, simulacion:sim, escenarioId:escId||null} : a);
+      amorts = amorts.map(a => a._id===amortId ? {...a, fecha, cantidad, tipo, simulacion:sim, escenarioIds:escIds} : a);
       UI.toast('Amortización actualizada');
     } else {
-      amorts.push({ _id:Date.now().toString(36), fecha, cantidad, tipo, simulacion:sim, escenarioId:escId||null });
+      amorts.push({ _id:Date.now().toString(36), fecha, cantidad, tipo, simulacion:sim, escenarioIds:escIds });
       UI.toast('Amortización añadida');
     }
     State.updateItem('loans',loanId,{amortizaciones:amorts});
