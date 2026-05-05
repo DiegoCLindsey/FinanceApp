@@ -88,6 +88,21 @@ const LoansModule = (() => {
     const interesesActual   = res.totalIntereses;
     const interesesOriginal = res.sinAmort.totalIntereses;
 
+    // ── Inflación ─────────────────────────────────────────────────────────────
+    const config    = State.get('config');
+    const periodos  = State.get('inflacion') || [];
+    const conInflac = config.usarInflacion && periodos.length > 0;
+    const hoyStr    = new Date().toISOString().slice(0, 10);
+
+    let costoRealTotal = null;
+    if (conInflac) {
+      const filasNorm = res.tabla.filter(r => !r.esAmortizacion);
+      costoRealTotal = filasNorm.reduce((s, r) => {
+        const f = FinanceMath.calcFactorInflacion(periodos, hoyStr, r.fecha);
+        return s + (f > 0 ? r.cuota / f : r.cuota);
+      }, 0);
+    }
+
     return `<div class="loan-card" id="loan-${loan._id}" style="${completado?'opacity:0.65':''}">
       <div class="loan-card-header" data-loan-id="${loan._id}">
         <div class="flex gap-8 items-center" style="flex-wrap:wrap">
@@ -97,6 +112,7 @@ const LoansModule = (() => {
           ${!loan.activo?'<span class="badge badge-inactive">Inactivo</span>':''}
           <span class="badge badge-blue">${State.accountName(loan.cuenta||'default')}</span>
           ${diaPagoLabel?`<span class="badge badge-inactive">📅 ${diaPagoLabel}</span>`:''}
+          <span class="badge ${loan.tipoTasa==='variable'?'badge-orange':'badge-inactive'}">${loan.tipoTasa==='variable'?'Tipo variable':'Tipo fijo'}</span>
         </div>
         <div class="loan-card-meta">
           <span class="loan-tin">${loan.tin}%</span>
@@ -156,18 +172,37 @@ const LoansModule = (() => {
           </div>
         </div>` : ''}
 
+        ${conInflac && costoRealTotal !== null ? `
+        <div class="card mb-12" style="background:var(--bg3);padding:12px">
+          <div class="card-title" style="margin-bottom:8px;color:var(--yellow)">📉 Coste ajustado a inflación</div>
+          <div class="grid-3" style="gap:8px">
+            <div><div class="stat-label">Coste total nominal</div><div class="num neg">${FinanceMath.eur(res.totalPagado)}</div></div>
+            <div><div class="stat-label">Coste total en € de hoy</div><div class="num pos">${FinanceMath.eur(costoRealTotal)}</div></div>
+            <div><div class="stat-label">Beneficio por inflación</div><div class="num pos">−${FinanceMath.eur(res.totalPagado - costoRealTotal)}</div></div>
+          </div>
+          ${loan.tipoTasa==='variable'?`<div class="text-sm mt-8" style="color:var(--text3)">⚠ Tipo variable: el beneficio real dependerá de cómo evolucione el índice de referencia.</div>`:''}
+        </div>` : ''}
+
         <div class="card-title">Cuadro de amortización</div>
         <div class="table-wrap"><table>
-          <thead><tr><th>Mes</th><th>Fecha</th><th>Cuota</th><th>Intereses</th><th>Amort.</th><th>Cap. pendiente</th><th></th></tr></thead>
-          <tbody>${res.tabla.map(row=>`<tr ${row.esAmortizacion?'style="background:var(--yellow-dim)"':''}>
-            <td class="num">${row.esAmortizacion?'—':row.mes}</td>
-            <td class="num">${row.fecha}</td>
-            <td class="num">${row.esAmortizacion?'—':FinanceMath.eur(row.cuota)}</td>
-            <td class="num ${row.interes>0?'neg':''}">${FinanceMath.eur(row.interes)}</td>
-            <td class="num">${FinanceMath.eur(row.amortizacion)}</td>
-            <td class="num">${FinanceMath.eur(row.capitalPendiente)}</td>
-            <td>${row.esAmortizacion?`<span class="badge badge-sim">AMORT${row.simulacion?' SIM':''}</span>`:''}</td>
-          </tr>`).join('')}</tbody>
+          <thead><tr><th>Mes</th><th>Fecha</th><th>Cuota</th><th>Intereses</th><th>Amort.</th><th>Cap. pendiente</th>${conInflac?'<th title="Valor de la cuota en euros de hoy descontando la inflación acumulada">Precio real (€ hoy)</th>':''}<th></th></tr></thead>
+          <tbody>${res.tabla.map(row=>{
+            let precioReal = '';
+            if (conInflac && !row.esAmortizacion) {
+              const f = FinanceMath.calcFactorInflacion(periodos, hoyStr, row.fecha);
+              precioReal = FinanceMath.eur(f > 0 ? row.cuota / f : row.cuota);
+            }
+            return `<tr ${row.esAmortizacion?'style="background:var(--yellow-dim)"':''}>
+              <td class="num">${row.esAmortizacion?'—':row.mes}</td>
+              <td class="num">${row.fecha}</td>
+              <td class="num">${row.esAmortizacion?'—':FinanceMath.eur(row.cuota)}</td>
+              <td class="num ${row.interes>0?'neg':''}">${FinanceMath.eur(row.interes)}</td>
+              <td class="num">${FinanceMath.eur(row.amortizacion)}</td>
+              <td class="num">${FinanceMath.eur(row.capitalPendiente)}</td>
+              ${conInflac?`<td class="num pos" style="font-size:11px">${precioReal}</td>`:''}
+              <td>${row.esAmortizacion?`<span class="badge badge-sim">AMORT${row.simulacion?' SIM':''}</span>`:''}</td>
+            </tr>`;
+          }).join('')}</tbody>
         </table></div>
 
         ${tieneAmorts?`
@@ -196,6 +231,9 @@ const LoansModule = (() => {
       <div class="grid-2 mt-8">
         ${UI.diaPagoWidget('loan', loan?.diaPago||'')}
         ${UI.accountSelect('f-cuenta','Cuenta bancaria',loan?.cuenta||'default')}
+      </div>
+      <div class="mt-8">
+        ${UI.select('f-tipo-tasa','Tipo de interés',[['fijo','Tipo fijo (la cuota no varía con la inflación)'],['variable','Tipo variable (la cuota puede subir con el mercado)']], loan?.tipoTasa||'fijo')}
       </div>
       <div class="form-row mt-8">
         <label class="form-label">Simulación</label>
@@ -226,6 +264,7 @@ const LoansModule = (() => {
       simulacion:                document.getElementById('f-sim').checked,
       activo:                    document.getElementById('f-activo').checked,
       mostrarFechaFinEnDashboard:document.getElementById('f-mostrar-fin').checked,
+      tipoTasa:                  document.getElementById('f-tipo-tasa').value,
     };
     if (!loan.nombre||isNaN(loan.capital)||isNaN(loan.tin)||isNaN(loan.meses)) {
       UI.toast('Completa los campos obligatorios','err'); return;

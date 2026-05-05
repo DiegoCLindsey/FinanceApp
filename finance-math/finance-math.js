@@ -626,18 +626,67 @@ const FinanceMath = (() => {
   // ── Inflación aplicada a gastos ─────────────────────────────────────────────
   // proyectarGastos ya itera mes a mes; la inflación se aplica multiplicando
   // la cuantía por (1+inf)^(añosDesdeInicio). Lo hacemos como post-proceso:
-  function aplicarInflacion(events, expenses, inflacionGlobal) {
+  // ── Inflación por periodos ───────────────────────────────────────────────────
+  // periodos: [{year, tasa}] — tasa en %. Calcula el factor de inflación
+  // acumulada entre fromDate y toDate (compuesto año a año).
+  // Si toDate <= fromDate devuelve 1. Usa el último tipo conocido para años futuros.
+  function calcFactorInflacion(periodos, fromDate, toDate) {
+    if (!periodos || periodos.length === 0) return 1;
+    const from = new Date(fromDate + 'T00:00:00');
+    const to   = new Date(toDate   + 'T00:00:00');
+    if (to <= from) return 1;
+
+    const sorted = [...periodos].sort((a, b) => a.year - b.year);
+
+    let factor  = 1;
+    let current = new Date(from);
+
+    while (current < to) {
+      const year = current.getFullYear();
+      // Tasa aplicable: el registro más reciente <= year, o el primero si no hay ninguno anterior
+      const candidates = sorted.filter(r => r.year <= year);
+      const record     = candidates.length > 0 ? candidates[candidates.length - 1] : sorted[0];
+      const tasa       = (record ? record.tasa : 0) / 100;
+
+      // Fin del año actual o fin del periodo, lo que llegue antes
+      const yearEnd   = new Date(year + 1, 0, 1);
+      const periodEnd = yearEnd < to ? yearEnd : to;
+
+      const dias = (periodEnd - current) / (1000 * 60 * 60 * 24);
+      factor *= Math.pow(1 + tasa, dias / 365.25);
+      current = periodEnd;
+    }
+
+    return factor;
+  }
+
+  // Precio nominal ajustado a valor real (hoy) descontando la inflación acumulada
+  function ajustarPrecioReal(importe, periodos, fromDate, toDate) {
+    const factor = calcFactorInflacion(periodos, fromDate, toDate);
+    return factor > 0 ? importe / factor : importe;
+  }
+
+  function aplicarInflacion(events, expenses, inflacionGlobal, inflacionPeriodos=null, usarInflacion=false) {
     const now = new Date();
+    const hoyStr = now.toISOString().slice(0, 10);
     return events.map(ev => {
       const exp = expenses.find(e => e._id === ev.sourceId);
       if (!exp) return ev;
-      const inf = (exp.inflacion > 0 ? exp.inflacion : inflacionGlobal) / 100;
-      if (inf === 0) return ev;
-      const base = new Date((exp.fechaInicio||now.toISOString().slice(0,10))+'T00:00:00');
-      const evDate = new Date(ev.fecha+'T00:00:00');
-      const años = Math.max(0, (evDate - base) / (365.25*86400000));
-      const factor = Math.pow(1 + inf, años);
-      return { ...ev, cuantia: ev.tipo==='gasto' ? ev.cuantia * factor : ev.cuantia };
+
+      let factor;
+      if (usarInflacion && inflacionPeriodos && inflacionPeriodos.length > 0) {
+        const base = exp.fechaInicio || hoyStr;
+        factor = calcFactorInflacion(inflacionPeriodos, base, ev.fecha);
+      } else {
+        const inf = (exp.inflacion > 0 ? exp.inflacion : inflacionGlobal) / 100;
+        if (inf === 0) return ev;
+        const base    = new Date((exp.fechaInicio || hoyStr) + 'T00:00:00');
+        const evDate  = new Date(ev.fecha + 'T00:00:00');
+        const años    = Math.max(0, (evDate - base) / (365.25 * 86400000));
+        factor = Math.pow(1 + inf, años);
+      }
+
+      return { ...ev, cuantia: ev.tipo === 'gasto' ? ev.cuantia * factor : ev.cuantia };
     });
   }
 
@@ -1249,6 +1298,6 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcFondosPension, calcImpuestoPension, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcFondosPension, calcImpuestoPension, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 

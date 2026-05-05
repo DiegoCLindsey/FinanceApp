@@ -49,11 +49,14 @@ const DashboardModule = (() => {
 
     // Apply inflation and IRPF on top of base extracto
     let extracto=FinanceMath.generarExtracto(loans,expenses,accounts,config, filtroAccounts.length>0?filtroAccounts:null, nominas);
-    const inflGlobal = config.inflacionGlobal||0;
-    if (inflGlobal > 0 || expenses.some(e=>e.inflacion>0)) {
+    const inflGlobal    = config.inflacionGlobal||0;
+    const usarInflacion = config.usarInflacion||false;
+    const inflPeriodos  = State.get('inflacion') || [];
+    const debeInflar    = usarInflacion ? inflPeriodos.length > 0 : (inflGlobal > 0 || expenses.some(e=>e.inflacion>0));
+    if (debeInflar) {
       // Re-run with inflated cuantias — apply factor to gasto events from expense source
       const allExpEvents = extracto.filter(e=>e.sourceType==='expense');
-      const inflated = FinanceMath.aplicarInflacion(allExpEvents, expenses, inflGlobal);
+      const inflated = FinanceMath.aplicarInflacion(allExpEvents, expenses, inflGlobal, inflPeriodos, usarInflacion);
       const inflMap = new Map(inflated.map(e=>[e.sourceId+'_'+e.fecha, e.cuantia]));
       extracto = extracto.map(e => e.sourceType==='expense' ? {...e, cuantia: inflMap.get(e.sourceId+'_'+e.fecha)||e.cuantia} : e);
       // Recompute saldoAcum bidireccional desde fechaReferencia
