@@ -916,7 +916,10 @@ const FinanceMath = (() => {
     frecuencia = 1,
     mesesHorizonte = 36,
     minAmortizable = 500,
-    tipoAmort = 'plazo'
+    tipoAmort = 'plazo',
+    fechaPrimeraAmort = null,
+    loanIds = null,
+    nominas = [],
   } = {}) {
 
     const colchon   = calcColchon(expenses, config, loans);
@@ -925,7 +928,7 @@ const FinanceMath = (() => {
     const hoyStr    = hoy.toISOString().slice(0, 10);
 
     const loansActivos = loans
-      .filter(l => l.activo && !l.simulacion)
+      .filter(l => l.activo && !l.simulacion && (!loanIds || loanIds.includes(l._id)))
       .sort((a, b) => b.tin - a.tin);
 
     if (loansActivos.length === 0) {
@@ -982,7 +985,7 @@ const FinanceMath = (() => {
         amortizaciones: [...(l.amortizaciones || []), ...(amortsPorLoan[l._id] || [])]
       }));
       const cfg      = { ...config, dashboardStart: hoyStr, dashboardEnd: fin };
-      const extracto = generarExtracto(loansActualizados, expenses, accounts, cfg);
+      const extracto = generarExtracto(loansActualizados, expenses, accounts, cfg, null, nominas);
       const saldoBase = accounts.filter(a => a.activo).reduce((s, a) => s + saldoRealCuenta(a), 0);
       const antsMes   = extracto.filter(e => e.fecha < ini);
       const saldoIni  = antsMes.length > 0 ? antsMes[antsMes.length - 1].saldoAcum : saldoBase;
@@ -994,8 +997,18 @@ const FinanceMath = (() => {
     // Buffer de seguridad para absorber redondeos y evitar bajar del colchón
     const SAFETY_BUFFER = 2;
 
+    // Índice de inicio: primer mes i cuyo dia15 >= fechaPrimeraAmort (si se especifica)
+    // A partir de ese mes, la frecuencia se cuenta desde él (no desde i=0).
+    let primerMesValido = 0;
+    if (fechaPrimeraAmort) {
+      for (let i = 0; i < horizonte; i++) {
+        const { dia15 } = mesInfo(i);
+        if (dia15 >= fechaPrimeraAmort) { primerMesValido = i; break; }
+      }
+    }
+
     for (let i = 0; i < horizonte; i++) {
-      if (i % frecuencia !== 0) continue;
+      if ((i - primerMesValido) % frecuencia !== 0 || i < primerMesValido) continue;
 
       const { label, ini, fin, dia15 } = mesInfo(i);
 
@@ -1100,6 +1113,9 @@ const FinanceMath = (() => {
     tipoAmort      = 'plazo',
     fechaObjetivo  = null,   // ISO string, si null usa fin del horizonte
     frecuencias    = [1, 2, 3, 6, 12],
+    fechaPrimeraAmort = null,
+    loanIds        = null,
+    nominas        = [],
   } = {}) {
 
     // Fecha objetivo para medir el saldo
@@ -1115,7 +1131,7 @@ const FinanceMath = (() => {
       }));
       // Calcular extracto hasta fechaObj
       const cfgObj = { ...config, dashboardStart: hoy.toISOString().slice(0, 10), dashboardEnd: fechaObj };
-      const extracto = generarExtracto(loansConPlan, expenses, accounts, cfgObj);
+      const extracto = generarExtracto(loansConPlan, expenses, accounts, cfgObj, null, nominas);
       if (extracto.length === 0) {
         return accounts.filter(a => a.activo).reduce((s, a) => s + saldoRealCuenta(a), 0);
       }
@@ -1134,6 +1150,9 @@ const FinanceMath = (() => {
         mesesHorizonte: horizonte,
         minAmortizable,
         tipoAmort,
+        fechaPrimeraAmort,
+        loanIds,
+        nominas,
       });
 
       // Reconstruir amortsPorLoan desde el plan para calcular saldo

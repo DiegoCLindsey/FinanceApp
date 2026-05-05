@@ -202,6 +202,8 @@ const LoansModule = (() => {
         <label class="toggle"><input type="checkbox" id="f-sim" ${loan?.simulacion?'checked':''}/><span class="toggle-slider"></span></label>
         <label class="form-label" style="margin-left:12px">Activo</label>
         <label class="toggle"><input type="checkbox" id="f-activo" ${loan?.activo!==false?'checked':''}/><span class="toggle-slider"></span></label>
+        <label class="form-label" style="margin-left:12px">Mostrar fecha fin en dashboard</label>
+        <label class="toggle"><input type="checkbox" id="f-mostrar-fin" ${loan?.mostrarFechaFinEnDashboard!==false?'checked':''}/><span class="toggle-slider"></span></label>
       </div>
       <div class="flex gap-8 mt-16" style="justify-content:flex-end">
         <button class="btn-secondary" onclick="UI.closeModal()">Cancelar</button>
@@ -212,17 +214,18 @@ const LoansModule = (() => {
 
   function saveLoan(id) {
     const loan = {
-      nombre:          document.getElementById('f-nombre').value.trim(),
-      capital:         parseFloat(document.getElementById('f-capital').value),
-      tin:             parseFloat(document.getElementById('f-tin').value),
-      meses:           parseInt(document.getElementById('f-meses').value),
-      fechaInicio:     document.getElementById('f-fecha').value,
-      comisionApertura:parseFloat(document.getElementById('f-com-ap').value)||0,
-      comisionAmort:   parseFloat(document.getElementById('f-com-am').value)||0,
-      diaPago:         UI.getDiaPagoValue('loan'),
-      cuenta:          document.getElementById('f-cuenta').value,
-      simulacion:      document.getElementById('f-sim').checked,
-      activo:          document.getElementById('f-activo').checked,
+      nombre:                    document.getElementById('f-nombre').value.trim(),
+      capital:                   parseFloat(document.getElementById('f-capital').value),
+      tin:                       parseFloat(document.getElementById('f-tin').value),
+      meses:                     parseInt(document.getElementById('f-meses').value),
+      fechaInicio:               document.getElementById('f-fecha').value,
+      comisionApertura:          parseFloat(document.getElementById('f-com-ap').value)||0,
+      comisionAmort:             parseFloat(document.getElementById('f-com-am').value)||0,
+      diaPago:                   UI.getDiaPagoValue('loan'),
+      cuenta:                    document.getElementById('f-cuenta').value,
+      simulacion:                document.getElementById('f-sim').checked,
+      activo:                    document.getElementById('f-activo').checked,
+      mostrarFechaFinEnDashboard:document.getElementById('f-mostrar-fin').checked,
     };
     if (!loan.nombre||isNaN(loan.capital)||isNaN(loan.tin)||isNaN(loan.meses)) {
       UI.toast('Completa los campos obligatorios','err'); return;
@@ -290,12 +293,26 @@ const LoansModule = (() => {
     const fechaSugerida = config.dashboardEnd ||
       new Date(new Date().getFullYear() + 5, 0, 1).toISOString().slice(0, 10);
 
+    const loanCheckboxes = loans.map(l => `
+      <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;background:var(--bg2)">
+        <input type="checkbox" class="opt-loan-check" value="${l._id}" checked style="accent-color:var(--accent)"/>
+        <span style="font-size:13px;flex:1">${l.nombre}</span>
+        <span class="badge badge-yellow" style="font-size:11px">${l.tin}% TIN</span>
+      </label>`).join('');
+
     const html = `
       <div class="auth-hint mb-12">
         El optimizador calcula cuándo y cuánto amortizar usando el excedente mensual
         por encima del colchón económico (${FinanceMath.eur(FinanceMath.calcColchon(State.get('expenses'), config, loans))}).
         Las amortizaciones se aplican primero al préstamo con mayor interés.
       </div>
+
+      <div class="card-title mb-6">Préstamos a amortizar</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
+        ${loanCheckboxes}
+      </div>
+      <button class="btn-secondary btn-sm mb-12" onclick="LoansModule._toggleAllLoans()">Seleccionar todo</button>
+
       <div class="grid-2" style="gap:10px">
         ${UI.input('opt-horizonte','Horizonte (meses)','number','60','60')}
         ${UI.input('opt-frecuencia','Frecuencia manual (cada N meses)','number','1','1')}
@@ -304,7 +321,8 @@ const LoansModule = (() => {
         ${UI.input('opt-min','Importe mínimo por amortización (€)','number','500','500')}
         ${UI.select('opt-tipo','Efecto de la amortización',[['plazo','Reducir plazo (mantener cuota)'],['cuota','Reducir cuota (mantener plazo)']],'plazo')}
       </div>
-      <div class="mt-8">
+      <div class="grid-2 mt-8" style="gap:10px">
+        ${UI.input('opt-fecha-primera','Fecha primera amortización','date','')}
         ${UI.input('opt-fecha-obj','Fecha objetivo para comparar saldo','date', fechaSugerida)}
       </div>
       <div class="flex gap-8 mt-16" style="justify-content:flex-end;flex-wrap:wrap">
@@ -315,11 +333,26 @@ const LoansModule = (() => {
     UI.openModal(html, '✨ Optimizar amortizaciones');
   }
 
+  function _toggleAllLoans() {
+    const checks = [...document.querySelectorAll('.opt-loan-check')];
+    const allChecked = checks.every(c => c.checked);
+    checks.forEach(c => c.checked = !allChecked);
+  }
+
+  function _getSelectedLoanIds() {
+    const checks = [...document.querySelectorAll('.opt-loan-check')];
+    if (checks.length === 0) return null; // modal cerrado o sin checkboxes → sin filtro
+    const selected = checks.filter(c => c.checked).map(c => c.value);
+    return selected.length === checks.length ? null : selected; // null = todos
+  }
+
   function runComparador() {
-    const horizonte  = Math.max(1, parseInt(document.getElementById('opt-horizonte')?.value) || 60);
-    const minAmort   = Math.max(0, parseFloat(document.getElementById('opt-min')?.value) || 500);
-    const tipoAmort  = document.getElementById('opt-tipo')?.value || 'plazo';
-    const fechaObj   = document.getElementById('opt-fecha-obj')?.value || null;
+    const horizonte        = Math.max(1, parseInt(document.getElementById('opt-horizonte')?.value) || 60);
+    const minAmort         = Math.max(0, parseFloat(document.getElementById('opt-min')?.value) || 500);
+    const tipoAmort        = document.getElementById('opt-tipo')?.value || 'plazo';
+    const fechaObj         = document.getElementById('opt-fecha-obj')?.value || null;
+    const fechaPrimeraAmort= document.getElementById('opt-fecha-primera')?.value || null;
+    const loanIds          = _getSelectedLoanIds();
 
     // Limpiar opt_ previas
     const loansActuales = State.get('loans');
@@ -333,6 +366,7 @@ const LoansModule = (() => {
     const expenses = State.get('expenses');
     const accounts = State.get('accounts');
     const config   = State.get('config');
+    const nominas  = State.get('nominas') || [];
 
     UI.openModal(`<div style="text-align:center;padding:30px">
       <div style="font-size:24px;margin-bottom:10px">⏳</div>
@@ -343,7 +377,7 @@ const LoansModule = (() => {
     setTimeout(() => {
       const comparativa = FinanceMath.compararFrecuencias(loans, expenses, accounts, config, {
         horizonte, minAmortizable: minAmort, tipoAmort, fechaObjetivo: fechaObj,
-        frecuencias: [1, 2, 3, 6, 12],
+        frecuencias: [1, 2, 3, 6, 12], fechaPrimeraAmort, loanIds, nominas,
       });
 
       if (comparativa.resultados.length === 0) {
@@ -469,10 +503,12 @@ const LoansModule = (() => {
   }
 
   function runOptimizador() {
-    const horizonte    = Math.max(1, parseInt(document.getElementById('opt-horizonte')?.value) || 60);
-    const frecuencia   = Math.max(1, parseInt(document.getElementById('opt-frecuencia')?.value) || 1);
-    const minAmort     = Math.max(0, parseFloat(document.getElementById('opt-min')?.value) || 500);
-    const tipoAmort    = document.getElementById('opt-tipo')?.value || 'plazo';
+    const horizonte        = Math.max(1, parseInt(document.getElementById('opt-horizonte')?.value) || 60);
+    const frecuencia       = Math.max(1, parseInt(document.getElementById('opt-frecuencia')?.value) || 1);
+    const minAmort         = Math.max(0, parseFloat(document.getElementById('opt-min')?.value) || 500);
+    const tipoAmort        = document.getElementById('opt-tipo')?.value || 'plazo';
+    const fechaPrimeraAmort= document.getElementById('opt-fecha-primera')?.value || null;
+    const loanIds          = _getSelectedLoanIds();
 
     // Limpiar amortizaciones optimizadas previas antes de calcular
     // (por si el usuario ya aplicó un plan y quiere recalcular con parámetros distintos)
@@ -491,9 +527,11 @@ const LoansModule = (() => {
     const expenses = State.get('expenses');
     const accounts = State.get('accounts');
     const config   = State.get('config');
+    const nominas  = State.get('nominas') || [];
 
     const resultado = FinanceMath.optimizarAmortizaciones(loans, expenses, accounts, config, {
-      frecuencia, mesesHorizonte: horizonte, minAmortizable: minAmort, tipoAmort
+      frecuencia, mesesHorizonte: horizonte, minAmortizable: minAmort, tipoAmort,
+      fechaPrimeraAmort, loanIds, nominas,
     });
 
     if (resultado.plan.length === 0) {
@@ -627,5 +665,5 @@ const LoansModule = (() => {
     render(Object.keys(porLoan));
   }
 
-  return { render, saveLoan, deleteAmort, openAmortForm, saveAmort, openOptimizador, runOptimizador, runComparador, aplicarDesdeComparador, aplicarPlanOptimizado, toggleFinalizados };
+  return { render, saveLoan, deleteAmort, openAmortForm, saveAmort, openOptimizador, runOptimizador, runComparador, aplicarDesdeComparador, aplicarPlanOptimizado, toggleFinalizados, _toggleAllLoans, _getSelectedLoanIds };
 })();

@@ -133,7 +133,7 @@ const DashboardModule = (() => {
       return s + Math.max(0, FinanceMath.resumenPrestamo(loanSin).totalIntereses - conAmorts);
     }, 0);
     const ahorroInteresesMes = numMeses > 0 ? ahorroIntereses / numMeses : 0;
-    const loansFinEnPeriodo  = loansActivos.map(l => {
+    const loansFinEnPeriodo  = loansActivos.filter(l => l.mostrarFechaFinEnDashboard !== false).map(l => {
       const { fechaFin } = FinanceMath.resumenPrestamo(l);
       if (!fechaFin || fechaFin < config.dashboardStart || fechaFin > config.dashboardEnd) return null;
       return { loan: l, fechaFin };
@@ -845,7 +845,7 @@ const DashboardModule = (() => {
       const yValsAll = saldoXY.map(p=>p.y);
       const yMinAll  = Math.min(...yValsAll), yMaxAll = Math.max(...yValsAll);
       const spanAll  = Math.max(Math.abs(yMaxAll - yMinAll) * 0.08, 1);
-      const loansActivosChart = loans.filter(l => l.activo && !l.simulacion);
+      const loansActivosChart = loans.filter(l => l.activo && !l.simulacion && l.mostrarFechaFinEnDashboard !== false);
       for (const l of loansActivosChart) {
         const { fechaFin } = FinanceMath.resumenPrestamo(l);
         if (!fechaFin || fechaFin < config.dashboardStart || fechaFin > config.dashboardEnd) continue;
@@ -1021,7 +1021,7 @@ const DashboardModule = (() => {
       return;
     }
 
-    const dataIngresos = [], dataCuotas = [], dataBasicos = [], dataOtros = [];
+    const dataIngresos = [], dataCuotas = [], dataBasicos = [], dataOtros = [], dataFiscal = [];
 
     for (const mesLabel of months) {
       const mesIni = mesLabel + '-01';
@@ -1034,10 +1034,13 @@ const DashboardModule = (() => {
         e.sourceType !== 'transfer-out' && e.sourceType !== 'transfer-in'
       );
 
+      const esFiscal = e => e.tipo === 'gasto' && (e.tags || []).includes('fiscal');
+
       dataIngresos.push(evsMes.filter(e=>e.tipo==='ingreso').reduce((s,e)=>s+Math.abs(e.cuantia),0));
       dataCuotas.push(evsMes.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto').reduce((s,e)=>s+Math.abs(e.cuantia),0));
-      dataBasicos.push(evsMes.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
-      dataOtros.push(evsMes.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return !ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
+      dataFiscal.push(evsMes.filter(esFiscal).reduce((s,e)=>s+Math.abs(e.cuantia),0));
+      dataBasicos.push(evsMes.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense'&&!esFiscal(e)).filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
+      dataOtros.push(evsMes.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense'&&!esFiscal(e)).filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return !ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
     }
 
     const labels = months.map(m => {
@@ -1053,6 +1056,7 @@ const DashboardModule = (() => {
           { label:'Ingresos', data:dataIngresos, backgroundColor:'rgba(0,229,160,0.7)', borderWidth:0, borderRadius:2, order:1 },
           { label:'Cuotas préstamos', data:dataCuotas, backgroundColor:'rgba(168,85,247,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
           { label:'Gastos básicos', data:dataBasicos, backgroundColor:'rgba(77,159,255,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
+          { label:'Fiscal / IRPF', data:dataFiscal, backgroundColor:'rgba(251,146,60,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
           { label:'Otros gastos', data:dataOtros, backgroundColor:'rgba(255,77,109,0.65)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
         ]
       },
