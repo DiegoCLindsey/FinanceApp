@@ -21,6 +21,7 @@ const State = (() => {
       inflacionGlobal: 0,  // % anual por defecto para gastos indexados (legado)
       usarInflacion: false, // activar módulo de inflación por periodos
       tramos_irpf: [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]],
+      tramosGananciasCapital: [[0,19],[6000,21],[50000,23],[200000,27],[300000,28]],
       onboardingDone: false,
       showExecSummary: true,
       colchonTipo: 'meses',   // 'meses' | 'fijo'
@@ -36,12 +37,19 @@ const State = (() => {
     const _stateKeys = Object.keys(DEFAULT_STATE);
     for (const k of _stateKeys) { const val = StorageAdapter.get(`state_${k}`); if (val !== null) state[k] = val; }
     // Migrate: ensure accounts have new fields
-    state.accounts = (state.accounts || []).map(a => ({
-      saldoInicial: 0, fechaInicialSaldo: new Date().toISOString().slice(0,10), historicoSaldos: [],
-      esFondoPension: false, bloqueoMeses: 120, impuestoRetirada: 0, aportaciones: [],
-      esCuentaPrincipal: false,
-      ...a
-    }));
+    state.accounts = (state.accounts || []).map(a => {
+      const base = {
+        saldoInicial: 0, fechaInicialSaldo: new Date().toISOString().slice(0,10), historicoSaldos: [],
+        esFondoPension: false, bloqueoMeses: 120, impuestoRetirada: 0, aportaciones: [],
+        esCuentaPrincipal: false, planAportaciones: [],
+        ...a
+      };
+      // Migrate esFondoPension boolean → modeloFondo string
+      if (!base.modeloFondo) {
+        base.modeloFondo = base.esFondoPension ? 'pension' : 'cuenta';
+      }
+      return base;
+    });
     // Ensure exactly one account is marked as principal
     const hasPrincipal = state.accounts.some(a => a.esCuentaPrincipal);
     if (!hasPrincipal && state.accounts.length > 0) {
@@ -56,6 +64,7 @@ const State = (() => {
       colchonMeses:6, showColchon:true, showHistorico:true, histCuenta:'',
       showMC:false, mcIteraciones:300, inflacionGlobal:0,
       tramos_irpf:[[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]],
+      tramosGananciasCapital:[[0,19],[6000,21],[50000,23],[200000,27],[300000,28]],
       onboardingDone:false, showExecSummary:true, showCriticos:true,
       colchonTipo:'meses', colchonFijo:0,
       fechaReferencia: new Date().toISOString().slice(0,10),

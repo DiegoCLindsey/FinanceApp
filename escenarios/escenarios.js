@@ -1,6 +1,7 @@
 // Depends on: State, FinanceMath, UI
 const EscenariosModule = (() => {
   let chartComparacion = null;
+  let filtroAccountsExcluidos = new Set();
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
   function escenarioName(id) {
@@ -35,7 +36,7 @@ const EscenariosModule = (() => {
   }
 
   // Runs a full extracto projection for the given escenario (or base if null).
-  function _extractoParaEscenario(esc) {
+  function _extractoParaEscenario(esc, excludeAccountIds = []) {
     const config   = State.get('config');
     const allLoans    = State.get('loans')    || [];
     const allExpenses = State.get('expenses') || [];
@@ -46,21 +47,65 @@ const EscenariosModule = (() => {
     const escId    = esc ? esc._id : null;
     const filtered = FinanceMath.filtrarPorEscenario(allLoans, allExpenses, allNominas, allAccounts, escId);
 
+    const accounts = excludeAccountIds.length
+      ? filtered.accounts.filter(a => !excludeAccountIds.includes(a._id))
+      : filtered.accounts;
+
     const horizonte = esc && esc.fechaFin && esc.fechaFin > config.dashboardEnd
       ? esc.fechaFin
       : config.dashboardEnd;
     const cfgExt = { ...config, dashboardEnd: horizonte };
 
     const eventos = FinanceMath.generarExtracto(
-      filtered.loans, filtered.expenses, filtered.accounts, cfgExt,
+      filtered.loans, filtered.expenses, accounts, cfgExt,
       null, filtered.nominas, inflPeriodos
     );
     return { eventos, horizonte };
   }
 
+  // ── Account filter pills ─────────────────────────────────────────────────────
+  function _accountFilterPillsHtml() {
+    const accounts = State.get('accounts') || [];
+    if (accounts.length <= 1) return '';
+    const pills = accounts.map(a => {
+      const excluded = filtroAccountsExcluidos.has(a._id);
+      return `<button onclick="EscenariosModule.toggleAccountFilter('${a._id}')"
+        style="padding:4px 10px;border-radius:20px;border:1px solid ${excluded ? 'var(--border)' : 'var(--accent)'};
+               background:${excluded ? 'transparent' : 'rgba(99,102,241,0.1)'};
+               color:${excluded ? 'var(--text3)' : 'var(--text1)'};cursor:pointer;font-size:12px;
+               ${excluded ? 'text-decoration:line-through;' : ''}">
+        ${a.nombre}
+      </button>`;
+    }).join('');
+    return `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px">
+      <span style="font-size:12px;color:var(--text3);margin-right:4px">Cuentas:</span>
+      ${pills}
+    </div>`;
+  }
+
+  function toggleAccountFilter(id) {
+    if (filtroAccountsExcluidos.has(id)) {
+      filtroAccountsExcluidos.delete(id);
+    } else {
+      filtroAccountsExcluidos.add(id);
+    }
+    const pillsEl = document.getElementById('esc-account-filter-pills');
+    if (pillsEl) pillsEl.innerHTML = _accountFilterPillsHtml();
+    const escenarios = State.get('escenarios') || [];
+    if (chartComparacion) { try { chartComparacion.destroy(); } catch {} chartComparacion = null; }
+    renderChart(escenarios);
+    const wrapper = document.getElementById('esc-comparativa-wrapper');
+    if (wrapper) wrapper.innerHTML = renderTablaComparativa(escenarios);
+  }
+
   // ── Render principal ─────────────────────────────────────────────────────────
   function render() {
     if (chartComparacion) { try { chartComparacion.destroy(); } catch {} chartComparacion = null; }
+    // Clean up stale account IDs from filter
+    const allAccountIds = new Set((State.get('accounts')||[]).map(a => a._id));
+    for (const id of filtroAccountsExcluidos) {
+      if (!allAccountIds.has(id)) filtroAccountsExcluidos.delete(id);
+    }
 
     const escenarios = State.get('escenarios') || [];
     const config     = State.get('config') || {};
@@ -98,9 +143,10 @@ const EscenariosModule = (() => {
       ${escenarios.length > 0 ? `
       <div class="card-title mt-24" style="margin-bottom:12px">Comparativa de escenarios</div>
       <div class="card" style="padding:16px">
+        <div id="esc-account-filter-pills">${_accountFilterPillsHtml()}</div>
         <canvas id="chart-comparacion" height="220"></canvas>
       </div>
-      <div class="card mt-12" style="padding:14px">
+      <div class="card mt-12" style="padding:14px" id="esc-comparativa-wrapper">
         ${renderTablaComparativa(escenarios)}
       </div>` : ''}`;
 
@@ -161,12 +207,13 @@ const EscenariosModule = (() => {
   function renderTablaComparativa(escenarios) {
     const config = State.get('config');
     const fechaRef = config.dashboardEnd;
+    const excl = [...filtroAccountsExcluidos];
 
-    const base = _extractoParaEscenario(null);
+    const base = _extractoParaEscenario(null, excl);
     const saldoBase = _saldoEnFechaArr(base.eventos, fechaRef);
 
     const rows = escenarios.map(esc => {
-      const { eventos, horizonte } = _extractoParaEscenario(esc);
+      const { eventos, horizonte } = _extractoParaEscenario(esc, excl);
       const fechaComp = esc.fechaFin || fechaRef;
       const saldoEsc = _saldoEnFechaArr(eventos, fechaComp);
       const diff = saldoEsc !== null && saldoBase !== null ? saldoEsc - saldoBase : null;
@@ -209,7 +256,8 @@ const EscenariosModule = (() => {
     const ctx = document.getElementById('chart-comparacion');
     if (!ctx) return;
 
-    const base = _extractoParaEscenario(null);
+    const excl = [...filtroAccountsExcluidos];
+    const base = _extractoParaEscenario(null, excl);
     const COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6','#06b6d4','#f97316'];
     const datasets = [];
 
@@ -225,7 +273,7 @@ const EscenariosModule = (() => {
     });
 
     escenarios.forEach((esc, i) => {
-      const { eventos } = _extractoParaEscenario(esc);
+      const { eventos } = _extractoParaEscenario(esc, excl);
       const color = esc.color || COLORS[i % COLORS.length];
       datasets.push({
         label: esc.nombre,
@@ -371,6 +419,7 @@ const EscenariosModule = (() => {
     render, activar, desactivar,
     openForm, saveForm, deleteEscenario,
     escenarioName, checkboxesHtml, readCheckedEscenarios,
+    toggleAccountFilter,
     _pickColor,
   };
 })();

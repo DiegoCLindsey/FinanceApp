@@ -342,8 +342,36 @@ const FinanceMath = (() => {
   // ── Fondos de pensiones ──────────────────────────────────────────────────────
   // Calcula qué parte del saldo está disponible (bloqueo cumplido) y qué está bloqueada.
   // FIFO: las aportaciones más antiguas se consideran disponibles primero.
+  // Capital gains tax using progressive brackets [[desde, pct], ...]
+  function calcGananciasCapital(plusvalia, tramos) {
+    if (!plusvalia || plusvalia <= 0) return 0;
+    const t = tramos || [[0,19],[6000,21],[50000,23],[200000,27],[300000,28]];
+    let impuesto = 0, restante = plusvalia;
+    for (let i = 0; i < t.length; i++) {
+      const [desde, pct] = t[i];
+      const hasta = i < t.length-1 ? t[i+1][0] : Infinity;
+      const tributa = Math.min(restante, hasta - desde);
+      if (tributa <= 0) continue;
+      impuesto += tributa * (pct/100);
+      restante -= tributa;
+      if (restante <= 0) break;
+    }
+    return impuesto;
+  }
+
+  // Fiscal summary for investment funds (modeloFondo === 'inversion')
+  function calcFondoInversion(acc, tramosGanancias) {
+    if ((acc.modeloFondo || (acc.esFondoPension ? 'pension' : 'cuenta')) !== 'inversion') return null;
+    const saldo = saldoRealCuenta(acc);
+    const costBase = (acc.aportaciones || []).reduce((s, a) => s + a.cantidad, 0) || (acc.saldoInicial || 0);
+    const plusvalia = Math.max(0, saldo - costBase);
+    const impuesto  = calcGananciasCapital(plusvalia, tramosGanancias);
+    return { saldo, costBase, plusvalia, impuesto, neto: saldo - impuesto };
+  }
+
   function calcFondosPension(acc) {
-    if (!acc.esFondoPension) return null;
+    const modeloFondo = acc.modeloFondo || (acc.esFondoPension ? 'pension' : 'cuenta');
+    if (modeloFondo !== 'pension') return null;
     const hoy     = new Date();
     const bloqueo = acc.bloqueoMeses || 120; // meses de bloqueo por defecto = 10 años
     const saldo   = saldoRealCuenta(acc);
@@ -385,7 +413,8 @@ const FinanceMath = (() => {
   // Calcula el impuesto a pagar al retirar `cantidadRetirada` de un fondo de pensiones.
   // El impuesto se aplica solo sobre la proporción del beneficio incluida en la retirada.
   function calcImpuestoPension(acc, cantidadRetirada) {
-    if (!acc.esFondoPension || !acc.impuestoRetirada) return 0;
+    const modeloFondo = acc.modeloFondo || (acc.esFondoPension ? 'pension' : 'cuenta');
+    if (modeloFondo !== 'pension' || !acc.impuestoRetirada) return 0;
     const saldo    = saldoRealCuenta(acc);
     if (saldo <= 0) return 0;
     const costBase = (acc.aportaciones || []).reduce((s, a) => s + a.cantidad, 0);
@@ -1524,6 +1553,6 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcFondosPension, calcImpuestoPension, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, calcFondoInversion, calcFondosPension, calcImpuestoPension, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 
