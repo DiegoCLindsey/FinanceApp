@@ -231,18 +231,44 @@ const FinanceMath = (() => {
       const dI = new Date((exp.fechaInicio||dateStart)+'T00:00:00');
       const dF = exp.fechaFin ? new Date(exp.fechaFin+'T00:00:00') : dE;
       const pushPair = (fecha) => {
+        const allAccounts  = typeof State !== 'undefined' ? State.get('accounts') : [];
+        const cuentaOrigen = allAccounts.find(a => a._id === (exp.cuenta||'default'));
+        const cuentaDest   = allAccounts.find(a => a._id === (exp.cuentaDestino||'default'));
+        const _modelo = a => a?.modeloFondo || (a?.esFondoPension ? 'pension' : 'cuenta');
+        const originModel  = _modelo(cuentaOrigen);
+        const destModel    = _modelo(cuentaDest);
+
+        // Traspaso: fondo→fondo o plan→plan (sin tributación, diferimiento fiscal)
+        const esTraspaso = (originModel === 'inversion' && destModel === 'inversion') ||
+                           (originModel === 'pension'   && destModel === 'pension');
+        const tagsBase = ['transferencia', ...(esTraspaso ? ['traspaso'] : []), ...(exp.tags||[])];
+        const srcOut   = esTraspaso ? 'traspaso-out' : 'transfer-out';
+        const srcIn    = esTraspaso ? 'traspaso-in'  : 'transfer-in';
+
         const addOrigen  = !filtroAccounts || filtroAccounts.length===0 || filtroAccounts.includes(exp.cuenta||'default');
         const addDestino = !filtroAccounts || filtroAccounts.length===0 || filtroAccounts.includes(exp.cuentaDestino||'default');
-        if (addOrigen)  events.push({ fecha, concepto:`Transf. → ${State.accountName(exp.cuentaDestino||'default')}: ${exp.concepto}`, cuantia: exp.cuantia, tipo:'gasto',   tags:['transferencia',...(exp.tags||[])], cuenta:exp.cuenta||'default',        sourceId:exp._id, sourceType:'transfer-out' });
-        if (addDestino) events.push({ fecha, concepto:`Transf. ← ${State.accountName(exp.cuenta||'default')}: ${exp.concepto}`,      cuantia: exp.cuantia, tipo:'ingreso', tags:['transferencia',...(exp.tags||[])], cuenta:exp.cuentaDestino||'default',  sourceId:exp._id, sourceType:'transfer-in'  });
-        // Si la cuenta origen es un fondo de pensiones, generar evento de impuesto
-        if (addOrigen) {
-          const allAccounts = typeof State !== 'undefined' ? State.get('accounts') : [];
-          const cuentaOrigen = allAccounts.find(a => a._id === (exp.cuenta||'default'));
-          if (cuentaOrigen?.esFondoPension) {
+
+        if (addOrigen)  events.push({ fecha, concepto:`Transf. → ${State.accountName(exp.cuentaDestino||'default')}: ${exp.concepto}`, cuantia: exp.cuantia, tipo:'gasto',   tags:tagsBase, cuenta:exp.cuenta||'default',       sourceId:exp._id, sourceType:srcOut });
+        if (addDestino) events.push({ fecha, concepto:`Transf. ← ${State.accountName(exp.cuenta||'default')}: ${exp.concepto}`,       cuantia: exp.cuantia, tipo:'ingreso', tags:tagsBase, cuenta:exp.cuentaDestino||'default', sourceId:exp._id, sourceType:srcIn  });
+
+        if (addOrigen && !esTraspaso) {
+          if (originModel === 'inversion') {
+            // REEMBOLSO: retención 19% sobre la plusvalía proporcional al importe retirado
+            const config = typeof State !== 'undefined' ? State.get('config') : {};
+            const inv = calcFondoInversion(cuentaOrigen, config.tramosGananciasCapital);
+            if (inv && inv.saldo > 0 && inv.plusvalia > 0) {
+              const proporcion  = Math.min(1, exp.cuantia / inv.saldo);
+              const plusvProp   = inv.plusvalia * proporcion;
+              const retencion   = plusvProp * 0.19; // Art. 101 LIRPF: retención 19% a cuenta
+              if (retencion > 0.01) {
+                events.push({ fecha, concepto:`Retención IRPF reembolso ${cuentaOrigen.nombre} (19% s/plusvalía)`, cuantia: retencion, tipo:'gasto', tags:['impuesto','capital-mobiliario','retencion'], cuenta:exp.cuenta||'default', sourceId:exp._id, sourceType:'investment-tax' });
+              }
+            }
+          } else if (originModel === 'pension') {
+            // RESCATE: rendimiento del trabajo; usamos el % configurado como aproximación del tipo marginal
             const impuesto = calcImpuestoPension(cuentaOrigen, exp.cuantia);
             if (impuesto > 0) {
-              events.push({ fecha, concepto:`Impuesto retirada ${cuentaOrigen.nombre} (${cuentaOrigen.impuestoRetirada}% beneficio)`, cuantia: impuesto, tipo:'gasto', tags:['impuesto','pension'], cuenta:exp.cuenta||'default', sourceId:exp._id, sourceType:'pension-tax' });
+              events.push({ fecha, concepto:`Retención rescate ${cuentaOrigen.nombre} (${cuentaOrigen.impuestoRetirada}% s/beneficio)`, cuantia: impuesto, tipo:'gasto', tags:['impuesto','rendimientos-trabajo','pension'], cuenta:exp.cuenta||'default', sourceId:exp._id, sourceType:'pension-tax' });
             }
           }
         }
