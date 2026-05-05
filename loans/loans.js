@@ -95,17 +95,23 @@ const LoansModule = (() => {
     const hoyStr    = new Date().toISOString().slice(0, 10);
 
     let costoRealTotal = null;
+    let costoRealSinAmort = null;
     if (conInflac) {
-      // Discount ALL cash outflows: regular cuotas AND explicit amortization payments.
-      // Omitting amortizations caused the benefit to be grossly overstated when a large
-      // early payoff was registered (nominal included the lump sum; real didn't).
+      // Compute real cost (today's €) for the plan WITH amortizations
       costoRealTotal = res.tabla.reduce((s, r) => {
         const f = FinanceMath.calcFactorInflacion(periodos, hoyStr, r.fecha);
         const amount = r.esAmortizacion ? (r.amortizacion + r.comisionAmort) : r.cuota;
         return s + (f > 0 ? amount / f : amount);
-      }, 0);
-      // Opening commission is paid at loan inception — add at nominal value
-      costoRealTotal += res.comAp || 0;
+      }, 0) + (res.comAp || 0);
+
+      // Compute real cost WITHOUT amortizations to get a meaningful comparison
+      if (res.sinAmort && res.sinAmort.tabla) {
+        costoRealSinAmort = res.sinAmort.tabla.reduce((s, r) => {
+          const f = FinanceMath.calcFactorInflacion(periodos, hoyStr, r.fecha);
+          const amount = r.esAmortizacion ? (r.amortizacion + r.comisionAmort) : r.cuota;
+          return s + (f > 0 ? amount / f : amount);
+        }, 0) + (res.comAp || 0);
+      }
     }
 
     return `<div class="loan-card" id="loan-${loan._id}" style="${completado?'opacity:0.65':''}">
@@ -178,16 +184,33 @@ const LoansModule = (() => {
         </div>` : ''}
 
         ${conInflac && costoRealTotal !== null ? (() => {
-          const beneficio = res.totalPagado - costoRealTotal;
-          const esBeneficio = beneficio >= 0;
-          const beneficioLabel = esBeneficio ? 'Ahorro por inflación' : 'Sobrecoste real';
-          const beneficioValor = esBeneficio
-            ? `−${FinanceMath.eur(beneficio)}`
-            : `+${FinanceMath.eur(-beneficio)}`;
-          const beneficioHint = !esBeneficio
-            ? `<div class="text-sm mt-4" style="color:var(--text3)">El pago anticipado concentra el desembolso en el corto plazo, donde la inflación apenas descuenta. El coste real sigue siendo menor que sin amortizar.</div>`
-            : '';
-          return `
+          const tieneAmortConReal = tieneAmorts && costoRealSinAmort !== null;
+          if (tieneAmortConReal) {
+            const ahorro = costoRealSinAmort - costoRealTotal;
+            const esAhorro = ahorro >= 0;
+            const ahorroLabel = esAhorro ? 'Ahorro real neto' : 'Sobrecoste real neto';
+            const ahorroValor = esAhorro
+              ? `−${FinanceMath.eur(ahorro)}`
+              : `+${FinanceMath.eur(-ahorro)}`;
+            return `
+        <div class="card mb-12" style="background:var(--bg3);padding:12px">
+          <div class="card-title" style="margin-bottom:8px;color:var(--yellow)">📉 Coste ajustado a inflación</div>
+          <div class="grid-3" style="gap:8px">
+            <div><div class="stat-label">Real sin amortizar (€ hoy)</div><div class="num neg">${FinanceMath.eur(costoRealSinAmort)}</div></div>
+            <div><div class="stat-label">Real con amortizar (€ hoy)</div><div class="num neg">${FinanceMath.eur(costoRealTotal)}</div></div>
+            <div><div class="stat-label">${ahorroLabel}</div><div class="num ${esAhorro?'pos':'neg'}">${ahorroValor}</div></div>
+          </div>
+          <div class="text-sm mt-4" style="color:var(--text3)">Comparación en euros de hoy: cuánto ahorran las amortizaciones en términos reales.</div>
+          ${loan.tipoTasa==='variable'?`<div class="text-sm mt-8" style="color:var(--text3)">⚠ Tipo variable: el beneficio real dependerá de cómo evolucione el índice de referencia.</div>`:''}
+        </div>`;
+          } else {
+            const beneficio = res.totalPagado - costoRealTotal;
+            const esBeneficio = beneficio >= 0;
+            const beneficioLabel = esBeneficio ? 'Ahorro por inflación' : 'Sobrecoste real';
+            const beneficioValor = esBeneficio
+              ? `−${FinanceMath.eur(beneficio)}`
+              : `+${FinanceMath.eur(-beneficio)}`;
+            return `
         <div class="card mb-12" style="background:var(--bg3);padding:12px">
           <div class="card-title" style="margin-bottom:8px;color:var(--yellow)">📉 Coste ajustado a inflación</div>
           <div class="grid-3" style="gap:8px">
@@ -195,9 +218,9 @@ const LoansModule = (() => {
             <div><div class="stat-label">Coste total en € de hoy</div><div class="num ${esBeneficio?'pos':'neg'}">${FinanceMath.eur(costoRealTotal)}</div></div>
             <div><div class="stat-label">${beneficioLabel}</div><div class="num ${esBeneficio?'pos':'neg'}">${beneficioValor}</div></div>
           </div>
-          ${beneficioHint}
           ${loan.tipoTasa==='variable'?`<div class="text-sm mt-8" style="color:var(--text3)">⚠ Tipo variable: el beneficio real dependerá de cómo evolucione el índice de referencia.</div>`:''}
         </div>`;
+          }
         })() : ''}
 
         <div class="card-title">Cuadro de amortización</div>
