@@ -8,10 +8,12 @@ const State = (() => {
   const DEFAULT_ACCOUNT = { _id: 'default', nombre: 'Default', saldo: 0, saldoInicial: 0, fechaInicialSaldo: new Date().toISOString().slice(0,10), interes: 0, periodoCobro: 'mensual', descripcion: 'Cuenta principal', activo: true, simulacion: false, historicoSaldos: [], esCuentaPrincipal: true };
   const DEFAULT_STATE = {
     loans: [], expenses: [], accounts: [DEFAULT_ACCOUNT], history: [],
+    nominas: [],   // [{_id,nombre,bruto,nPagas,irpfModo,irpfPct,representacion,fechaInicio,fechaFin,cuenta,activo,tags}]
     goals: [],      // [{_id,nombre,targetAmount,targetDate,cuentaId,color}]
     config: {
       dashboardStart: new Date().toISOString().slice(0,10),
       dashboardEnd: new Date(Date.now() + 365*24*60*60*1000).toISOString().slice(0,10),
+      fechaReferencia: new Date().toISOString().slice(0,10),
       colchonMeses: 6, showColchon: true, showHistorico: true, histCuenta: '',
       showMC: false, mcIteraciones: 300,
       inflacionGlobal: 0,  // % anual por defecto para gastos indexados
@@ -51,7 +53,8 @@ const State = (() => {
       showMC:false, mcIteraciones:300, inflacionGlobal:0,
       tramos_irpf:[[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]],
       onboardingDone:false, showExecSummary:true, showCriticos:true,
-      colchonTipo:'meses', colchonFijo:0
+      colchonTipo:'meses', colchonFijo:0,
+      fechaReferencia: new Date().toISOString().slice(0,10)
     };
     for (const [k,v] of Object.entries(cfgDefs)) {
       if (state.config[k] === undefined) state.config[k] = v;
@@ -62,6 +65,13 @@ const State = (() => {
     state.loans = (state.loans || []).map(l => ({ ...l }));
     // Ensure new collections
     if (!Array.isArray(state.goals)) state.goals = [];
+    if (!Array.isArray(state.nominas)) state.nominas = [];
+    // Migrate nominas: ensure required fields
+    state.nominas = state.nominas.map(n => ({
+      activo: true, nPagas: 12, irpfModo: 'auto', irpfPct: 0,
+      representacion: 'detallado', tags: [], fechaFin: null, cuenta: 'default',
+      ...n
+    }));
     // Migrate goals: add new fields if missing
     state.goals = state.goals.map((g, i) => ({
       prioridad: i + 1,

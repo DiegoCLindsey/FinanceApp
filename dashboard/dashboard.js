@@ -45,10 +45,10 @@ const DashboardModule = (() => {
     destroyCharts();
     const view=document.getElementById('view-dashboard');
     const config=State.get('config');
-    const loans=State.get('loans'), expenses=State.get('expenses'), accounts=State.get('accounts');
+    const loans=State.get('loans'), expenses=State.get('expenses'), accounts=State.get('accounts'), nominas=State.get('nominas')||[];
 
     // Apply inflation and IRPF on top of base extracto
-    let extracto=FinanceMath.generarExtracto(loans,expenses,accounts,config, filtroAccounts.length>0?filtroAccounts:null);
+    let extracto=FinanceMath.generarExtracto(loans,expenses,accounts,config, filtroAccounts.length>0?filtroAccounts:null, nominas);
     const inflGlobal = config.inflacionGlobal||0;
     if (inflGlobal > 0 || expenses.some(e=>e.inflacion>0)) {
       // Re-run with inflated cuantias — apply factor to gasto events from expense source
@@ -56,10 +56,8 @@ const DashboardModule = (() => {
       const inflated = FinanceMath.aplicarInflacion(allExpEvents, expenses, inflGlobal);
       const inflMap = new Map(inflated.map(e=>[e.sourceId+'_'+e.fecha, e.cuantia]));
       extracto = extracto.map(e => e.sourceType==='expense' ? {...e, cuantia: inflMap.get(e.sourceId+'_'+e.fecha)||e.cuantia} : e);
-      // Recompute saldoAcum
-      const cuentasActivas2 = accounts.filter(a=>a.activo&&(filtroAccounts.length===0||filtroAccounts.includes(a._id)));
-      let s2 = cuentasActivas2.reduce((s,a)=>s+FinanceMath.saldoEnFecha(a, config.dashboardStart),0);
-      extracto = extracto.map(ev=>{ const d=ev.tipo==='ingreso'?Math.abs(ev.cuantia):-Math.abs(ev.cuantia); s2+=d; return {...ev,delta:d,saldoAcum:s2}; });
+      // Recompute saldoAcum bidireccional desde fechaReferencia
+      extracto = FinanceMath.recomputarSaldoAcum(extracto, accounts, config, filtroAccounts.length>0?filtroAccounts:null);
     }
     const cuentasActivas=accounts.filter(a=>a.activo&&(filtroAccounts.length===0||filtroAccounts.includes(a._id)));
     const saldoBase=cuentasActivas.reduce((s,a)=>s+FinanceMath.saldoRealCuenta(a),0);
@@ -88,7 +86,7 @@ const DashboardModule = (() => {
     const cfgMesActual = { ...config, dashboardStart: mesIni, dashboardEnd: mesFin };
     const extractoMesActual = FinanceMath.generarExtracto(
       loans, expenses, accounts, cfgMesActual,
-      filtroAccounts.length > 0 ? filtroAccounts : null
+      filtroAccounts.length > 0 ? filtroAccounts : null, nominas
     );
     // Mismo filtro que el gráfico breakdown: sin transferencias
     const evsMesActual = extractoMesActual.filter(e =>
@@ -135,7 +133,7 @@ const DashboardModule = (() => {
       return s + Math.max(0, FinanceMath.resumenPrestamo(loanSin).totalIntereses - conAmorts);
     }, 0);
     const ahorroInteresesMes = numMeses > 0 ? ahorroIntereses / numMeses : 0;
-    const loansFinEnPeriodo  = loansActivos.map(l => {
+    const loansFinEnPeriodo  = loansActivos.filter(l => l.mostrarFechaFinEnDashboard !== false).map(l => {
       const { fechaFin } = FinanceMath.resumenPrestamo(l);
       if (!fechaFin || fechaFin < config.dashboardStart || fechaFin > config.dashboardEnd) return null;
       return { loan: l, fechaFin };
@@ -202,10 +200,15 @@ const DashboardModule = (() => {
           <button class="btn-secondary btn-sm" style="padding:4px 10px;font-size:18px;line-height:1" onclick="DashboardModule.toggleConfig()" title="${config.configCollapsed?'Expandir':'Colapsar'}">${config.configCollapsed?'▸':'▾'}</button>
         </div>
         ${config.configCollapsed ? '' : `
-        <div class="grid-2" style="gap:10px">
+        <div class="grid-3" style="gap:10px">
           <div class="form-group">
             <label class="form-label">Periodo inicio</label>
             <input class="form-input" type="date" id="cfg-start" value="${config.dashboardStart}"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fecha referencia</label>
+            <input class="form-input" type="date" id="cfg-ref" value="${config.fechaReferencia||new Date().toISOString().slice(0,10)}"/>
+            <div class="text-sm mt-4" style="color:var(--text3)">Saldo conocido en esta fecha</div>
           </div>
           <div class="form-group">
             <label class="form-label">Periodo fin</label>
@@ -265,7 +268,7 @@ const DashboardModule = (() => {
             <button class="btn-primary btn-sm" onclick="DashboardModule.applyConfig()">Actualizar</button>
           </div>
         </div>
-        ${cuentasActivas.length>0?`<div class="mt-8 text-sm" style="color:var(--text3)">Saldo base: ${cuentasActivas.map(a=>`${a.nombre}: ${FinanceMath.eur(FinanceMath.saldoRealCuenta(a))} (${a.fechaInicialSaldo||'—'})`).join(' · ')}</div>`:''}
+        ${cuentasActivas.length>0?`<div class="mt-8 text-sm" style="color:var(--text3)">Ref. ${config.fechaReferencia||'—'}: ${cuentasActivas.map(a=>`${a.nombre} ${FinanceMath.eur(FinanceMath.saldoEnFecha(a, config.fechaReferencia||config.dashboardStart))}`).join(' · ')} · Total: ${FinanceMath.eur(cuentasActivas.reduce((s,a)=>s+FinanceMath.saldoEnFecha(a,config.fechaReferencia||config.dashboardStart),0))}</div>`:''}
         `}
       </div>
 
@@ -708,11 +711,16 @@ const DashboardModule = (() => {
       const visibles = accounts.filter(a =>
         filtroAccounts.length === 0 || filtroAccounts.includes(a._id)
       );
-      // Recoger todas las fechas únicas; deduplicar por cuenta (último en inserción)
+      // Recoger todas las fechas únicas; deduplicar por cuenta.
+      // saldoInicial at fechaInicialSaldo is the anchor — pre-floor entries are excluded.
       const allDates = new Set();
       const dedupedHist = visibles.map(acc => {
+        const floor = acc.fechaInicialSaldo || '';
         const byD = {};
-        for (const h of (acc.historicoSaldos || [])) byD[h.fecha] = h.saldo; // último gana
+        if (floor) byD[floor] = acc.saldoInicial || 0;
+        for (const h of (acc.historicoSaldos || [])) {
+          if (!floor || h.fecha >= floor) byD[h.fecha] = h.saldo;
+        }
         for (const d of Object.keys(byD)) allDates.add(d);
         return byD;
       });
@@ -837,7 +845,7 @@ const DashboardModule = (() => {
       const yValsAll = saldoXY.map(p=>p.y);
       const yMinAll  = Math.min(...yValsAll), yMaxAll = Math.max(...yValsAll);
       const spanAll  = Math.max(Math.abs(yMaxAll - yMinAll) * 0.08, 1);
-      const loansActivosChart = loans.filter(l => l.activo && !l.simulacion);
+      const loansActivosChart = loans.filter(l => l.activo && !l.simulacion && l.mostrarFechaFinEnDashboard !== false);
       for (const l of loansActivosChart) {
         const { fechaFin } = FinanceMath.resumenPrestamo(l);
         if (!fechaFin || fechaFin < config.dashboardStart || fechaFin > config.dashboardEnd) continue;
@@ -1013,7 +1021,7 @@ const DashboardModule = (() => {
       return;
     }
 
-    const dataIngresos = [], dataCuotas = [], dataBasicos = [], dataOtros = [];
+    const dataIngresos = [], dataCuotas = [], dataBasicos = [], dataOtros = [], dataFiscal = [];
 
     for (const mesLabel of months) {
       const mesIni = mesLabel + '-01';
@@ -1026,10 +1034,13 @@ const DashboardModule = (() => {
         e.sourceType !== 'transfer-out' && e.sourceType !== 'transfer-in'
       );
 
+      const esFiscal = e => e.tipo === 'gasto' && (e.tags || []).includes('fiscal');
+
       dataIngresos.push(evsMes.filter(e=>e.tipo==='ingreso').reduce((s,e)=>s+Math.abs(e.cuantia),0));
       dataCuotas.push(evsMes.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto').reduce((s,e)=>s+Math.abs(e.cuantia),0));
-      dataBasicos.push(evsMes.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
-      dataOtros.push(evsMes.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return !ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
+      dataFiscal.push(evsMes.filter(esFiscal).reduce((s,e)=>s+Math.abs(e.cuantia),0));
+      dataBasicos.push(evsMes.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense'&&!esFiscal(e)).filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
+      dataOtros.push(evsMes.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense'&&!esFiscal(e)).filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return !ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
     }
 
     const labels = months.map(m => {
@@ -1045,6 +1056,7 @@ const DashboardModule = (() => {
           { label:'Ingresos', data:dataIngresos, backgroundColor:'rgba(0,229,160,0.7)', borderWidth:0, borderRadius:2, order:1 },
           { label:'Cuotas préstamos', data:dataCuotas, backgroundColor:'rgba(168,85,247,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
           { label:'Gastos básicos', data:dataBasicos, backgroundColor:'rgba(77,159,255,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
+          { label:'Fiscal / IRPF', data:dataFiscal, backgroundColor:'rgba(251,146,60,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
           { label:'Otros gastos', data:dataOtros, backgroundColor:'rgba(255,77,109,0.65)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
         ]
       },
@@ -1112,6 +1124,7 @@ const DashboardModule = (() => {
       ...existing,
       dashboardStart:  document.getElementById('cfg-start').value || existing.dashboardStart,
       dashboardEnd:    document.getElementById('cfg-end').value || existing.dashboardEnd,
+      fechaReferencia: document.getElementById('cfg-ref')?.value || existing.fechaReferencia || new Date().toISOString().slice(0,10),
       colchonMeses:    parseInt(document.getElementById('cfg-colchon')?.value)||6,
       colchonFijo:     parseFloat(document.getElementById('cfg-colchon-fijo')?.value)||0,
       showColchon:     document.getElementById('cfg-show-colchon')?.checked??true,

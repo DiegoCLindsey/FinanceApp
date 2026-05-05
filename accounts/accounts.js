@@ -211,6 +211,7 @@ const AccountsModule = (() => {
         <span class="num" style="min-width:110px">${h.fecha}</span>
         <span class="num" style="flex:1;${h.saldo>=(acc.saldoInicial||0)?'color:var(--accent)':'color:var(--red)'}">${FinanceMath.eur(h.saldo)}</span>
         <span class="text-sm" style="flex:2;color:var(--text2)">${h.nota||''}</span>
+        <button class="btn-secondary btn-sm" title="Reestablecer punto inicial" onclick="AccountsModule.resetearPuntoInicial('${accId}','${h._id}')">⟲ Inicio</button>
         <button class="btn-danger btn-sm" onclick="AccountsModule.deleteHistorico('${accId}','${h._id}')">✕</button>
       </div>`).join('');
     const html=`
@@ -274,5 +275,15 @@ const AccountsModule = (() => {
     render();
   }
 
-  return { render, saveAccount, openHistorico, saveHistorico, deleteHistorico, setAsPrincipal };
+  function resetearPuntoInicial(accId, hId) {
+    const acc=State.get('accounts').find(a=>a._id===accId);
+    const h=(acc?.historicoSaldos||[]).find(e=>e._id===hId);
+    if (!acc||!h) return;
+    State.updateItem('accounts',accId,{saldoInicial:h.saldo, fechaInicialSaldo:h.fecha});
+    UI.toast(`Punto inicial → ${h.fecha} (${FinanceMath.eur(h.saldo)})`);
+    render();
+    openHistorico(accId);
+  }
+
+  return { render, saveAccount, openHistorico, saveHistorico, deleteHistorico, setAsPrincipal, resetearPuntoInicial };
 })();

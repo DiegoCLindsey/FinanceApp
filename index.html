@@ -150,11 +150,15 @@
         </button></li>
         <li><button class="nav-btn" data-view="expenses">
           <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z"/></svg>
-          <span>Gastos</span>
+          <span>Movimientos esperados</span>
         </button></li>
         <li><button class="nav-btn" data-view="accounts">
           <svg viewBox="0 0 24 24"><path d="M4 10v7h3v-7H4zm6.5 0v7h3v-7h-3zM2 22h19v-3H2v3zm15-12v7h3v-7h-3zM11.5 1L2 6v2h19V6l-9.5-5z"/></svg>
           <span>Cuentas</span>
+        </button></li>
+        <li><button class="nav-btn" data-view="nominas">
+          <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
+          <span>Nóminas</span>
         </button></li>
         <li><button class="nav-btn" data-view="calendar">
           <svg viewBox="0 0 24 24"><path d="M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 18H4V8h16v13z"/><path d="M9 10H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm-8 4H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z"/></svg>
@@ -194,6 +198,7 @@
       <div id="view-loans"     class="view hidden"></div>
       <div id="view-expenses"  class="view hidden"></div>
       <div id="view-accounts"  class="view hidden"></div>
+      <div id="view-nominas"   class="view hidden"></div>
       <div id="view-calendar"  class="view hidden"></div>
     </main>
   </div><!-- /#main-shell -->
@@ -259,6 +264,7 @@
 <script src="expenses/expenses.js"></script>
 <script src="accounts/accounts.js"></script>
 <script src="goals/goals.js"></script>
+<script src="nominas/nominas.js"></script>
 <script src="dashboard/history.js"></script>
 <script src="dashboard/dashboard.js"></script>
 <script src="calendar/calendar.js"></script>
