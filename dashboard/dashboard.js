@@ -678,6 +678,7 @@ const DashboardModule = (() => {
     const expenses = State.get('expenses');
     const loans = State.get('loans');
     const accounts = State.get('accounts');
+    const nominas = State.get('nominas') || [];
     const SCN_COLORS = ['#a855f7','#fb923c','#f472b6','#60a5fa','#34d399','#facc15'];
 
     const labels = extracto.map(e=>e.fecha);
@@ -770,7 +771,7 @@ const DashboardModule = (() => {
 
     // Monte Carlo bands
     let mcDatasets = [];
-    if (config.showMC && expenses.some(e=>e.varianza>0)) {
+    if (config.showMC && (expenses.some(e=>e.varianza>0) || nominas.some(n=>n.activo&&(n.varianza||0)>0))) {
       const mcResult = FinanceMath.monteCarlo(loans, expenses, accounts, config, config.mcIteraciones||300, nominas);
       if (mcResult && mcResult.length > 0) {
         mcDatasets = [
