@@ -2,8 +2,10 @@
 const Router = (() => {
   const views=['dashboard','loans','expenses','accounts','nominas','calendar','inflacion','escenarios'];
   const mods={ dashboard:DashboardModule, loans:LoansModule, expenses:ExpensesModule, accounts:AccountsModule, nominas:NominasModule, calendar:CalendarModule, inflacion:InflacionModule, escenarios:EscenariosModule };
+  let _current = 'dashboard';
   function navigate(view) {
     if(!views.includes(view))return;
+    _current = view;
     views.forEach(v=>document.getElementById(`view-${v}`).classList.toggle('hidden',v!==view));
     document.querySelectorAll('.nav-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.view===view));
     mods[view]?.render();
@@ -11,6 +13,7 @@ const Router = (() => {
     document.getElementById('sidebar')?.classList.remove('open');
     document.getElementById('sidebar-overlay')?.classList.add('hidden');
   }
+  function rerender() { mods[_current]?.render(); }
   function init() {
     document.querySelectorAll('.nav-btn[data-view]').forEach(btn=>btn.onclick=()=>navigate(btn.dataset.view));
     // Mobile menu
@@ -24,5 +27,5 @@ const Router = (() => {
     });
     navigate('dashboard');
   }
-  return { init, navigate };
+  return { init, navigate, rerender };
 })();

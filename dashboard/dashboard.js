@@ -223,28 +223,15 @@ const DashboardModule = (() => {
       <!-- Config (colapsable) -->
       <div class="card" style="margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;${config.configCollapsed?'':'margin-bottom:14px'}">
-          <span class="card-title" style="margin:0">Configuración del periodo</span>
+          <span class="card-title" style="margin:0">Configuración</span>
           <button class="btn-secondary btn-sm" style="padding:4px 10px;font-size:18px;line-height:1" onclick="DashboardModule.toggleConfig()" title="${config.configCollapsed?'Expandir':'Colapsar'}">${config.configCollapsed?'▸':'▾'}</button>
         </div>
         ${config.configCollapsed ? '' : `
-        <div class="grid-3" style="gap:10px">
-          <div class="form-group">
-            <label class="form-label">Periodo inicio</label>
-            <input class="form-input" type="date" id="cfg-start" value="${config.dashboardStart}"/>
-          </div>
+        <div class="grid-2" style="gap:10px">
           <div class="form-group">
             <label class="form-label">Fecha referencia</label>
             <input class="form-input" type="date" id="cfg-ref" value="${config.fechaReferencia||new Date().toISOString().slice(0,10)}"/>
             <div class="text-sm mt-4" style="color:var(--text3)">Saldo conocido en esta fecha</div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Periodo fin</label>
-            <div style="display:flex;flex-direction:column;gap:6px">
-              <div class="flex gap-4 flex-wrap" style="row-gap:4px">
-                ${['1M','3M','6M','1Y','5Y','10Y'].map(p=>`<button type="button" class="btn-secondary btn-sm" style="min-width:34px;padding:5px 8px" onclick="DashboardModule.applyPreset('${p}')">${p}</button>`).join('')}
-              </div>
-              <input class="form-input" type="date" id="cfg-end" value="${config.dashboardEnd}" style="width:100%;max-width:200px"/>
-            </div>
           </div>
         </div>
         <div class="grid-2 mt-8" style="gap:10px">
@@ -1150,8 +1137,6 @@ const DashboardModule = (() => {
     const existing = State.get('config');
     const config={
       ...existing,
-      dashboardStart:  document.getElementById('cfg-start').value || existing.dashboardStart,
-      dashboardEnd:    document.getElementById('cfg-end').value || existing.dashboardEnd,
       fechaReferencia: document.getElementById('cfg-ref')?.value || existing.fechaReferencia || new Date().toISOString().slice(0,10),
       colchonMeses:    parseInt(document.getElementById('cfg-colchon')?.value)||6,
       colchonFijo:     parseFloat(document.getElementById('cfg-colchon-fijo')?.value)||0,
@@ -1161,23 +1146,7 @@ const DashboardModule = (() => {
     };
     State.set('config',config); render();
   }
-  function applyPreset(preset) {
-    const startEl = document.getElementById('cfg-start');
-    const endEl   = document.getElementById('cfg-end');
-    const base = startEl?.value || State.get('config').dashboardStart;
-    const dS   = new Date(base + 'T00:00:00');
-    const dE   = new Date(dS);
-    switch(preset) {
-      case '1M':  dE.setMonth(dE.getMonth()+1);    break;
-      case '3M':  dE.setMonth(dE.getMonth()+3);    break;
-      case '6M':  dE.setMonth(dE.getMonth()+6);    break;
-      case '1Y':  dE.setFullYear(dE.getFullYear()+1); break;
-      case '5Y':  dE.setFullYear(dE.getFullYear()+5); break;
-      case '10Y': dE.setFullYear(dE.getFullYear()+10); break;
-    }
-    if (endEl) endEl.value = dE.toISOString().slice(0,10);
-    applyConfig();
-  }
+  function applyPreset(preset) { PeriodBar.applyPreset(preset); }
   function setColchonTipo(tipo) {
     const cfg = State.get('config');
     State.set('config', {...cfg, colchonTipo: tipo});

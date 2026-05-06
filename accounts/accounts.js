@@ -184,6 +184,24 @@ const AccountsModule = (() => {
         totalRetencion = FinanceMath.calcGananciasCapital(inversion.plusvalia * prop, FinanceMath.tramosGananciasParaAño(new Date().getFullYear()));
       }
 
+      // Projected fund value at dashboardEnd
+      const mesesPeriodo = Math.max(0, (dE - dS) / (30.44 * 86400000));
+      const proyeccionBlock = acc.interes > 0 && mesesPeriodo > 0 ? (() => {
+        const tasaMensual = Math.pow(1 + acc.interes / 100, 1/12) - 1;
+        const saldoProyectado = Math.max(0, inversion.saldo * Math.pow(1 + tasaMensual, mesesPeriodo) + totalAportaciones - totalReembolsos);
+        const costBaseProyectado = inversion.costBase + totalAportaciones;
+        const plusvaliaProyectada = Math.max(0, saldoProyectado - costBaseProyectado);
+        const endYear = parseInt(config.dashboardEnd.slice(0, 4));
+        const impuestoProyectado = FinanceMath.calcGananciasCapital(plusvaliaProyectada, FinanceMath.tramosGananciasParaAño(endYear));
+        const netoProyectado = saldoProyectado - impuestoProyectado;
+        return `<div style="margin-top:8px;padding:8px 10px;background:var(--bg2);border-radius:var(--radius);border:1px solid rgba(16,185,129,0.2)">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Proyección a ${config.dashboardEnd} (${acc.interes}% anual)</div>
+          <div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">Valor proyectado</span><span class="num pos">${FinanceMath.eur(saldoProyectado)}</span></div>
+          <div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">Plusvalía proyectada</span><span class="num ${plusvaliaProyectada>=0?'pos':'neg'}">${FinanceMath.eur(plusvaliaProyectada)}</span></div>
+          <div class="flex justify-between mt-4" style="border-top:1px solid var(--border);padding-top:4px;margin-top:6px"><span class="text-sm" style="font-weight:600">Neto tras imp. proyectado</span><span class="num pos" style="font-weight:600">${FinanceMath.eur(netoProyectado)}</span></div>
+        </div>`;
+      })() : '';
+
       const flujosHtml = (tIn.length || tOut.length) ? `
         <div style="margin-top:8px;padding:8px 10px;background:var(--bg2);border-radius:var(--radius);border:1px solid var(--border)">
           <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Flujos en período (${config.dashboardStart.slice(0,7)} → ${config.dashboardEnd.slice(0,7)})</div>
@@ -214,6 +232,7 @@ const AccountsModule = (() => {
           <span class="text-sm" style="font-weight:600">Neto tras impuestos</span>
           <span class="num pos" style="font-weight:600">${FinanceMath.eur(inversion.neto)}</span>
         </div>
+        ${proyeccionBlock}
         ${flujosHtml}
       </div>`;
     })() : '';
