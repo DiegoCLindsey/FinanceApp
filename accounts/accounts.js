@@ -1,17 +1,48 @@
 // Depends on: State, FinanceMath, UI
 const AccountsModule = (() => {
+  function _carterapFiscalHtml(accounts) {
+    const tramos = State.get('config')?.tramosGananciasCapital;
+    const inversiones = accounts.filter(a => a.activo && (a.modeloFondo||'cuenta') === 'inversion');
+    if (!inversiones.length) return '';
+    let totalSaldo = 0, totalCostBase = 0, totalPlusvalia = 0, totalImpuesto = 0;
+    for (const a of inversiones) {
+      const r = FinanceMath.calcFondoInversion(a, tramos);
+      totalSaldo    += r.saldo;
+      totalCostBase += r.costBase;
+      totalPlusvalia += r.plusvalia;
+      totalImpuesto += r.impuesto;
+    }
+    const totalNeto = totalSaldo - totalImpuesto;
+    const pct = totalCostBase > 0 ? ((totalPlusvalia / totalCostBase) * 100).toFixed(1) : '0';
+    return `
+      <div class="card mb-14" style="border-color:rgba(16,185,129,0.3)">
+        <div class="card-title" style="color:#10b981">Cartera — Fondos de Inversión</div>
+        <div class="grid-4" style="gap:8px;margin-top:10px">
+          <div class="stat-card"><div class="stat-label">Valor de mercado</div><div class="stat-value">${FinanceMath.eur(totalSaldo)}</div></div>
+          <div class="stat-card"><div class="stat-label">Coste base total</div><div class="stat-value">${FinanceMath.eur(totalCostBase)}</div></div>
+          <div class="stat-card"><div class="stat-label">Plusvalía latente (${pct}%)</div><div class="stat-value ${totalPlusvalia>=0?'pos':'neg'}">${FinanceMath.eur(totalPlusvalia)}</div></div>
+          <div class="stat-card"><div class="stat-label">Impuesto estimado</div><div class="stat-value neg">${FinanceMath.eur(totalImpuesto)}</div><div class="stat-sub">Neto: ${FinanceMath.eur(totalNeto)}</div></div>
+        </div>
+        <div class="auth-hint mt-8" style="border-color:rgba(16,185,129,0.3)">
+          📈 Los traspasos entre fondos son <strong>neutros fiscalmente</strong> (art. 94 LIRPF). El impuesto sólo se devenga al reembolsar (retirar a cuenta bancaria).
+        </div>
+      </div>`;
+  }
+
   function render() {
     const view=document.getElementById('view-accounts');
-    const accounts=State.get('accounts');
+    const allAccounts=State.get('accounts');
+    const accounts=allAccounts.filter(a => (a.modeloFondo||'cuenta') !== 'pension');
     view.innerHTML=`
       <div class="page-header">
-        <h1 class="page-title">Cuentas e <span>Inversiones</span></h1>
+        <h1 class="page-title">Capital <span>Mobiliario</span></h1>
         <div class="flex gap-8">
           <button class="btn-secondary" id="btn-tramos-ganancias" title="Configurar tramos impuesto ganancias de capital">⚙ Tramos ganancias capital</button>
           <button class="btn-secondary" id="btn-reset-base">↻ Actualizar saldo base</button>
-          <button class="btn-primary" id="btn-new-acc">+ Nueva cuenta</button>
+          <button class="btn-primary" id="btn-new-acc">+ Nueva cuenta / fondo</button>
         </div>
       </div>
+      ${_carterapFiscalHtml(accounts)}
       <div class="grid-3" id="accounts-list">
         ${accounts.map(renderCard).join('')}
       </div>

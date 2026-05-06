@@ -41,7 +41,7 @@ const State = (() => {
       const base = {
         saldoInicial: 0, fechaInicialSaldo: new Date().toISOString().slice(0,10), historicoSaldos: [],
         esFondoPension: false, bloqueoMeses: 120, impuestoRetirada: 0, aportaciones: [],
-        esCuentaPrincipal: false, planAportaciones: [],
+        esCuentaPrincipal: false, planAportaciones: [], grupoNomina: '',
         ...a
       };
       // Migrate esFondoPension boolean → modeloFondo string
