@@ -80,8 +80,11 @@ const NominasModule = (() => {
 
     view.innerHTML = `
       <div class="page-header">
-        <h1 class="page-title">Nóminas</h1>
-        <button class="btn-primary" id="btn-new-nomina">+ Nueva nómina</button>
+        <h1 class="page-title">Rendimientos <span>del Trabajo</span></h1>
+        <div class="flex gap-8">
+          <button class="btn-secondary" id="btn-new-pension">+ Nuevo plan de pensiones</button>
+          <button class="btn-primary" id="btn-new-nomina">+ Nueva nómina</button>
+        </div>
       </div>
       ${inflMsg}
       ${nominas.length === 0 ? '<div class="card text-sm" style="padding:24px;text-align:center;color:var(--text2)">Sin nóminas configuradas.</div>' : ''}
@@ -100,10 +103,23 @@ const NominasModule = (() => {
           </tbody>
         </table>
         <p class="text-sm" style="margin-top:12px;color:var(--text2)">Si no hay tramos configurados, se usan los oficiales de España 2024.</p>
-      </div>`;
+      </div>
 
-    document.getElementById('btn-new-nomina').onclick = () => openForm();
+      <div class="page-header" style="margin-top:24px">
+        <h2 class="page-title" style="font-size:1.1rem">Planes de <span>Pensiones</span></h2>
+      </div>
+      <div class="auth-hint mb-12" style="border-color:var(--yellow)">
+        💼 El rescate tributa como <strong>rendimiento del trabajo</strong> (tramos IRPF generales). Asocia un plan a un grupo para que use el tipo marginal real del grupo.
+      </div>
+      <div id="pensiones-list">${_renderPensionesSection(tramos, nominas)}</div>`;
+
+    document.getElementById('btn-new-nomina').onclick  = () => openForm();
     document.getElementById('btn-edit-tramos').onclick = () => openTramosForm();
+    document.getElementById('btn-new-pension').onclick = () => openPensionForm();
+    (State.get('accounts')||[]).filter(a=>(a.modeloFondo||(a.esFondoPension?'pension':'cuenta'))==='pension').forEach(p => {
+      view.querySelector(`[data-edit-pen="${p._id}"]`)?.addEventListener('click', () => openPensionForm(p._id));
+      view.querySelector(`[data-del-pen="${p._id}"]`)?.addEventListener('click', () => deletePension(p._id));
+    });
 
     nominas.forEach(n => {
       const be = view.querySelector(`[data-edit-nom="${n._id}"]`); if (be) be.onclick = () => openForm(n._id);
@@ -377,5 +393,210 @@ const NominasModule = (() => {
     render();
   }
 
-  return { render, saveNomina, deleteNomina, openTramosForm, _removeTramo, _addTramo, _saveTramos };
+  // ── Planes de pensiones ──────────────────────────────────────────────────────
+  function _renderPensionesSection(tramos, nominasActivas) {
+    const planes = (State.get('accounts')||[]).filter(a => {
+      const m = a.modeloFondo || (a.esFondoPension ? 'pension' : 'cuenta');
+      return m === 'pension';
+    });
+    if (planes.length === 0) {
+      return `<div class="card text-sm" style="padding:24px;text-align:center;color:var(--text2)">
+        Sin planes de pensiones. Crea uno con el botón "+ Nuevo plan de pensiones".
+      </div>`;
+    }
+    return `<div class="grid-3">${planes.map(p => _renderPensionCard(p, tramos, nominasActivas)).join('')}</div>`;
+  }
+
+  function _renderPensionCard(p, tramos, nominasActivas) {
+    const pension = FinanceMath.calcFondosPension(p);
+    if (!pension) return '';
+    const tipoEf = FinanceMath.calcTipoMarginalPension(p, nominasActivas, tramos);
+    const tipoLabel = p.grupoNomina
+      ? `Tipo marginal grupo "${p.grupoNomina}": ${tipoEf}%`
+      : `Tipo fijo configurado: ${p.impuestoRetirada || 0}%`;
+    const hoy = new Date();
+    const inicioAnyo = `${hoy.getFullYear()}-01-01`;
+    const aportEsteAnyo = (p.aportaciones||[]).filter(a=>a.fecha>=inicioAnyo).reduce((s,a)=>s+a.cantidad,0);
+    const LIMITE = 1500;
+    const ahorro = Math.min(aportEsteAnyo, LIMITE) * (tipoEf / 100);
+    return `
+      <div class="card">
+        <div class="flex justify-between items-center mb-10">
+          <div class="flex gap-8 items-center" style="flex-wrap:wrap">
+            <span class="card-title" style="margin:0">${p.nombre}</span>
+            <span class="badge" style="background:rgba(255,209,102,0.15);color:var(--yellow)">🔒 Pensión</span>
+            ${p.grupoNomina ? `<span class="badge badge-blue">Grupo: ${p.grupoNomina}</span>` : ''}
+          </div>
+          <div class="flex gap-8">
+            <button class="btn-icon" data-edit-pen="${p._id}"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button>
+            <button class="btn-danger btn-sm" data-del-pen="${p._id}">✕</button>
+          </div>
+        </div>
+        <div class="grid-2" style="gap:6px;margin-bottom:8px">
+          <div class="stat-card"><div class="stat-label">Valor actual</div><div class="stat-value">${FinanceMath.eur(pension.saldo)}</div></div>
+          <div class="stat-card"><div class="stat-label">Coste base</div><div class="stat-value">${FinanceMath.eur(pension.costBase)}</div></div>
+        </div>
+        <div class="flex justify-between mb-5"><span class="text-sm" style="color:var(--text2)">Revalorización</span><span class="num ${pension.beneficio>=0?'pos':'neg'}">${FinanceMath.eur(pension.beneficio)}</span></div>
+        <div class="flex justify-between mb-5"><span class="text-sm" style="color:var(--text2)">🔓 Disponible</span><span class="num pos">${FinanceMath.eur(pension.disponible)}</span></div>
+        <div class="flex justify-between mb-5"><span class="text-sm" style="color:var(--text2)">🔒 Bloqueado</span><span class="num" style="color:var(--yellow)">${FinanceMath.eur(pension.bloqueado)}</span></div>
+        <div style="margin-top:10px;padding:8px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Año ${hoy.getFullYear()}</div>
+          <div class="flex justify-between mb-4"><span class="text-sm" style="color:var(--text2)">Aportado</span><span class="num ${aportEsteAnyo>LIMITE?'neg':''}">${FinanceMath.eur(aportEsteAnyo)}</span></div>
+          <div class="flex justify-between mb-4"><span class="text-sm" style="color:var(--text2)">Ahorro IRPF est.</span><span class="num pos">${FinanceMath.eur(ahorro)}</span></div>
+        </div>
+        <div style="margin-top:6px;font-size:11px;color:var(--text3)">${tipoLabel}</div>
+        ${pension.proxDesbloqueo ? `<div style="font-size:11px;color:var(--text3)">Próx. desbloqueo: ${pension.proxDesbloqueo}</div>` : ''}
+      </div>`;
+  }
+
+  let _editPensionPlan = [];
+
+  function openPensionForm(id = null) {
+    const acc = id ? (State.get('accounts')||[]).find(a=>a._id===id) : null;
+    const config = State.get('config');
+    const hist = [...(acc?.historicoSaldos||[])].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+    const saldoActual = hist[0] ? hist[0].saldo : (acc?.saldo??0);
+    _editPensionPlan = [...(acc?.planAportaciones||[])];
+
+    // Distinct grupos from nóminas
+    const grupos = [...new Set((State.get('nominas')||[]).filter(n=>n.grupoNomina).map(n=>n.grupoNomina))];
+    const grupoOpts = grupos.map(g => `<option value="${g}" ${acc?.grupoNomina===g?'selected':''}>${g}</option>`).join('');
+    const usaGrupo = !!acc?.grupoNomina;
+
+    const html = `
+      <div class="grid-2">
+        ${UI.input('pen-nombre','Nombre del plan','text',acc?.nombre||'','Ej: Plan de Pensiones ING')}
+        ${UI.input('pen-saldo','Saldo actual (€)','number',saldoActual,'5000')}
+      </div>
+      <div class="auth-hint mt-8">Cambiar el saldo añade un punto al histórico con la fecha de hoy.</div>
+      <div class="grid-2 mt-8">
+        ${UI.input('pen-saldo-ini','Saldo inicial (€)','number',acc?.saldoInicial??0,'0')}
+        ${UI.input('pen-fecha-ini','Fecha saldo inicial','date',acc?.fechaInicialSaldo||new Date().toISOString().slice(0,10))}
+      </div>
+      <div class="grid-2 mt-8">
+        ${UI.input('pen-interes','Rentabilidad anual (%)','number',acc?.interes??0,'4')}
+        ${UI.select('pen-periodo','Capitalización',[['diario','Diario'],['mensual','Mensual'],['anual','Anual']],acc?.periodoCobro||'mensual')}
+      </div>
+      <div class="grid-2 mt-8">
+        ${UI.input('pen-bloqueo','Bloqueo (meses)','number',acc?.bloqueoMeses??120,'120')}
+        <div id="pen-impuesto-wrap" style="${usaGrupo?'display:none':''}">
+          ${UI.input('pen-impuesto','% impuesto retirada (fijo)','number',acc?.impuestoRetirada??0,'24')}
+        </div>
+      </div>
+      <div class="form-group mt-8">
+        <label class="form-label">Grupo (para IRPF marginal real)</label>
+        <select class="form-select" id="pen-grupo" onchange="document.getElementById('pen-impuesto-wrap').style.display=this.value?'none':''">
+          <option value="">Sin grupo — usar tipo fijo</option>
+          ${grupoOpts}
+        </select>
+        ${grupos.length===0 ? '<div class="text-sm mt-4" style="color:var(--text3)">Crea grupos en las nóminas para poder seleccionarlos aquí.</div>' : ''}
+      </div>
+      <div class="form-group mt-8">
+        <label class="form-label">Aportaciones programadas</label>
+        <div id="pen-aport-container">${_pensionPlanHtml(_editPensionPlan)}</div>
+      </div>
+      <div class="form-group mt-8"><label class="form-label">Descripción</label><input class="form-input" type="text" id="pen-desc" value="${acc?.descripcion||''}" placeholder="Plan de pensiones..."/></div>
+      <div class="form-row mt-8">
+        <label class="form-label">Activo</label><label class="toggle"><input type="checkbox" id="pen-activo" ${acc?.activo!==false?'checked':''}/><span class="toggle-slider"></span></label>
+        <label class="form-label" style="margin-left:12px">Simulación</label><label class="toggle"><input type="checkbox" id="pen-sim" ${acc?.simulacion?'checked':''}/><span class="toggle-slider"></span></label>
+      </div>
+      ${EscenariosModule.checkboxesHtml(acc?.escenarioIds||[])}
+      <div class="flex gap-8 mt-16" style="justify-content:flex-end">
+        <button class="btn-secondary" onclick="UI.closeModal()">Cancelar</button>
+        <button class="btn-primary" onclick="NominasModule.savePension('${id||''}')">Guardar</button>
+      </div>`;
+    UI.openModal(html, id ? 'Editar plan de pensiones' : 'Nuevo plan de pensiones');
+  }
+
+  function _pensionPlanHtml(plan) {
+    const rows = (plan||[]).map((p,i) => `
+      <div class="flex gap-8 items-center" style="padding:4px 0;border-bottom:1px solid var(--border)">
+        <span style="min-width:70px;font-size:12px">${p.fechaInicio||'—'}</span>
+        <span style="flex:1;font-size:12px">${FinanceMath.eur(p.importe)} / ${p.periodicidad}</span>
+        <span style="min-width:70px;font-size:12px;color:var(--text3)">${p.fechaFin||'indefinido'}</span>
+        <button class="btn-danger btn-sm" onclick="NominasModule._removePensionAport(${i})">✕</button>
+      </div>`).join('');
+    return `<div id="pen-aport-list">${rows||'<div style="font-size:12px;color:var(--text3);padding:4px 0">Sin aportaciones programadas</div>'}</div>
+      <div class="grid-2 mt-6" style="gap:6px">
+        <input class="form-input" type="number" id="paport-importe" placeholder="Importe €" style="font-size:12px"/>
+        ${UI.select('paport-periodo',[''],[['mensual','Mensual'],['trimestral','Trimestral'],['semestral','Semestral'],['anual','Anual']],'mensual')}
+      </div>
+      <div class="grid-2 mt-4" style="gap:6px">
+        <input class="form-input" type="date" id="paport-inicio" style="font-size:12px"/>
+        <input class="form-input" type="date" id="paport-fin" placeholder="Fin (opcional)" style="font-size:12px"/>
+      </div>
+      <button class="btn-secondary btn-sm mt-6" onclick="NominasModule._addPensionAport()">+ Añadir aportación</button>`;
+  }
+
+  function _addPensionAport() {
+    const imp = parseFloat(document.getElementById('paport-importe')?.value)||0;
+    if (!imp) { UI.toast('Importe requerido','err'); return; }
+    _editPensionPlan.push({ _id: Date.now().toString(36), importe: imp,
+      periodicidad: document.getElementById('paport-periodo')?.value||'mensual',
+      fechaInicio: document.getElementById('paport-inicio')?.value||new Date().toISOString().slice(0,10),
+      fechaFin: document.getElementById('paport-fin')?.value||'' });
+    const c = document.getElementById('pen-aport-container'); if (c) c.innerHTML = _pensionPlanHtml(_editPensionPlan);
+  }
+
+  function _removePensionAport(idx) {
+    _editPensionPlan.splice(idx, 1);
+    const c = document.getElementById('pen-aport-container'); if (c) c.innerHTML = _pensionPlanHtml(_editPensionPlan);
+  }
+
+  function savePension(id) {
+    const nombre = document.getElementById('pen-nombre')?.value?.trim();
+    if (!nombre) { UI.toast('Nombre obligatorio','err'); return; }
+    const nuevoSaldo  = parseFloat(document.getElementById('pen-saldo')?.value)||0;
+    const grupoNomina = document.getElementById('pen-grupo')?.value || '';
+    const acc = {
+      nombre, grupoNomina,
+      saldo:            nuevoSaldo,
+      saldoInicial:     parseFloat(document.getElementById('pen-saldo-ini')?.value)||0,
+      fechaInicialSaldo: document.getElementById('pen-fecha-ini')?.value,
+      interes:          parseFloat(document.getElementById('pen-interes')?.value)||0,
+      periodoCobro:     document.getElementById('pen-periodo')?.value||'mensual',
+      modeloFondo:      'pension',
+      esFondoPension:   true,
+      bloqueoMeses:     parseInt(document.getElementById('pen-bloqueo')?.value)||120,
+      impuestoRetirada: grupoNomina ? 0 : (parseFloat(document.getElementById('pen-impuesto')?.value)||0),
+      planAportaciones: _editPensionPlan,
+      descripcion:      document.getElementById('pen-desc')?.value?.trim()||'',
+      activo:           document.getElementById('pen-activo')?.checked !== false,
+      simulacion:       document.getElementById('pen-sim')?.checked||false,
+      escenarioIds:     EscenariosModule.readCheckedEscenarios(),
+    };
+    if (id) {
+      const existing = (State.get('accounts')||[]).find(a=>a._id===id);
+      let hist = [...(existing?.historicoSaldos||[])];
+      let aportaciones = [...(existing?.aportaciones||[])];
+      const histOrd = [...hist].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+      const saldoAnt = histOrd[0]?.saldo ?? (existing?.saldo??null);
+      if (saldoAnt===null || Math.abs(nuevoSaldo-saldoAnt)>0.005) {
+        const hoy = new Date().toISOString().slice(0,10);
+        hist.push({ _id: Date.now().toString(36), fecha: hoy, saldo: nuevoSaldo, nota: 'Actualización manual' });
+        if (nuevoSaldo > (saldoAnt||0)) aportaciones.push({ _id: Date.now().toString(36)+'a', fecha: hoy, cantidad: nuevoSaldo-(saldoAnt||0) });
+      }
+      State.updateItem('accounts', id, {...acc, historicoSaldos: hist, aportaciones});
+      UI.toast('Plan actualizado');
+    } else {
+      const hoy = new Date().toISOString().slice(0,10);
+      const hist = [], aportaciones = [];
+      if (nuevoSaldo > 0) {
+        hist.push({ _id: Date.now().toString(36), fecha: hoy, saldo: nuevoSaldo, nota: 'Saldo inicial' });
+        aportaciones.push({ _id: Date.now().toString(36)+'a', fecha: acc.fechaInicialSaldo||hoy, cantidad: nuevoSaldo });
+      }
+      State.addItem('accounts', {...acc, historicoSaldos: hist, aportaciones});
+      UI.toast('Plan creado');
+    }
+    UI.closeModal(); render();
+  }
+
+  function deletePension(id) {
+    if (!UI.confirm('¿Eliminar este plan de pensiones?')) return;
+    State.removeItem('accounts', id);
+    UI.toast('Plan eliminado');
+    render();
+  }
+
+  return { render, saveNomina, deleteNomina, openTramosForm, _removeTramo, _addTramo, _saveTramos, openPensionForm, savePension, deletePension, _addPensionAport, _removePensionAport };
 })();

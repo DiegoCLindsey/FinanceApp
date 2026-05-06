@@ -265,10 +265,17 @@ const FinanceMath = (() => {
               }
             }
           } else if (originModel === 'pension') {
-            // RESCATE: rendimiento del trabajo; usamos el % configurado como aproximación del tipo marginal
-            const impuesto = calcImpuestoPension(cuentaOrigen, exp.cuantia);
+            // RESCATE: rendimiento del trabajo; usar tipo marginal real del grupo si está configurado
+            const nominas_ = typeof State !== 'undefined' ? State.get('nominas') : [];
+            const config_  = typeof State !== 'undefined' ? State.get('config')  : {};
+            const tramos_  = config_.tramos_irpf || [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]];
+            const tipoEf   = calcTipoMarginalPension(cuentaOrigen, nominas_, tramos_);
+            const impuesto = calcImpuestoPension(cuentaOrigen, exp.cuantia, tipoEf || undefined);
             if (impuesto > 0) {
-              events.push({ fecha, concepto:`Retención rescate ${cuentaOrigen.nombre} (${cuentaOrigen.impuestoRetirada}% s/beneficio)`, cuantia: impuesto, tipo:'gasto', tags:['impuesto','rendimientos-trabajo','pension'], cuenta:exp.cuenta||'default', sourceId:exp._id, sourceType:'pension-tax' });
+              const label = cuentaOrigen.grupoNomina
+                ? `IRPF rescate ${cuentaOrigen.nombre} (tipo marginal grupo "${cuentaOrigen.grupoNomina}": ${tipoEf}%)`
+                : `Retención rescate ${cuentaOrigen.nombre} (${cuentaOrigen.impuestoRetirada}% s/beneficio)`;
+              events.push({ fecha, concepto: label, cuantia: impuesto, tipo:'gasto', tags:['impuesto','rendimientos-trabajo','pension'], cuenta:exp.cuenta||'default', sourceId:exp._id, sourceType:'pension-tax' });
             }
           }
         }
@@ -437,19 +444,36 @@ const FinanceMath = (() => {
   }
 
   // Calcula el impuesto a pagar al retirar `cantidadRetirada` de un fondo de pensiones.
-  // El impuesto se aplica solo sobre la proporción del beneficio incluida en la retirada.
-  function calcImpuestoPension(acc, cantidadRetirada) {
+  // tipoOverride (optional): % a aplicar en lugar de acc.impuestoRetirada (para IRPF real de grupo)
+  function calcImpuestoPension(acc, cantidadRetirada, tipoOverride) {
     const modeloFondo = acc.modeloFondo || (acc.esFondoPension ? 'pension' : 'cuenta');
-    if (modeloFondo !== 'pension' || !acc.impuestoRetirada) return 0;
+    const tipo = tipoOverride !== undefined ? tipoOverride : acc.impuestoRetirada;
+    if (modeloFondo !== 'pension' || !tipo) return 0;
     const saldo    = saldoRealCuenta(acc);
     if (saldo <= 0) return 0;
     const costBase = (acc.aportaciones || []).reduce((s, a) => s + a.cantidad, 0);
     const beneficio = Math.max(0, saldo - costBase);
     if (beneficio <= 0) return 0;
-    // Proporción del beneficio en la cantidad retirada
     const ratioBeneficio = beneficio / saldo;
     const beneficioRetirado = cantidadRetirada * ratioBeneficio;
-    return +(beneficioRetirado * acc.impuestoRetirada / 100).toFixed(2);
+    return +(beneficioRetirado * tipo / 100).toFixed(2);
+  }
+
+  // Devuelve el tipo marginal IRPF efectivo para un plan de pensiones.
+  // Si tiene grupoNomina, calcula el tipo marginal real del grupo.
+  // Si no, usa acc.impuestoRetirada (tipo fijo configurado por el usuario).
+  function calcTipoMarginalPension(acc, nominas, tramos) {
+    const grupoId = acc.grupoNomina;
+    if (!grupoId) return acc.impuestoRetirada || 0;
+    const grupoNoms = (nominas || []).filter(n => (n.grupoNomina || '') === grupoId && n.activo !== false);
+    const brutoAnual = grupoNoms.reduce((s, n) => s + (n.bruto || 0) * (n.nPagas || 12), 0);
+    const sorted = [...(tramos || [])].sort((a, b) => a[0] - b[0]);
+    let pct = sorted[0]?.[1] || 19;
+    for (const [desde, p] of sorted) {
+      if (brutoAnual >= desde) pct = p;
+      else break;
+    }
+    return pct;
   }
 
   // Retorna el gasto básico mensual (base para el colchón)
@@ -732,6 +756,43 @@ const FinanceMath = (() => {
     return events;
   }
 
+  // Proyecta las aportaciones programadas (planAportaciones) de fondos e inversiones.
+  // Genera pares gasto/ingreso: salida de cuentaOrigen + entrada al fondo.
+  function proyectarAportaciones(accounts, dateStart, dateEnd, filtroAccounts=null) {
+    const events = [];
+    const dS = new Date(dateStart+'T00:00:00'), dE = new Date(dateEnd+'T00:00:00');
+    for (const acc of accounts) {
+      const modelo = acc.modeloFondo || (acc.esFondoPension ? 'pension' : 'cuenta');
+      if (modelo === 'cuenta' || !acc.activo) continue;
+      const plan = acc.planAportaciones || [];
+      for (const ap of plan) {
+        if (!ap.importe || ap.importe <= 0) continue;
+        const dI = new Date((ap.fechaInicio || dateStart)+'T00:00:00');
+        const dF = ap.fechaFin ? new Date(ap.fechaFin+'T00:00:00') : dE;
+        const origen = ap.cuentaOrigen || 'default';
+        const addO = !filtroAccounts || !filtroAccounts.length || filtroAccounts.includes(origen);
+        const addD = !filtroAccounts || !filtroAccounts.length || filtroAccounts.includes(acc._id);
+        const tag  = modelo === 'pension' ? 'pension' : 'capital-mobiliario';
+        const pushAport = (fecha) => {
+          if (addO) events.push({ fecha, concepto:`Aportación → ${acc.nombre}`, cuantia: ap.importe, tipo:'gasto',   tags:['aportacion','transferencia',tag], cuenta: origen,  sourceId: ap._id, sourceType:'aportacion-out' });
+          if (addD) events.push({ fecha, concepto:`Aportación ${acc.nombre} (${ap.periodicidad||'mensual'})`, cuantia: ap.importe, tipo:'ingreso', tags:['aportacion','transferencia',tag], cuenta: acc._id, sourceId: ap._id, sourceType:'aportacion-in'  });
+        };
+        const freq = { mensual:1, trimestral:3, semestral:6, anual:12 }[ap.periodicidad||'mensual'] || 1;
+        let year = dI.getFullYear(), month = dI.getMonth();
+        const maxIter = Math.ceil(240/freq)+2;
+        for (let i=0; i<maxIter; i++) {
+          const maxDay = new Date(year, month+1, 0).getDate();
+          const fe = new Date(year, month, Math.min(dI.getDate(), maxDay)).toISOString().slice(0,10);
+          const dE2 = new Date(fe+'T00:00:00');
+          if (dE2 > dE || dE2 > dF) break;
+          if (dE2 >= dS && dE2 >= dI) pushAport(fe);
+          month += freq; if (month>=12){year+=Math.floor(month/12);month=month%12;}
+        }
+      }
+    }
+    return events;
+  }
+
   function generarExtracto(loans, expenses, accounts, config, filtroAccounts=null, nominas=[], inflacionPeriodos=[]) {
     const gastos = expenses.filter(e=>e.tipo!=='transferencia');
     const transferencias = expenses.filter(e=>e.tipo==='transferencia');
@@ -739,6 +800,7 @@ const FinanceMath = (() => {
     allEvents = allEvents.concat(proyectarGastos(gastos, config.dashboardStart, config.dashboardEnd, filtroAccounts));
     allEvents = allEvents.concat(proyectarPrestamos(loans, config.dashboardStart, config.dashboardEnd, filtroAccounts));
     allEvents = allEvents.concat(proyectarTransferencias(transferencias, config.dashboardStart, config.dashboardEnd, filtroAccounts));
+    allEvents = allEvents.concat(proyectarAportaciones(accounts, config.dashboardStart, config.dashboardEnd, filtroAccounts));
     const intereses = proyectarInteresesCuentas(accounts, config.dashboardStart, config.dashboardEnd, filtroAccounts, allEvents);
     allEvents = allEvents.concat(intereses);
     allEvents = allEvents.concat(proyectarRetencionesFiscales(expenses, config, config.dashboardStart, config.dashboardEnd, filtroAccounts));
@@ -1579,6 +1641,6 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, calcFondoInversion, calcFondosPension, calcImpuestoPension, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 
