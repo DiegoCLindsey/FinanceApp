@@ -4,7 +4,7 @@ const NominasModule = (() => {
   function render() {
     const view    = document.getElementById('view-nominas');
     const config  = State.get('config');
-    const tramos  = config.tramos_irpf || [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]];
+    const tramos  = FinanceMath.tramosIRPFParaAño(new Date().getFullYear());
     const inflacionPeriodos = State.get('inflacion') || [];
 
     // Sort all nominas by bruto descending
@@ -320,11 +320,77 @@ const NominasModule = (() => {
     render();
   }
 
-  function openTramosForm() {
-    const config = State.get('config');
-    const tramos = (config.tramos_irpf || [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]]).map(t=>[...t]);
-    let rows = tramos;
-    const renderRows = () => rows.map((t, i) => `
+  let _irpfEditYear = null;
+  let _irpfEditRows = [];
+
+  function openTramosForm(añoEdit) {
+    _irpfEditYear = (añoEdit === undefined) ? null : añoEdit;
+    const config    = State.get('config');
+    const historico = State.get('tramosIRPFHistorico') || [];
+
+    if (_irpfEditYear === null) {
+      // ── VISTA LISTA ───────────────────────────────────────────────────────────
+      const sorted    = [...historico].sort((a,b) => a.año - b.año);
+      const defTramos = config.tramos_irpf || [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]];
+      const _label    = t => t.slice(0,3).map(([,p])=>`${p}%`).join(' · ') + (t.length > 3 ? ' …' : '');
+      const rowStyle  = 'display:grid;grid-template-columns:90px 1fr auto;gap:0;padding:10px 12px;border-top:1px solid var(--border);align-items:center';
+      const html = `
+        <div class="text-sm mb-12" style="color:var(--text2)">
+          Tabla de tramos marginales del IRPF (rendimientos del trabajo) por ejercicio fiscal.
+          Si un año no tiene tabla específica se usa la más reciente anterior, o la tabla por defecto.
+        </div>
+        <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:14px">
+          <div style="display:grid;grid-template-columns:90px 1fr auto;background:var(--bg3);padding:8px 12px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px">
+            <span>Ejercicio</span><span>Tramos (resumen)</span><span></span>
+          </div>
+          <div style="${rowStyle}">
+            <span style="font-weight:600;font-size:13px">Por defecto</span>
+            <span class="text-sm" style="color:var(--text2)">${_label(defTramos)}</span>
+            <button class="btn-secondary btn-sm" onclick="NominasModule.openTramosForm('default')">Editar</button>
+          </div>
+          ${sorted.map(e => `
+          <div style="${rowStyle}">
+            <span style="font-weight:600;font-size:13px">${e.año}</span>
+            <span class="text-sm" style="color:var(--text2)">${_label(e.tramos)}</span>
+            <div class="flex gap-6">
+              <button class="btn-secondary btn-sm" onclick="NominasModule.openTramosForm(${e.año})">Editar</button>
+              <button class="btn-danger btn-sm" onclick="NominasModule._irpfDeleteYear(${e.año})">✕</button>
+            </div>
+          </div>`).join('')}
+        </div>
+        <div class="flex gap-8 items-center mt-4">
+          <input class="form-input" type="number" id="irpf-new-year" placeholder="Año (ej: ${new Date().getFullYear()})" style="width:130px;flex:none" min="2000" max="2100"/>
+          <button class="btn-secondary" onclick="NominasModule._irpfAddYear()">+ Añadir tabla para año</button>
+        </div>
+        <div class="flex gap-8 mt-16" style="justify-content:flex-end">
+          <button class="btn-secondary" onclick="UI.closeModal()">Cerrar</button>
+        </div>`;
+      UI.openModal(html, 'Tramos IRPF por ejercicio');
+    } else {
+      // ── VISTA EDITOR ─────────────────────────────────────────────────────────
+      const isDefault = _irpfEditYear === 'default';
+      if (isDefault) {
+        _irpfEditRows = (config.tramos_irpf || [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]]).map(t=>[...t]);
+      } else {
+        const entry = historico.find(e => e.año === _irpfEditYear);
+        _irpfEditRows = (entry ? entry.tramos : (config.tramos_irpf || [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]])).map(t=>[...t]);
+      }
+      const label = isDefault ? 'tabla por defecto' : `ejercicio ${_irpfEditYear}`;
+      const html = `
+        <button class="btn-secondary btn-sm mb-12" onclick="NominasModule.openTramosForm()">← Volver a la lista</button>
+        <div class="text-sm mb-8" style="color:var(--text2)">Tramos marginales IRPF — ${label}. Orden ascendente por base imponible.</div>
+        <div id="irpf-tramos-rows">${_irpfRowsHtml()}</div>
+        <button class="btn-secondary btn-sm mt-8" onclick="NominasModule._addTramo()">+ Añadir tramo</button>
+        <div class="flex gap-8 mt-16" style="justify-content:flex-end">
+          <button class="btn-secondary" onclick="NominasModule.openTramosForm()">Cancelar</button>
+          <button class="btn-primary" onclick="NominasModule._saveTramos()">Guardar</button>
+        </div>`;
+      UI.openModal(html, `Tramos IRPF — ${isDefault ? 'Por defecto' : _irpfEditYear}`);
+    }
+  }
+
+  function _irpfRowsHtml() {
+    return _irpfEditRows.map((t, i) => `
       <div class="grid-2 mt-8">
         <input class="form-input" type="number" id="tr-min-${i}" value="${t[0]}" placeholder="Desde €" min="0"/>
         <div class="flex gap-8">
@@ -332,50 +398,10 @@ const NominasModule = (() => {
           <button class="btn-danger" onclick="NominasModule._removeTramo(${i})">✕</button>
         </div>
       </div>`).join('');
-    const openModal = () => {
-      const html = `
-        <div class="text-sm" style="color:var(--text2);margin-bottom:8px">Define los tramos marginales del IRPF (orden ascendente por base).</div>
-        <div id="tramos-rows">${renderRows()}</div>
-        <button class="btn-secondary btn-sm mt-8" onclick="NominasModule._addTramo()">+ Añadir tramo</button>
-        <div class="flex gap-8 mt-16" style="justify-content:flex-end">
-          <button class="btn-secondary" onclick="UI.closeModal()">Cancelar</button>
-          <button class="btn-primary" onclick="NominasModule._saveTramos()">Guardar</button>
-        </div>`;
-      UI.openModal(html, 'Tramos IRPF');
-    };
-    window._tramosEditing = rows;
-    openModal();
-  }
-
-  function _removeTramo(i) {
-    window._tramosEditing = _collectTramos();
-    window._tramosEditing.splice(i, 1);
-    document.getElementById('tramos-rows').innerHTML = window._tramosEditing.map((t, j) => `
-      <div class="grid-2 mt-8">
-        <input class="form-input" type="number" id="tr-min-${j}" value="${t[0]}" placeholder="Desde €" min="0"/>
-        <div class="flex gap-8">
-          <input class="form-input" type="number" id="tr-pct-${j}" value="${t[1]}" placeholder="%" min="0" max="100" style="flex:1"/>
-          <button class="btn-danger" onclick="NominasModule._removeTramo(${j})">✕</button>
-        </div>
-      </div>`).join('');
-  }
-
-  function _addTramo() {
-    window._tramosEditing = _collectTramos();
-    window._tramosEditing.push([0, 0]);
-    document.getElementById('tramos-rows').innerHTML = window._tramosEditing.map((t, j) => `
-      <div class="grid-2 mt-8">
-        <input class="form-input" type="number" id="tr-min-${j}" value="${t[0]}" placeholder="Desde €" min="0"/>
-        <div class="flex gap-8">
-          <input class="form-input" type="number" id="tr-pct-${j}" value="${t[1]}" placeholder="%" min="0" max="100" style="flex:1"/>
-          <button class="btn-danger" onclick="NominasModule._removeTramo(${j})">✕</button>
-        </div>
-      </div>`).join('');
   }
 
   function _collectTramos() {
-    const rows = [];
-    let i = 0;
+    const rows = []; let i = 0;
     while (document.getElementById(`tr-min-${i}`)) {
       rows.push([parseFloat(document.getElementById(`tr-min-${i}`).value)||0, parseFloat(document.getElementById(`tr-pct-${i}`).value)||0]);
       i++;
@@ -383,14 +409,44 @@ const NominasModule = (() => {
     return rows;
   }
 
+  function _removeTramo(i) {
+    _irpfEditRows = _collectTramos(); _irpfEditRows.splice(i, 1);
+    document.getElementById('irpf-tramos-rows').innerHTML = _irpfRowsHtml();
+  }
+
+  function _addTramo() {
+    _irpfEditRows = _collectTramos(); _irpfEditRows.push([0, 0]);
+    document.getElementById('irpf-tramos-rows').innerHTML = _irpfRowsHtml();
+  }
+
+  function _irpfAddYear() {
+    const año = parseInt(document.getElementById('irpf-new-year')?.value);
+    if (!año || año < 2000 || año > 2100) { UI.toast('Año inválido','err'); return; }
+    const historico = State.get('tramosIRPFHistorico') || [];
+    if (historico.find(e => e.año === año)) { UI.toast('Ya existe una tabla para ese año','err'); return; }
+    const defTramos = (State.get('config').tramos_irpf || [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]]).map(t=>[...t]);
+    State.set('tramosIRPFHistorico', [...historico, { _id: Date.now().toString(36), año, tramos: defTramos }]);
+    openTramosForm(año);
+  }
+
+  function _irpfDeleteYear(año) {
+    State.set('tramosIRPFHistorico', (State.get('tramosIRPFHistorico')||[]).filter(e => e.año !== año));
+    UI.toast(`Tabla ${año} eliminada`);
+    openTramosForm();
+  }
+
   function _saveTramos() {
     const tramos = _collectTramos().sort((a,b)=>a[0]-b[0]);
-    if (tramos.length === 0) { UI.toast('Añade al menos un tramo', 'err'); return; }
-    const config = State.get('config');
-    State.set('config', { ...config, tramos_irpf: tramos });
-    UI.toast('Tramos IRPF guardados');
-    UI.closeModal();
-    render();
+    if (!tramos.length) { UI.toast('Añade al menos un tramo','err'); return; }
+    if (_irpfEditYear === 'default') {
+      State.set('config', { ...State.get('config'), tramos_irpf: tramos });
+      UI.toast('Tabla por defecto guardada');
+    } else {
+      const historico = (State.get('tramosIRPFHistorico')||[]).map(e => e.año === _irpfEditYear ? {...e, tramos} : e);
+      State.set('tramosIRPFHistorico', historico);
+      UI.toast(`Tabla ${_irpfEditYear} guardada`);
+    }
+    openTramosForm();
   }
 
   // ── Planes de pensiones ──────────────────────────────────────────────────────
@@ -598,5 +654,5 @@ const NominasModule = (() => {
     render();
   }
 
-  return { render, saveNomina, deleteNomina, openTramosForm, _removeTramo, _addTramo, _saveTramos, openPensionForm, savePension, deletePension, _addPensionAport, _removePensionAport };
+  return { render, saveNomina, deleteNomina, openTramosForm, _removeTramo, _addTramo, _saveTramos, _irpfAddYear, _irpfDeleteYear, openPensionForm, savePension, deletePension, _addPensionAport, _removePensionAport };
 })();

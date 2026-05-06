@@ -15,6 +15,7 @@ const DataIO = (() => {
       nominas:    State.get('nominas')    || [],
       inflacion:  State.get('inflacion')  || [],
       tramosGananciasCapitalHistorico: State.get('tramosGananciasCapitalHistorico') || [],
+      tramosIRPFHistorico: State.get('tramosIRPFHistorico') || [],
       escenarios: State.get('escenarios') || [],
       config:     State.get('config')     || {},
     };
@@ -57,6 +58,7 @@ const DataIO = (() => {
     const nominas    = data.nominas    || [];
     const inflacion  = data.inflacion  || [];
     const tramosGananciasCapitalHistorico = data.tramosGananciasCapitalHistorico || [];
+    const tramosIRPFHistorico = data.tramosIRPFHistorico || [];
     const escenarios = data.escenarios || [];
     const config     = data.config     || {};
 
@@ -79,6 +81,7 @@ const DataIO = (() => {
     State.set('nominas',    nominas);
     State.set('inflacion',  inflacion);
     State.set('tramosGananciasCapitalHistorico', tramosGananciasCapitalHistorico);
+    State.set('tramosIRPFHistorico', tramosIRPFHistorico);
     State.set('escenarios', escenarios);
     State.set('config',     config);
 

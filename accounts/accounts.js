@@ -152,6 +152,18 @@ const AccountsModule = (() => {
 
     const inversionBlock = inversion ? (() => {
       const pctPlusvalia = inversion.costBase > 0 ? (inversion.plusvalia / inversion.costBase * 100).toFixed(1) : '0';
+      // Scheduled transfers to/from this investment fund
+      const expenses = State.get('expenses') || [];
+      const _freq = e => ({mensual:'€/mes',trimestral:'€/trim',semestral:'€/sem',anual:'€/año',extraordinario:'(único)'}[e.tipoFrecuencia]||'');
+      const tIn  = expenses.filter(e => e.tipo==='transferencia' && e.cuentaDestino===acc._id && e.activo!==false);
+      const tOut = expenses.filter(e => e.tipo==='transferencia' && e.cuenta===acc._id && e.activo!==false);
+      const flujosHtml = (tIn.length || tOut.length) ? `
+        <div style="margin-top:8px;padding:8px 10px;background:var(--bg2);border-radius:var(--radius);border:1px solid var(--border)">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Flujos programados</div>
+          ${tIn.map(e=>`<div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">↓ ${State.accountName(e.cuenta||'default')}: ${e.concepto||'Aportación'}</span><span class="num pos">${FinanceMath.eur(e.cuantia)} ${_freq(e)}</span></div>`).join('')}
+          ${tOut.map(e=>`<div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">↑ ${State.accountName(e.cuentaDestino||'default')}: ${e.concepto||'Reembolso'}</span><span class="num neg">${FinanceMath.eur(e.cuantia)} ${_freq(e)}</span></div>`).join('')}
+          ${tOut.length ? `<div style="font-size:10px;color:var(--text3);margin-top:4px">⚠ Los reembolsos generan retención sobre plusvalía proporcional (art. 101 LIRPF)</div>` : ''}
+        </div>` : `<div style="font-size:10px;color:var(--text3);margin-top:6px">Gestiona aportaciones/reembolsos en <em>Movimientos esperados</em> → tipo Transferencia</div>`;
       return `
       <div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:var(--radius);border:1px solid rgba(16,185,129,0.3)">
         <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Análisis fiscal — Inversión</div>
@@ -171,6 +183,7 @@ const AccountsModule = (() => {
           <span class="text-sm" style="font-weight:600">Neto tras impuestos</span>
           <span class="num pos" style="font-weight:600">${FinanceMath.eur(inversion.neto)}</span>
         </div>
+        ${flujosHtml}
       </div>`;
     })() : '';
 
@@ -206,53 +219,11 @@ const AccountsModule = (() => {
     </div>`;
   }
 
-  function _planAportacionesHtml(plan) {
-    const rows = (plan||[]).map((p,i) => `
-      <div class="flex gap-8 items-center" style="padding:4px 0;border-bottom:1px solid var(--border)" data-aport-idx="${i}">
-        <span style="min-width:70px;font-size:12px">${p.fechaInicio||'—'}</span>
-        <span style="flex:1;font-size:12px">${FinanceMath.eur(p.importe)} / ${p.periodicidad}</span>
-        <span style="min-width:70px;font-size:12px;color:var(--text3)">${p.fechaFin||'indefinido'}</span>
-        <button class="btn-danger btn-sm" onclick="AccountsModule._removeAport(${i})">✕</button>
-      </div>`).join('');
-    return `<div id="aport-list">${rows || '<div style="font-size:12px;color:var(--text3);padding:4px 0">Sin aportaciones programadas</div>'}</div>
-      <div class="grid-2 mt-8" style="gap:6px">
-        <input class="form-input" type="number" id="aport-importe" placeholder="Importe €" style="font-size:12px"/>
-        ${UI.select('aport-periodo',[''],[['mensual','Mensual'],['trimestral','Trimestral'],['semestral','Semestral'],['anual','Anual']],'mensual')}
-      </div>
-      <div class="grid-2 mt-6" style="gap:6px">
-        <input class="form-input" type="date" id="aport-inicio" style="font-size:12px"/>
-        <input class="form-input" type="date" id="aport-fin" placeholder="Fin (opcional)" style="font-size:12px"/>
-      </div>
-      <button class="btn-secondary btn-sm mt-6" onclick="AccountsModule._addAport()">+ Añadir aportación</button>`;
-  }
-
-  let _editPlan = [];
-
-  function _addAport() {
-    const importe = parseFloat(document.getElementById('aport-importe')?.value)||0;
-    if (!importe) { UI.toast('Importe requerido','err'); return; }
-    const periodicidad = document.getElementById('aport-periodo')?.value || 'mensual';
-    const fechaInicio  = document.getElementById('aport-inicio')?.value  || new Date().toISOString().slice(0,10);
-    const fechaFin     = document.getElementById('aport-fin')?.value     || '';
-    _editPlan.push({ _id: Date.now().toString(36), importe, periodicidad, fechaInicio, fechaFin });
-    const el = document.getElementById('aport-list');
-    if (el) el.parentElement.querySelector('#aport-list') && (el.outerHTML = _planAportacionesHtml(_editPlan).split('</div>')[0] + '</div>');
-    const container = document.getElementById('aport-container');
-    if (container) container.innerHTML = _planAportacionesHtml(_editPlan);
-  }
-
-  function _removeAport(idx) {
-    _editPlan.splice(idx, 1);
-    const container = document.getElementById('aport-container');
-    if (container) container.innerHTML = _planAportacionesHtml(_editPlan);
-  }
-
   function openForm(id=null) {
     const acc=id?State.get('accounts').find(a=>a._id===id):null;
     const hist=[...(acc?.historicoSaldos||[])].sort((a,b)=>b.fecha.localeCompare(a.fecha));
     const saldoActual = hist[0] ? hist[0].saldo : (acc?.saldo??0);
     const modeloFondo = acc?.modeloFondo || (acc?.esFondoPension ? 'pension' : 'cuenta');
-    _editPlan = [...(acc?.planAportaciones||[])];
 
     const html=`
       <div class="grid-2">
@@ -296,10 +267,6 @@ const AccountsModule = (() => {
           document.getElementById('inversion-hint').style.display = this.value==='inversion' ? '' : 'none';
         };
       </script>
-      <div class="form-group mt-12">
-        <label class="form-label">Aportaciones programadas</label>
-        <div id="aport-container">${_planAportacionesHtml(_editPlan)}</div>
-      </div>
       <div class="form-group mt-8"><label class="form-label">Descripción</label><input class="form-input" type="text" id="ac-desc" value="${acc?.descripcion||''}" placeholder="Fondo indexado global..."/></div>
       <div class="form-row mt-8">
         <label class="form-label">Activa</label><label class="toggle"><input type="checkbox" id="ac-activo" ${acc?.activo!==false?'checked':''}/><span class="toggle-slider"></span></label>
@@ -331,7 +298,6 @@ const AccountsModule = (() => {
       escenarioIds:     EscenariosModule.readCheckedEscenarios(),
       modeloFondo,
       esFondoPension:   esPension,
-      planAportaciones: _editPlan,
       bloqueoMeses:     esPension ? (parseInt(document.getElementById('ac-bloqueo')?.value)||120) : 120,
       impuestoRetirada: esPension ? (parseFloat(document.getElementById('ac-impuesto-ret')?.value)||0) : 0,
     };
@@ -575,5 +541,5 @@ const AccountsModule = (() => {
     openTramosGananciasForm();
   }
 
-  return { render, saveAccount, openHistorico, saveHistorico, deleteHistorico, setAsPrincipal, resetearPuntoInicial, _addAport, _removeAport, openTramosGananciasForm, _tgAddYear, _tgDeleteYear, _addTG, _rmTG, _saveTG };
+  return { render, saveAccount, openHistorico, saveHistorico, deleteHistorico, setAsPrincipal, resetearPuntoInicial, openTramosGananciasForm, _tgAddYear, _tgDeleteYear, _addTG, _rmTG, _saveTG };
 })();

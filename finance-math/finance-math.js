@@ -267,8 +267,7 @@ const FinanceMath = (() => {
           } else if (originModel === 'pension') {
             // RESCATE: rendimiento del trabajo; usar tipo marginal real del grupo si está configurado
             const nominas_ = typeof State !== 'undefined' ? State.get('nominas') : [];
-            const config_  = typeof State !== 'undefined' ? State.get('config')  : {};
-            const tramos_  = config_.tramos_irpf || [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]];
+            const tramos_  = tramosIRPFParaAño(parseInt(fecha.slice(0, 4)));
             const tipoEf   = calcTipoMarginalPension(cuentaOrigen, nominas_, tramos_);
             const impuesto = calcImpuestoPension(cuentaOrigen, exp.cuantia, tipoEf || undefined);
             if (impuesto > 0) {
@@ -375,6 +374,20 @@ const FinanceMath = (() => {
   // ── Fondos de pensiones ──────────────────────────────────────────────────────
   // Calcula qué parte del saldo está disponible (bloqueo cumplido) y qué está bloqueada.
   // FIFO: las aportaciones más antiguas se consideran disponibles primero.
+
+  // Devuelve los tramos IRPF para un ejercicio dado.
+  // Busca coincidencia exacta, luego el más reciente anterior, luego el default de config.
+  function tramosIRPFParaAño(año) {
+    if (typeof State === 'undefined') return [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]];
+    const historico = State.get('tramosIRPFHistorico') || [];
+    const config    = State.get('config') || {};
+    const def       = config.tramos_irpf || [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]];
+    if (!historico.length) return def;
+    const match = historico.find(e => e.año === año);
+    if (match) return match.tramos;
+    const earlier = historico.filter(e => e.año < año).sort((a,b) => b.año - a.año);
+    return earlier.length ? earlier[0].tramos : def;
+  }
 
   // Devuelve la tabla de tramos de ganancias de capital para un ejercicio dado.
   // Busca primero coincidencia exacta de año en el histórico, luego la entrada más reciente
@@ -624,18 +637,17 @@ const FinanceMath = (() => {
     }
 
     // Returns the IRPF anual for nom at a payment date, accounting for group stacking.
-    // Nóminas in the same group have their IRPF computed on the marginal base
-    // (sum of brutos of all group members with a higher base bruto + this bruto).
+    // Uses the tramos for the year of the payment date (per-year fiscal tables).
     function irpfAnualNomina(nom, fechaStr) {
       const bruto = brutoAjustado(nom, fechaStr);
       if (nom.irpfModo === 'manual') return bruto * ((nom.irpfPct || 0) / 100);
+      const tramosYear = tramosIRPFParaAño(parseInt(fechaStr.slice(0, 4)));
       const g = nom.grupoNomina || '';
-      if (!g) return calcIRPF(bruto, tramos);
-      // Stack: sum of active group members whose base bruto is strictly higher
+      if (!g) return calcIRPF(bruto, tramosYear);
       const baseAcum = grupos[g]
         .filter(n => n.activo && n._id !== nom._id && (n.bruto || 0) > (nom.bruto || 0))
         .reduce((s, n) => s + brutoAjustado(n, fechaStr), 0);
-      return calcIRPF(baseAcum + bruto, tramos) - calcIRPF(baseAcum, tramos);
+      return calcIRPF(baseAcum + bruto, tramosYear) - calcIRPF(baseAcum, tramosYear);
     }
 
     for (const nom of nominas) {
@@ -1659,6 +1671,6 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 

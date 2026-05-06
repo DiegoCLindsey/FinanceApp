@@ -56,9 +56,12 @@ const EscenariosModule = (() => {
       : config.dashboardEnd;
     const cfgExt = { ...config, dashboardEnd: horizonte };
 
+    // Pass included account IDs so expenses/loans linked to excluded accounts are also filtered
+    const filtroAccounts = excludeAccountIds.length ? accounts.map(a => a._id) : null;
+
     const eventos = FinanceMath.generarExtracto(
       filtered.loans, filtered.expenses, accounts, cfgExt,
-      null, filtered.nominas, inflPeriodos
+      filtroAccounts, filtered.nominas, inflPeriodos
     );
     return { eventos, horizonte };
   }
