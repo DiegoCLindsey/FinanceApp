@@ -254,8 +254,8 @@ const FinanceMath = (() => {
         if (addOrigen && !esTraspaso) {
           if (originModel === 'inversion') {
             // REEMBOLSO: retención 19% sobre la plusvalía proporcional al importe retirado
-            const config = typeof State !== 'undefined' ? State.get('config') : {};
-            const inv = calcFondoInversion(cuentaOrigen, config.tramosGananciasCapital);
+            const añoFecha = parseInt(fecha.slice(0, 4));
+            const inv = calcFondoInversion(cuentaOrigen, null, añoFecha);
             if (inv && inv.saldo > 0 && inv.plusvalia > 0) {
               const proporcion  = Math.min(1, exp.cuantia / inv.saldo);
               const plusvProp   = inv.plusvalia * proporcion;
@@ -375,6 +375,22 @@ const FinanceMath = (() => {
   // ── Fondos de pensiones ──────────────────────────────────────────────────────
   // Calcula qué parte del saldo está disponible (bloqueo cumplido) y qué está bloqueada.
   // FIFO: las aportaciones más antiguas se consideran disponibles primero.
+
+  // Devuelve la tabla de tramos de ganancias de capital para un ejercicio dado.
+  // Busca primero coincidencia exacta de año en el histórico, luego la entrada más reciente
+  // anterior a ese año, y si no encuentra nada usa la tabla por defecto de config.
+  function tramosGananciasParaAño(año) {
+    if (typeof State === 'undefined') return [[0,19],[6000,21],[50000,23],[200000,27],[300000,28]];
+    const historico = State.get('tramosGananciasCapitalHistorico') || [];
+    const config    = State.get('config') || {};
+    const def       = config.tramosGananciasCapital || [[0,19],[6000,21],[50000,23],[200000,27],[300000,28]];
+    if (!historico.length) return def;
+    const match = historico.find(e => e.año === año);
+    if (match) return match.tramos;
+    const earlier = historico.filter(e => e.año < año).sort((a,b) => b.año - a.año);
+    return earlier.length ? earlier[0].tramos : def;
+  }
+
   // Capital gains tax using progressive brackets [[desde, pct], ...]
   function calcGananciasCapital(plusvalia, tramos) {
     if (!plusvalia || plusvalia <= 0) return 0;
@@ -393,12 +409,14 @@ const FinanceMath = (() => {
   }
 
   // Fiscal summary for investment funds (modeloFondo === 'inversion')
-  function calcFondoInversion(acc, tramosGanancias) {
+  // año: ejercicio fiscal a usar para seleccionar la tabla de tramos (por defecto el año actual)
+  function calcFondoInversion(acc, tramosGanancias, año) {
     if ((acc.modeloFondo || (acc.esFondoPension ? 'pension' : 'cuenta')) !== 'inversion') return null;
     const saldo = saldoRealCuenta(acc);
     const costBase = (acc.aportaciones || []).reduce((s, a) => s + a.cantidad, 0) || (acc.saldoInicial || 0);
     const plusvalia = Math.max(0, saldo - costBase);
-    const impuesto  = calcGananciasCapital(plusvalia, tramosGanancias);
+    const tramos = tramosGananciasParaAño(año || new Date().getFullYear());
+    const impuesto  = calcGananciasCapital(plusvalia, tramos);
     return { saldo, costBase, plusvalia, impuesto, neto: saldo - impuesto };
   }
 
@@ -1641,6 +1659,6 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 

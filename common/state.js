@@ -11,6 +11,7 @@ const State = (() => {
     nominas: [],    // [{_id,nombre,bruto,nPagas,irpfModo,irpfPct,representacion,fechaInicio,fechaFin,cuenta,activo,tags}]
     goals: [],      // [{_id,nombre,targetAmount,targetDate,cuentaId,color}]
     inflacion: [],  // [{_id, year, tasa}] — tasas anuales por periodo
+    tramosGananciasCapitalHistorico: [], // [{_id, año, tramos: [[min,pct],...]}] — tablas por ejercicio fiscal
     escenarios: [], // [{_id,nombre,color,descripcion,fechaFin,inversiones:[]}]
     config: {
       dashboardStart: new Date().toISOString().slice(0,10),
@@ -95,6 +96,7 @@ const State = (() => {
     if (!Array.isArray(state.goals)) state.goals = [];
     if (!Array.isArray(state.nominas)) state.nominas = [];
     if (!Array.isArray(state.inflacion)) state.inflacion = [];
+    if (!Array.isArray(state.tramosGananciasCapitalHistorico)) state.tramosGananciasCapitalHistorico = [];
     if (!Array.isArray(state.escenarios)) state.escenarios = [];
     // Migrate escenarios: drop inversiones (replaced by account-based investments)
     state.escenarios = state.escenarios.map(({ inversiones, ...e }) => e);

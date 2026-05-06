@@ -450,11 +450,77 @@ const AccountsModule = (() => {
     openHistorico(accId);
   }
 
-  let _tramosGanEd = [];
-  function openTramosGananciasForm() {
-    const config = State.get('config');
-    _tramosGanEd = (config.tramosGananciasCapital || [[0,19],[6000,21],[50000,23],[200000,27],[300000,28]]).map(t=>[...t]);
-    const _rows = () => _tramosGanEd.map((t, i) => `
+  let _tgEditYear = null; // null = vista lista; 'default' = tabla por defecto; number = año específico
+  let _tgEditRows = [];
+
+  function openTramosGananciasForm(añoEdit) {
+    _tgEditYear = (añoEdit === undefined) ? null : añoEdit;
+    const config    = State.get('config');
+    const historico = State.get('tramosGananciasCapitalHistorico') || [];
+
+    if (_tgEditYear === null) {
+      // ── VISTA LISTA ───────────────────────────────────────────────────────────
+      const sorted   = [...historico].sort((a,b) => a.año - b.año);
+      const defTramos = config.tramosGananciasCapital || [[0,19],[6000,21],[50000,23],[200000,27],[300000,28]];
+      const _label   = t => t.slice(0,3).map(([,p])=>`${p}%`).join(' · ') + (t.length > 3 ? ' …' : '');
+      const rowStyle = 'display:grid;grid-template-columns:90px 1fr auto;gap:0;padding:10px 12px;border-top:1px solid var(--border);align-items:center';
+      const html = `
+        <div class="text-sm mb-12" style="color:var(--text2)">
+          Tabla de tramos del impuesto sobre ganancias de capital (art. 49 LIRPF) por ejercicio.
+          Si un año no tiene tabla específica se usa la más reciente anterior, o la tabla por defecto.
+        </div>
+        <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:14px">
+          <div style="display:grid;grid-template-columns:90px 1fr auto;background:var(--bg3);padding:8px 12px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px">
+            <span>Ejercicio</span><span>Tramos (resumen)</span><span></span>
+          </div>
+          <div style="${rowStyle}">
+            <span style="font-weight:600;font-size:13px">Por defecto</span>
+            <span class="text-sm" style="color:var(--text2)">${_label(defTramos)}</span>
+            <button class="btn-secondary btn-sm" onclick="AccountsModule.openTramosGananciasForm('default')">Editar</button>
+          </div>
+          ${sorted.map(e => `
+          <div style="${rowStyle}">
+            <span style="font-weight:600;font-size:13px">${e.año}</span>
+            <span class="text-sm" style="color:var(--text2)">${_label(e.tramos)}</span>
+            <div class="flex gap-6">
+              <button class="btn-secondary btn-sm" onclick="AccountsModule.openTramosGananciasForm(${e.año})">Editar</button>
+              <button class="btn-danger btn-sm" onclick="AccountsModule._tgDeleteYear(${e.año})">✕</button>
+            </div>
+          </div>`).join('')}
+        </div>
+        <div class="flex gap-8 items-center mt-4">
+          <input class="form-input" type="number" id="tg-new-year" placeholder="Año (ej: ${new Date().getFullYear()})" style="width:130px;flex:none" min="2000" max="2100"/>
+          <button class="btn-secondary" onclick="AccountsModule._tgAddYear()">+ Añadir tabla para año</button>
+        </div>
+        <div class="flex gap-8 mt-16" style="justify-content:flex-end">
+          <button class="btn-secondary" onclick="UI.closeModal()">Cerrar</button>
+        </div>`;
+      UI.openModal(html, 'Tramos — Ganancias de capital por ejercicio');
+    } else {
+      // ── VISTA EDITOR ─────────────────────────────────────────────────────────
+      const isDefault = _tgEditYear === 'default';
+      if (isDefault) {
+        _tgEditRows = (config.tramosGananciasCapital || [[0,19],[6000,21],[50000,23],[200000,27],[300000,28]]).map(t=>[...t]);
+      } else {
+        const entry = historico.find(e => e.año === _tgEditYear);
+        _tgEditRows = (entry ? entry.tramos : (config.tramosGananciasCapital || [[0,19],[6000,21],[50000,23],[200000,27],[300000,28]])).map(t=>[...t]);
+      }
+      const label = isDefault ? 'tabla por defecto' : `ejercicio ${_tgEditYear}`;
+      const html = `
+        <button class="btn-secondary btn-sm mb-12" onclick="AccountsModule.openTramosGananciasForm()">← Volver a la lista</button>
+        <div class="text-sm mb-8" style="color:var(--text2)">Tramos marginales — ${label} (art. 49 LIRPF). Orden ascendente por base imponible.</div>
+        <div id="tg-rows">${_tgRowsHtml()}</div>
+        <button class="btn-secondary btn-sm mt-8" onclick="AccountsModule._addTG()">+ Añadir tramo</button>
+        <div class="flex gap-8 mt-16" style="justify-content:flex-end">
+          <button class="btn-secondary" onclick="AccountsModule.openTramosGananciasForm()">Cancelar</button>
+          <button class="btn-primary" onclick="AccountsModule._saveTG()">Guardar</button>
+        </div>`;
+      UI.openModal(html, `Tramos — ${isDefault ? 'Por defecto' : _tgEditYear}`);
+    }
+  }
+
+  function _tgRowsHtml() {
+    return _tgEditRows.map((t, i) => `
       <div class="grid-2 mt-8">
         <input class="form-input" type="number" id="tg-min-${i}" value="${t[0]}" placeholder="Desde €" min="0"/>
         <div class="flex gap-8">
@@ -462,16 +528,8 @@ const AccountsModule = (() => {
           <button class="btn-danger" onclick="AccountsModule._rmTG(${i})">✕</button>
         </div>
       </div>`).join('');
-    const html = `
-      <div class="text-sm" style="color:var(--text2);margin-bottom:8px">Tramos marginales para el impuesto sobre ganancias de capital (art. 49 LIRPF).</div>
-      <div id="tg-rows">${_rows()}</div>
-      <button class="btn-secondary btn-sm mt-8" onclick="AccountsModule._addTG()">+ Añadir tramo</button>
-      <div class="flex gap-8 mt-16" style="justify-content:flex-end">
-        <button class="btn-secondary" onclick="UI.closeModal()">Cancelar</button>
-        <button class="btn-primary" onclick="AccountsModule._saveTG()">Guardar</button>
-      </div>`;
-    UI.openModal(html, 'Tramos — Ganancias de capital');
   }
+
   function _collectTG() {
     const rows = []; let i = 0;
     while (document.getElementById(`tg-min-${i}`)) {
@@ -480,24 +538,42 @@ const AccountsModule = (() => {
     }
     return rows;
   }
-  function _renderTGRows() {
-    document.getElementById('tg-rows').innerHTML = _tramosGanEd.map((t, i) => `
-      <div class="grid-2 mt-8">
-        <input class="form-input" type="number" id="tg-min-${i}" value="${t[0]}" placeholder="Desde €" min="0"/>
-        <div class="flex gap-8">
-          <input class="form-input" type="number" id="tg-pct-${i}" value="${t[1]}" placeholder="%" min="0" max="100" style="flex:1"/>
-          <button class="btn-danger" onclick="AccountsModule._rmTG(${i})">✕</button>
-        </div>
-      </div>`).join('');
+
+  function _renderTGRows() { document.getElementById('tg-rows').innerHTML = _tgRowsHtml(); }
+  function _addTG() { _tgEditRows = _collectTG(); _tgEditRows.push([0,0]); _renderTGRows(); }
+  function _rmTG(i) { _tgEditRows = _collectTG(); _tgEditRows.splice(i,1); _renderTGRows(); }
+
+  function _tgAddYear() {
+    const año = parseInt(document.getElementById('tg-new-year')?.value);
+    if (!año || año < 2000 || año > 2100) { UI.toast('Año inválido','err'); return; }
+    const historico = State.get('tramosGananciasCapitalHistorico') || [];
+    if (historico.find(e => e.año === año)) { UI.toast('Ya existe una tabla para ese año','err'); return; }
+    const defTramos = (State.get('config').tramosGananciasCapital || [[0,19],[6000,21],[50000,23],[200000,27],[300000,28]]).map(t=>[...t]);
+    const updated = [...historico, { _id: Date.now().toString(36), año, tramos: defTramos }];
+    State.set('tramosGananciasCapitalHistorico', updated);
+    openTramosGananciasForm(año);
   }
-  function _addTG() { _tramosGanEd = _collectTG(); _tramosGanEd.push([0,0]); _renderTGRows(); }
-  function _rmTG(i) { _tramosGanEd = _collectTG(); _tramosGanEd.splice(i,1); _renderTGRows(); }
+
+  function _tgDeleteYear(año) {
+    const historico = (State.get('tramosGananciasCapitalHistorico') || []).filter(e => e.año !== año);
+    State.set('tramosGananciasCapitalHistorico', historico);
+    UI.toast(`Tabla ${año} eliminada`);
+    openTramosGananciasForm();
+  }
+
   function _saveTG() {
     const tramos = _collectTG().sort((a,b)=>a[0]-b[0]);
     if (!tramos.length) { UI.toast('Añade al menos un tramo','err'); return; }
-    State.set('config', { ...State.get('config'), tramosGananciasCapital: tramos });
-    UI.toast('Tramos guardados'); UI.closeModal(); render();
+    if (_tgEditYear === 'default') {
+      State.set('config', { ...State.get('config'), tramosGananciasCapital: tramos });
+      UI.toast('Tabla por defecto guardada');
+    } else {
+      const historico = (State.get('tramosGananciasCapitalHistorico') || []).map(e => e.año === _tgEditYear ? {...e, tramos} : e);
+      State.set('tramosGananciasCapitalHistorico', historico);
+      UI.toast(`Tabla ${_tgEditYear} guardada`);
+    }
+    openTramosGananciasForm();
   }
 
-  return { render, saveAccount, openHistorico, saveHistorico, deleteHistorico, setAsPrincipal, resetearPuntoInicial, _addAport, _removeAport, openTramosGananciasForm, _addTG, _rmTG, _saveTG };
+  return { render, saveAccount, openHistorico, saveHistorico, deleteHistorico, setAsPrincipal, resetearPuntoInicial, _addAport, _removeAport, openTramosGananciasForm, _tgAddYear, _tgDeleteYear, _addTG, _rmTG, _saveTG };
 })();
