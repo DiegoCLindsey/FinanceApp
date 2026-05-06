@@ -152,6 +152,67 @@ const AccountsModule = (() => {
 
     const inversionBlock = inversion ? (() => {
       const pctPlusvalia = inversion.costBase > 0 ? (inversion.plusvalia / inversion.costBase * 100).toFixed(1) : '0';
+      // Scheduled transfers to/from this investment fund
+      const config   = State.get('config');
+      const expenses = State.get('expenses') || [];
+      const _freq = e => ({mensual:'€/mes',trimestral:'€/trim',semestral:'€/sem',anual:'€/año',extraordinario:'(único)'}[e.tipoFrecuencia]||'');
+      const tIn  = expenses.filter(e => e.tipo==='transferencia' && e.cuentaDestino===acc._id && e.activo!==false);
+      const tOut = expenses.filter(e => e.tipo==='transferencia' && e.cuenta===acc._id && e.activo!==false);
+
+      // Project occurrences of each transfer within the dashboard period
+      const dS = new Date(config.dashboardStart+'T00:00:00');
+      const dE = new Date(config.dashboardEnd+'T00:00:00');
+      function _ocurrencias(exp) {
+        const eI = new Date((exp.fechaInicio||config.dashboardStart)+'T00:00:00');
+        const eF = exp.fechaFin ? new Date(exp.fechaFin+'T00:00:00') : dE;
+        if (eI > dE || eF < dS) return 0;
+        if (exp.tipoFrecuencia === 'extraordinario') return (eI >= dS && eI <= dE) ? 1 : 0;
+        const from = eI < dS ? dS : eI;
+        const to   = eF > dE ? dE : eF;
+        const meses = (to - from) / (30.44 * 86400000);
+        if (exp.tipoFrecuencia === 'trimestral') return Math.max(0, Math.floor(meses / 3));
+        if (exp.tipoFrecuencia === 'semestral')  return Math.max(0, Math.floor(meses / 6));
+        if (exp.tipoFrecuencia === 'anual')      return Math.max(0, Math.floor(meses / 12));
+        return Math.max(0, Math.floor(meses)); // mensual
+      }
+      const totalAportaciones = tIn.reduce((s, e) => s + e.cuantia * _ocurrencias(e), 0);
+      const totalReembolsos   = tOut.reduce((s, e) => s + e.cuantia * _ocurrencias(e), 0);
+      // Retención estimada sobre reembolsos: 19% sobre plusvalía proporcional al importe retirado
+      let totalRetencion = 0;
+      if (inversion.saldo > 0 && inversion.plusvalia > 0 && totalReembolsos > 0) {
+        const prop = Math.min(1, totalReembolsos / inversion.saldo);
+        totalRetencion = FinanceMath.calcGananciasCapital(inversion.plusvalia * prop, FinanceMath.tramosGananciasParaAño(new Date().getFullYear()));
+      }
+
+      // Projected fund value at dashboardEnd
+      const mesesPeriodo = Math.max(0, (dE - dS) / (30.44 * 86400000));
+      const proyeccionBlock = acc.interes > 0 && mesesPeriodo > 0 ? (() => {
+        const tasaMensual = Math.pow(1 + acc.interes / 100, 1/12) - 1;
+        const saldoProyectado = Math.max(0, inversion.saldo * Math.pow(1 + tasaMensual, mesesPeriodo) + totalAportaciones - totalReembolsos);
+        const costBaseProyectado = inversion.costBase + totalAportaciones;
+        const plusvaliaProyectada = Math.max(0, saldoProyectado - costBaseProyectado);
+        const endYear = parseInt(config.dashboardEnd.slice(0, 4));
+        const impuestoProyectado = FinanceMath.calcGananciasCapital(plusvaliaProyectada, FinanceMath.tramosGananciasParaAño(endYear));
+        const netoProyectado = saldoProyectado - impuestoProyectado;
+        return `<div style="margin-top:8px;padding:8px 10px;background:var(--bg2);border-radius:var(--radius);border:1px solid rgba(16,185,129,0.2)">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Proyección a ${config.dashboardEnd} (${acc.interes}% anual)</div>
+          <div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">Valor proyectado</span><span class="num pos">${FinanceMath.eur(saldoProyectado)}</span></div>
+          <div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">Plusvalía proyectada</span><span class="num ${plusvaliaProyectada>=0?'pos':'neg'}">${FinanceMath.eur(plusvaliaProyectada)}</span></div>
+          <div class="flex justify-between mt-4" style="border-top:1px solid var(--border);padding-top:4px;margin-top:6px"><span class="text-sm" style="font-weight:600">Neto tras imp. proyectado</span><span class="num pos" style="font-weight:600">${FinanceMath.eur(netoProyectado)}</span></div>
+        </div>`;
+      })() : '';
+
+      const flujosHtml = (tIn.length || tOut.length) ? `
+        <div style="margin-top:8px;padding:8px 10px;background:var(--bg2);border-radius:var(--radius);border:1px solid var(--border)">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Flujos en período (${config.dashboardStart.slice(0,7)} → ${config.dashboardEnd.slice(0,7)})</div>
+          ${tIn.map(e=>`<div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">↓ ${State.accountName(e.cuenta||'default')}: ${e.concepto||'Aportación'}</span><span class="num pos">${FinanceMath.eur(e.cuantia)} ${_freq(e)} · ${FinanceMath.eur(e.cuantia*_ocurrencias(e))} total</span></div>`).join('')}
+          ${tOut.map(e=>`<div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">↑ ${State.accountName(e.cuentaDestino||'default')}: ${e.concepto||'Reembolso'}</span><span class="num neg">${FinanceMath.eur(e.cuantia)} ${_freq(e)} · ${FinanceMath.eur(e.cuantia*_ocurrencias(e))} total</span></div>`).join('')}
+          <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">
+            ${totalAportaciones > 0 ? `<div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">Total aportaciones</span><span class="num pos">${FinanceMath.eur(totalAportaciones)}</span></div>` : ''}
+            ${totalReembolsos > 0 ? `<div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">Total reembolsos</span><span class="num neg">${FinanceMath.eur(totalReembolsos)}</span></div>` : ''}
+            ${totalRetencion > 0 ? `<div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">Retención estimada (art. 101)</span><span class="num neg">${FinanceMath.eur(totalRetencion)}</span></div>` : (tOut.length ? `<div style="font-size:10px;color:var(--text3);margin-top:4px">⚠ Los reembolsos generan retención sobre plusvalía proporcional</div>` : '')}
+          </div>
+        </div>` : `<div style="font-size:10px;color:var(--text3);margin-top:6px">Gestiona aportaciones/reembolsos en <em>Movimientos esperados</em> → tipo Transferencia</div>`;
       return `
       <div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:var(--radius);border:1px solid rgba(16,185,129,0.3)">
         <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Análisis fiscal — Inversión</div>
@@ -171,6 +232,8 @@ const AccountsModule = (() => {
           <span class="text-sm" style="font-weight:600">Neto tras impuestos</span>
           <span class="num pos" style="font-weight:600">${FinanceMath.eur(inversion.neto)}</span>
         </div>
+        ${proyeccionBlock}
+        ${flujosHtml}
       </div>`;
     })() : '';
 

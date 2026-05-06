@@ -158,7 +158,7 @@ const DropboxService = (() => {
     if (!isConnected()) throw new Error('No conectado a Dropbox.');
 
     const snapshot = {};
-    for (const k of ['loans', 'expenses', 'accounts', 'history', 'goals', 'config']) {
+    for (const k of ['loans', 'expenses', 'accounts', 'history', 'goals', 'nominas', 'inflacion', 'tramosGananciasCapitalHistorico', 'tramosIRPFHistorico', 'escenarios', 'config']) {
       snapshot[k] = State.get(k);
     }
 
@@ -392,6 +392,7 @@ const AuthModule = (() => {
     await State.load();
     document.getElementById('auth-overlay').classList.add('hidden');
     document.getElementById('main-shell').classList.remove('hidden');
+    PeriodBar.init(State.get('config'));
 
     if (withDropbox && DropboxService.isConnected()) {
       document.getElementById('btn-dbx-save').classList.remove('hidden');

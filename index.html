@@ -195,17 +195,35 @@
     </nav>
     <div id="sidebar-overlay" class="sidebar-overlay hidden"></div>
 
-    <!-- View container -->
-    <main class="view-container">
-      <div id="view-dashboard" class="view active"></div>
-      <div id="view-loans"     class="view hidden"></div>
-      <div id="view-expenses"  class="view hidden"></div>
-      <div id="view-accounts"  class="view hidden"></div>
-      <div id="view-nominas"   class="view hidden"></div>
-      <div id="view-calendar"  class="view hidden"></div>
-      <div id="view-inflacion"  class="view hidden"></div>
-      <div id="view-escenarios" class="view hidden"></div>
-    </main>
+    <!-- Main area: period bar + views -->
+    <div class="main-area">
+      <!-- Global period selector (visible on all views) -->
+      <div id="period-bar" class="period-bar">
+        <span class="period-bar-label">Periodo</span>
+        <input class="form-input" type="date" id="cfg-start" style="width:138px" onchange="PeriodBar.apply()"/>
+        <div class="flex gap-4 flex-wrap" style="row-gap:4px">
+          <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('1M')">1M</button>
+          <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('3M')">3M</button>
+          <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('6M')">6M</button>
+          <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('1Y')">1Y</button>
+          <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('5Y')">5Y</button>
+          <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('10Y')">10Y</button>
+        </div>
+        <input class="form-input" type="date" id="cfg-end" style="width:138px" onchange="PeriodBar.apply()"/>
+      </div>
+
+      <!-- View container -->
+      <main class="view-container">
+        <div id="view-dashboard" class="view active"></div>
+        <div id="view-loans"     class="view hidden"></div>
+        <div id="view-expenses"  class="view hidden"></div>
+        <div id="view-accounts"  class="view hidden"></div>
+        <div id="view-nominas"   class="view hidden"></div>
+        <div id="view-calendar"  class="view hidden"></div>
+        <div id="view-inflacion"  class="view hidden"></div>
+        <div id="view-escenarios" class="view hidden"></div>
+      </main>
+    </div>
   </div><!-- /#main-shell -->
 
   <!-- ── Toast container ── -->
@@ -290,6 +308,39 @@
   document.getElementById('modal-overlay').onclick = e => {
     if (e.target === document.getElementById('modal-overlay')) UI.closeModal();
   };
+
+  // Global period bar: saves start/end to config and rerenders the active view
+  const PeriodBar = (() => {
+    function init(config) {
+      const s = document.getElementById('cfg-start');
+      const e = document.getElementById('cfg-end');
+      if (s) s.value = config.dashboardStart;
+      if (e) e.value = config.dashboardEnd;
+    }
+    function apply() {
+      const existing = State.get('config');
+      const start = document.getElementById('cfg-start')?.value || existing.dashboardStart;
+      const end   = document.getElementById('cfg-end')?.value   || existing.dashboardEnd;
+      State.set('config', { ...existing, dashboardStart: start, dashboardEnd: end });
+      Router.rerender();
+    }
+    function applyPreset(p) {
+      const base = document.getElementById('cfg-start')?.value || State.get('config').dashboardStart;
+      const dS = new Date(base + 'T00:00:00');
+      const dE = new Date(dS);
+      if (p === '1M')  dE.setMonth(dE.getMonth()+1);
+      if (p === '3M')  dE.setMonth(dE.getMonth()+3);
+      if (p === '6M')  dE.setMonth(dE.getMonth()+6);
+      if (p === '1Y')  dE.setFullYear(dE.getFullYear()+1);
+      if (p === '5Y')  dE.setFullYear(dE.getFullYear()+5);
+      if (p === '10Y') dE.setFullYear(dE.getFullYear()+10);
+      const endEl = document.getElementById('cfg-end');
+      if (endEl) endEl.value = dE.toISOString().slice(0,10);
+      apply();
+    }
+    return { init, apply, applyPreset };
+  })();
+
   AuthModule.init();
 </script>
 
