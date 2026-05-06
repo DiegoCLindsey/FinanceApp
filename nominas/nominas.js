@@ -82,6 +82,7 @@ const NominasModule = (() => {
       <div class="page-header">
         <h1 class="page-title">Rendimientos <span>del Trabajo</span></h1>
         <div class="flex gap-8">
+          <button class="btn-secondary" id="btn-edit-tramos">⚙ Tramos IRPF</button>
           <button class="btn-secondary" id="btn-new-pension">+ Nuevo plan de pensiones</button>
           <button class="btn-primary" id="btn-new-nomina">+ Nueva nómina</button>
         </div>
@@ -90,20 +91,6 @@ const NominasModule = (() => {
       ${nominas.length === 0 ? '<div class="card text-sm" style="padding:24px;text-align:center;color:var(--text2)">Sin nóminas configuradas.</div>' : ''}
       ${gruposHTML}
       ${standaloneHTML}
-
-      <div class="page-header" style="margin-top:8px">
-        <h2 class="page-title" style="font-size:1.1rem">Configuración IRPF</h2>
-        <button class="btn-secondary btn-sm" id="btn-edit-tramos">Editar tramos</button>
-      </div>
-      <div class="card" style="padding:16px">
-        <table style="width:100%;font-size:13px;border-collapse:collapse">
-          <thead><tr style="color:var(--text2)"><th style="text-align:left;padding:4px 8px">Desde (€)</th><th style="text-align:left;padding:4px 8px">Tipo (%)</th></tr></thead>
-          <tbody>
-            ${tramos.map(([min,tipo]) => `<tr><td style="padding:4px 8px">${FinanceMath.eur(min)}</td><td style="padding:4px 8px">${tipo}%</td></tr>`).join('')}
-          </tbody>
-        </table>
-        <p class="text-sm" style="margin-top:12px;color:var(--text2)">Si no hay tramos configurados, se usan los oficiales de España 2024.</p>
-      </div>
 
       <div class="page-header" style="margin-top:24px">
         <h2 class="page-title" style="font-size:1.1rem">Planes de <span>Pensiones</span></h2>
