@@ -144,7 +144,7 @@ const EscenariosModule = (() => {
       <div class="card-title mt-24" style="margin-bottom:12px">Comparativa de escenarios</div>
       <div class="card" style="padding:16px">
         <div id="esc-account-filter-pills">${_accountFilterPillsHtml()}</div>
-        <canvas id="chart-comparacion" height="220"></canvas>
+        <canvas id="chart-comparacion" height="160"></canvas>
       </div>
       <div class="card mt-12" style="padding:14px" id="esc-comparativa-wrapper">
         ${renderTablaComparativa(escenarios)}
@@ -251,7 +251,15 @@ const EscenariosModule = (() => {
     return past.length > 0 ? past[past.length-1].saldoAcum : null;
   }
 
-  // ── Gráfico de comparación ───────────────────────────────────────────────────
+  // ── Gráfico de comparación (líneas mensuales) ────────────────────────────────
+  function _monthlyLine(eventos) {
+    return FinanceMath.agruparOHLC(eventos, 'mes').map(d => ({
+      x: new Date(d.key + '-15T00:00:00').getTime(),
+      y: d.close,
+    }));
+  }
+
+
   function renderChart(escenarios) {
     const ctx = document.getElementById('chart-comparacion');
     if (!ctx) return;
@@ -259,29 +267,28 @@ const EscenariosModule = (() => {
     const excl = [...filtroAccountsExcluidos];
     const base = _extractoParaEscenario(null, excl);
     const COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6','#06b6d4','#f97316'];
-    const datasets = [];
 
-    datasets.push({
+    const datasets = [{
       label: 'Base (sin escenario)',
-      data: base.eventos.map(e => ({ x: new Date(e.fecha+'T00:00:00').getTime(), y: e.saldoAcum })),
+      data: _monthlyLine(base.eventos),
       borderColor: '#6b7280',
       backgroundColor: 'transparent',
       borderWidth: 1.5,
       borderDash: [4,3],
-      pointRadius: 0,
+      pointRadius: 2,
       tension: 0.3,
-    });
+    }];
 
     escenarios.forEach((esc, i) => {
       const { eventos } = _extractoParaEscenario(esc, excl);
       const color = esc.color || COLORS[i % COLORS.length];
       datasets.push({
         label: esc.nombre,
-        data: eventos.map(e => ({ x: new Date(e.fecha+'T00:00:00').getTime(), y: e.saldoAcum })),
+        data: _monthlyLine(eventos),
         borderColor: color,
         backgroundColor: color + '18',
         borderWidth: 2,
-        pointRadius: 0,
+        pointRadius: 2,
         tension: 0.3,
         fill: false,
       });
@@ -295,9 +302,7 @@ const EscenariosModule = (() => {
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { labels: { color: 'var(--text2)', font: { size: 11 } } },
-          tooltip: {
-            callbacks: { label: ctx => `${ctx.dataset.label}: ${FinanceMath.eur(ctx.parsed.y)}` },
-          },
+          tooltip: { callbacks: { label: c => `${c.dataset.label}: ${FinanceMath.eur(c.parsed.y)}` } },
         },
         scales: {
           x: {
