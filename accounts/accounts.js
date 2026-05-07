@@ -1,5 +1,11 @@
 // Depends on: State, FinanceMath, UI
 const AccountsModule = (() => {
+  let _invModo = {}; // accId -> 'real' | 'proyeccion'
+
+  function setInvModo(accId, modo) {
+    _invModo[accId] = modo;
+    render();
+  }
   function _carterapFiscalHtml(accounts) {
     const tramos = State.get('config')?.tramosGananciasCapital;
     const inversiones = accounts.filter(a => a.activo && (a.modeloFondo||'cuenta') === 'inversion');
@@ -151,15 +157,12 @@ const AccountsModule = (() => {
       </div>` : '';
 
     const inversionBlock = inversion ? (() => {
-      const pctPlusvalia = inversion.costBase > 0 ? (inversion.plusvalia / inversion.costBase * 100).toFixed(1) : '0';
-      // Scheduled transfers to/from this investment fund
       const config   = State.get('config');
       const expenses = State.get('expenses') || [];
       const _freq = e => ({mensual:'€/mes',trimestral:'€/trim',semestral:'€/sem',anual:'€/año',extraordinario:'(único)'}[e.tipoFrecuencia]||'');
       const tIn  = expenses.filter(e => e.tipo==='transferencia' && e.cuentaDestino===acc._id && e.activo!==false);
       const tOut = expenses.filter(e => e.tipo==='transferencia' && e.cuenta===acc._id && e.activo!==false);
 
-      // Project occurrences of each transfer within the dashboard period
       const dS = new Date(config.dashboardStart+'T00:00:00');
       const dE = new Date(config.dashboardEnd+'T00:00:00');
       function _ocurrencias(exp) {
@@ -173,37 +176,29 @@ const AccountsModule = (() => {
         if (exp.tipoFrecuencia === 'trimestral') return Math.max(0, Math.floor(meses / 3));
         if (exp.tipoFrecuencia === 'semestral')  return Math.max(0, Math.floor(meses / 6));
         if (exp.tipoFrecuencia === 'anual')      return Math.max(0, Math.floor(meses / 12));
-        return Math.max(0, Math.floor(meses)); // mensual
+        return Math.max(0, Math.floor(meses));
       }
       const totalAportaciones = tIn.reduce((s, e) => s + e.cuantia * _ocurrencias(e), 0);
       const totalReembolsos   = tOut.reduce((s, e) => s + e.cuantia * _ocurrencias(e), 0);
-      // Retención estimada sobre reembolsos: 19% sobre plusvalía proporcional al importe retirado
       let totalRetencion = 0;
       if (inversion.saldo > 0 && inversion.plusvalia > 0 && totalReembolsos > 0) {
         const prop = Math.min(1, totalReembolsos / inversion.saldo);
         totalRetencion = FinanceMath.calcGananciasCapital(inversion.plusvalia * prop, FinanceMath.tramosGananciasParaAño(new Date().getFullYear()));
       }
 
-      // Projected fund value at dashboardEnd
-      // totalBase = everything invested (current + planned inflows - outflows), all compound from period start
       const mesesPeriodo = Math.max(0, (dE - dS) / (30.44 * 86400000));
       const totalBase = inversion.saldo + totalAportaciones - totalReembolsos;
-      const proyeccionBlock = totalBase > 0 && mesesPeriodo > 0 ? (() => {
-        const tasaMensual = acc.interes > 0 ? Math.pow(1 + acc.interes / 100, 1/12) - 1 : 0;
-        const saldoProyectado = Math.max(0, totalBase * Math.pow(1 + tasaMensual, mesesPeriodo));
-        const costBaseProyectado = inversion.costBase + totalAportaciones;
-        const plusvaliaProyectada = Math.max(0, saldoProyectado - costBaseProyectado);
-        const endYear = parseInt(config.dashboardEnd.slice(0, 4));
-        const impuestoProyectado = FinanceMath.calcGananciasCapital(plusvaliaProyectada, FinanceMath.tramosGananciasParaAño(endYear));
-        const netoProyectado = saldoProyectado - impuestoProyectado;
-        const label = acc.interes > 0 ? `${acc.interes}% anual` : 'sin rentabilidad configurada';
-        return `<div style="margin-top:8px;padding:8px 10px;background:var(--bg2);border-radius:var(--radius);border:1px solid rgba(16,185,129,0.2)">
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Proyección a ${config.dashboardEnd} (${label})</div>
-          <div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">Valor proyectado</span><span class="num pos">${FinanceMath.eur(saldoProyectado)}</span></div>
-          <div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">Plusvalía proyectada</span><span class="num ${plusvaliaProyectada>=0?'pos':'neg'}">${FinanceMath.eur(plusvaliaProyectada)}</span></div>
-          <div class="flex justify-between mt-4" style="border-top:1px solid var(--border);padding-top:4px;margin-top:6px"><span class="text-sm" style="font-weight:600">Neto tras imp. proyectado</span><span class="num pos" style="font-weight:600">${FinanceMath.eur(netoProyectado)}</span></div>
-        </div>`;
-      })() : '';
+      const tasaMensual = acc.interes > 0 ? Math.pow(1 + acc.interes / 100, 1/12) - 1 : 0;
+      const saldoProyectado = totalBase > 0 && mesesPeriodo > 0 ? Math.max(0, totalBase * Math.pow(1 + tasaMensual, mesesPeriodo)) : Math.max(0, totalBase);
+      const costBaseProyectado = inversion.costBase + totalAportaciones;
+      const plusvaliaProyectada = Math.max(0, saldoProyectado - costBaseProyectado);
+      const endYear = parseInt(config.dashboardEnd.slice(0, 4));
+      const impuestoProyectado = FinanceMath.calcGananciasCapital(plusvaliaProyectada, FinanceMath.tramosGananciasParaAño(endYear));
+      const netoProyectado = saldoProyectado - impuestoProyectado;
+      const tipoEfectivo = plusvaliaProyectada > 0 ? (impuestoProyectado / plusvaliaProyectada * 100).toFixed(1) : '0';
+      const labelRent = acc.interes > 0 ? `${acc.interes}% anual` : 'sin rentabilidad';
+      const aportacionesTotales = inversion.costBase + totalAportaciones;
+      const pctPlusvaliaActual = inversion.saldo > 0 ? (inversion.plusvalia / inversion.saldo * 100).toFixed(1) : '0';
 
       const flujosHtml = (tIn.length || tOut.length) ? `
         <div style="margin-top:8px;padding:8px 10px;background:var(--bg2);border-radius:var(--radius);border:1px solid var(--border)">
@@ -216,26 +211,34 @@ const AccountsModule = (() => {
             ${totalRetencion > 0 ? `<div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">Retención estimada (art. 101)</span><span class="num neg">${FinanceMath.eur(totalRetencion)}</span></div>` : (tOut.length ? `<div style="font-size:10px;color:var(--text3);margin-top:4px">⚠ Los reembolsos generan retención sobre plusvalía proporcional</div>` : '')}
           </div>
         </div>` : `<div style="font-size:10px;color:var(--text3);margin-top:6px">Gestiona aportaciones/reembolsos en <em>Movimientos esperados</em> → tipo Transferencia</div>`;
+
+      const modo = _invModo[acc._id] || 'proyeccion';
+      const btnStyle = (active) => `padding:3px 10px;border-radius:20px;border:1px solid ${active?'var(--accent)':'var(--border)'};background:${active?'var(--accent-dim)':'transparent'};color:${active?'var(--accent)':'var(--text3)'};cursor:pointer;font-size:11px`;
+
+      const realStats = `
+        <div class="grid-3 mb-8" style="gap:8px">
+          <div class="stat-card"><div class="stat-label">Coste base</div><div class="stat-value">${FinanceMath.eur(inversion.costBase)}</div></div>
+          <div class="stat-card"><div class="stat-label">Valor actual</div><div class="stat-value pos">${FinanceMath.eur(inversion.saldo)}</div></div>
+          <div class="stat-card"><div class="stat-label">Neto actual</div><div class="stat-value pos">${FinanceMath.eur(inversion.neto)}</div><div class="stat-sub">${pctPlusvaliaActual}% plusvalía</div></div>
+        </div>`;
+
+      const proyStats = `
+        <div class="grid-3 mb-8" style="gap:8px">
+          <div class="stat-card"><div class="stat-label">Aportaciones totales</div><div class="stat-value">${FinanceMath.eur(aportacionesTotales)}</div><div class="stat-sub">Coste base proyectado</div></div>
+          <div class="stat-card"><div class="stat-label">Valor proyectado</div><div class="stat-value pos">${FinanceMath.eur(saldoProyectado)}</div><div class="stat-sub">${labelRent} · ${config.dashboardEnd}</div></div>
+          <div class="stat-card"><div class="stat-label">Valor neto proyectado</div><div class="stat-value pos">${FinanceMath.eur(netoProyectado)}</div><div class="stat-sub">${tipoEfectivo}% imp. efectivo</div></div>
+        </div>`;
+
       return `
       <div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:var(--radius);border:1px solid rgba(16,185,129,0.3)">
-        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Análisis fiscal — Inversión</div>
-        <div class="flex justify-between mb-6">
-          <span class="text-sm" style="color:var(--text2)">💰 Coste base</span>
-          <span class="num">${FinanceMath.eur(inversion.costBase)}</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px">Fondo de inversión</div>
+          <div style="display:flex;gap:4px">
+            <button onclick="AccountsModule.setInvModo('${acc._id}','real')" style="${btnStyle(modo==='real')}">Real</button>
+            <button onclick="AccountsModule.setInvModo('${acc._id}','proyeccion')" style="${btnStyle(modo==='proyeccion')}">Proyección</button>
+          </div>
         </div>
-        <div class="flex justify-between mb-6">
-          <span class="text-sm" style="color:var(--text2)">📈 Plusvalía (${pctPlusvalia}%)</span>
-          <span class="num ${inversion.plusvalia>=0?'pos':'neg'}">${FinanceMath.eur(inversion.plusvalia)}</span>
-        </div>
-        <div class="flex justify-between mb-6">
-          <span class="text-sm" style="color:var(--text2)">🏛️ Imp. ganancias estimado</span>
-          <span class="num neg">${FinanceMath.eur(inversion.impuesto)}</span>
-        </div>
-        <div class="flex justify-between" style="border-top:1px solid var(--border);padding-top:6px;margin-top:2px">
-          <span class="text-sm" style="font-weight:600">Neto tras impuestos</span>
-          <span class="num pos" style="font-weight:600">${FinanceMath.eur(inversion.neto)}</span>
-        </div>
-        ${proyeccionBlock}
+        ${modo === 'real' ? realStats : proyStats}
         ${flujosHtml}
       </div>`;
     })() : '';
@@ -272,11 +275,53 @@ const AccountsModule = (() => {
     </div>`;
   }
 
+  function _planAportacionesHtml(plan) {
+    const rows = (plan||[]).map((p,i) => `
+      <div class="flex gap-8 items-center" style="padding:4px 0;border-bottom:1px solid var(--border)" data-aport-idx="${i}">
+        <span style="min-width:70px;font-size:12px">${p.fechaInicio||'—'}</span>
+        <span style="flex:1;font-size:12px">${FinanceMath.eur(p.importe)} / ${p.periodicidad}</span>
+        <span style="min-width:70px;font-size:12px;color:var(--text3)">${p.fechaFin||'indefinido'}</span>
+        <button class="btn-danger btn-sm" onclick="AccountsModule._removeAport(${i})">✕</button>
+      </div>`).join('');
+    return `<div id="aport-list">${rows || '<div style="font-size:12px;color:var(--text3);padding:4px 0">Sin aportaciones programadas</div>'}</div>
+      <div class="grid-2 mt-8" style="gap:6px">
+        <input class="form-input" type="number" id="aport-importe" placeholder="Importe €" style="font-size:12px"/>
+        ${UI.select('aport-periodo',[''],[['mensual','Mensual'],['trimestral','Trimestral'],['semestral','Semestral'],['anual','Anual']],'mensual')}
+      </div>
+      <div class="grid-2 mt-6" style="gap:6px">
+        <input class="form-input" type="date" id="aport-inicio" style="font-size:12px"/>
+        <input class="form-input" type="date" id="aport-fin" placeholder="Fin (opcional)" style="font-size:12px"/>
+      </div>
+      <button class="btn-secondary btn-sm mt-6" onclick="AccountsModule._addAport()">+ Añadir aportación</button>`;
+  }
+
+  let _editPlan = [];
+
+  function _addAport() {
+    const importe = parseFloat(document.getElementById('aport-importe')?.value)||0;
+    if (!importe) { UI.toast('Importe requerido','err'); return; }
+    const periodicidad = document.getElementById('aport-periodo')?.value || 'mensual';
+    const fechaInicio  = document.getElementById('aport-inicio')?.value  || new Date().toISOString().slice(0,10);
+    const fechaFin     = document.getElementById('aport-fin')?.value     || '';
+    _editPlan.push({ _id: Date.now().toString(36), importe, periodicidad, fechaInicio, fechaFin });
+    const el = document.getElementById('aport-list');
+    if (el) el.parentElement.querySelector('#aport-list') && (el.outerHTML = _planAportacionesHtml(_editPlan).split('</div>')[0] + '</div>');
+    const container = document.getElementById('aport-container');
+    if (container) container.innerHTML = _planAportacionesHtml(_editPlan);
+  }
+
+  function _removeAport(idx) {
+    _editPlan.splice(idx, 1);
+    const container = document.getElementById('aport-container');
+    if (container) container.innerHTML = _planAportacionesHtml(_editPlan);
+  }
+
   function openForm(id=null) {
     const acc=id?State.get('accounts').find(a=>a._id===id):null;
     const hist=[...(acc?.historicoSaldos||[])].sort((a,b)=>b.fecha.localeCompare(a.fecha));
     const saldoActual = hist[0] ? hist[0].saldo : (acc?.saldo??0);
     const modeloFondo = acc?.modeloFondo || (acc?.esFondoPension ? 'pension' : 'cuenta');
+    _editPlan = [...(acc?.planAportaciones||[])];
 
     const html=`
       <div class="grid-2">
@@ -320,6 +365,10 @@ const AccountsModule = (() => {
           document.getElementById('inversion-hint').style.display = this.value==='inversion' ? '' : 'none';
         };
       </script>
+      <div class="form-group mt-12">
+        <label class="form-label">Aportaciones programadas</label>
+        <div id="aport-container">${_planAportacionesHtml(_editPlan)}</div>
+      </div>
       <div class="form-group mt-8"><label class="form-label">Descripción</label><input class="form-input" type="text" id="ac-desc" value="${acc?.descripcion||''}" placeholder="Fondo indexado global..."/></div>
       <div class="form-row mt-8">
         <label class="form-label">Activa</label><label class="toggle"><input type="checkbox" id="ac-activo" ${acc?.activo!==false?'checked':''}/><span class="toggle-slider"></span></label>
@@ -351,6 +400,7 @@ const AccountsModule = (() => {
       escenarioIds:     EscenariosModule.readCheckedEscenarios(),
       modeloFondo,
       esFondoPension:   esPension,
+      planAportaciones: _editPlan,
       bloqueoMeses:     esPension ? (parseInt(document.getElementById('ac-bloqueo')?.value)||120) : 120,
       impuestoRetirada: esPension ? (parseFloat(document.getElementById('ac-impuesto-ret')?.value)||0) : 0,
     };
@@ -469,77 +519,11 @@ const AccountsModule = (() => {
     openHistorico(accId);
   }
 
-  let _tgEditYear = null; // null = vista lista; 'default' = tabla por defecto; number = año específico
-  let _tgEditRows = [];
-
-  function openTramosGananciasForm(añoEdit) {
-    _tgEditYear = (añoEdit === undefined) ? null : añoEdit;
-    const config    = State.get('config');
-    const historico = State.get('tramosGananciasCapitalHistorico') || [];
-
-    if (_tgEditYear === null) {
-      // ── VISTA LISTA ───────────────────────────────────────────────────────────
-      const sorted   = [...historico].sort((a,b) => a.año - b.año);
-      const defTramos = config.tramosGananciasCapital || [[0,19],[6000,21],[50000,23],[200000,27],[300000,28]];
-      const _label   = t => t.slice(0,3).map(([,p])=>`${p}%`).join(' · ') + (t.length > 3 ? ' …' : '');
-      const rowStyle = 'display:grid;grid-template-columns:90px 1fr auto;gap:0;padding:10px 12px;border-top:1px solid var(--border);align-items:center';
-      const html = `
-        <div class="text-sm mb-12" style="color:var(--text2)">
-          Tabla de tramos del impuesto sobre ganancias de capital (art. 49 LIRPF) por ejercicio.
-          Si un año no tiene tabla específica se usa la más reciente anterior, o la tabla por defecto.
-        </div>
-        <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:14px">
-          <div style="display:grid;grid-template-columns:90px 1fr auto;background:var(--bg3);padding:8px 12px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px">
-            <span>Ejercicio</span><span>Tramos (resumen)</span><span></span>
-          </div>
-          <div style="${rowStyle}">
-            <span style="font-weight:600;font-size:13px">Por defecto</span>
-            <span class="text-sm" style="color:var(--text2)">${_label(defTramos)}</span>
-            <button class="btn-secondary btn-sm" onclick="AccountsModule.openTramosGananciasForm('default')">Editar</button>
-          </div>
-          ${sorted.map(e => `
-          <div style="${rowStyle}">
-            <span style="font-weight:600;font-size:13px">${e.año}</span>
-            <span class="text-sm" style="color:var(--text2)">${_label(e.tramos)}</span>
-            <div class="flex gap-6">
-              <button class="btn-secondary btn-sm" onclick="AccountsModule.openTramosGananciasForm(${e.año})">Editar</button>
-              <button class="btn-danger btn-sm" onclick="AccountsModule._tgDeleteYear(${e.año})">✕</button>
-            </div>
-          </div>`).join('')}
-        </div>
-        <div class="flex gap-8 items-center mt-4">
-          <input class="form-input" type="number" id="tg-new-year" placeholder="Año (ej: ${new Date().getFullYear()})" style="width:130px;flex:none" min="2000" max="2100"/>
-          <button class="btn-secondary" onclick="AccountsModule._tgAddYear()">+ Añadir tabla para año</button>
-        </div>
-        <div class="flex gap-8 mt-16" style="justify-content:flex-end">
-          <button class="btn-secondary" onclick="UI.closeModal()">Cerrar</button>
-        </div>`;
-      UI.openModal(html, 'Tramos — Ganancias de capital por ejercicio');
-    } else {
-      // ── VISTA EDITOR ─────────────────────────────────────────────────────────
-      const isDefault = _tgEditYear === 'default';
-      if (isDefault) {
-        _tgEditRows = (config.tramosGananciasCapital || [[0,19],[6000,21],[50000,23],[200000,27],[300000,28]]).map(t=>[...t]);
-      } else {
-        const entry = historico.find(e => e.año === _tgEditYear);
-        _tgEditRows = (entry ? entry.tramos : (config.tramosGananciasCapital || [[0,19],[6000,21],[50000,23],[200000,27],[300000,28]])).map(t=>[...t]);
-      }
-      const label = isDefault ? 'tabla por defecto' : `ejercicio ${_tgEditYear}`;
-      const html = `
-        <button class="btn-secondary btn-sm mb-12" onclick="AccountsModule.openTramosGananciasForm()">← Volver a la lista</button>
-        <div class="text-sm mb-8" style="color:var(--text2)">Tramos marginales — ${label} (art. 49 LIRPF). Orden ascendente por base imponible.</div>
-        <div id="tg-rows">${_tgRowsHtml()}</div>
-        <button class="btn-secondary btn-sm mt-8" onclick="AccountsModule._addTG()">+ Añadir tramo</button>
-        <div class="flex gap-8 mt-16" style="justify-content:flex-end">
-          <button class="btn-secondary" onclick="AccountsModule.openTramosGananciasForm()">Cancelar</button>
-          <button class="btn-primary" onclick="AccountsModule._saveTG()">Guardar</button>
-        </div>`;
-      UI.openModal(html, `Tramos — ${isDefault ? 'Por defecto' : _tgEditYear}`);
-    }
-  }
-
-  function _tgRowsHtml() {
-    return _tgEditRows.map((t, i) => `
+  let _tramosGanEd = [];
+  function openTramosGananciasForm() {
+    const config = State.get('config');
+    _tramosGanEd = (config.tramosGananciasCapital || [[0,19],[6000,21],[50000,23],[200000,27],[300000,28]]).map(t=>[...t]);
+    const _rows = () => _tramosGanEd.map((t, i) => `
       <div class="grid-2 mt-8">
         <input class="form-input" type="number" id="tg-min-${i}" value="${t[0]}" placeholder="Desde €" min="0"/>
         <div class="flex gap-8">
@@ -547,8 +531,16 @@ const AccountsModule = (() => {
           <button class="btn-danger" onclick="AccountsModule._rmTG(${i})">✕</button>
         </div>
       </div>`).join('');
+    const html = `
+      <div class="text-sm" style="color:var(--text2);margin-bottom:8px">Tramos marginales para el impuesto sobre ganancias de capital (art. 49 LIRPF).</div>
+      <div id="tg-rows">${_rows()}</div>
+      <button class="btn-secondary btn-sm mt-8" onclick="AccountsModule._addTG()">+ Añadir tramo</button>
+      <div class="flex gap-8 mt-16" style="justify-content:flex-end">
+        <button class="btn-secondary" onclick="UI.closeModal()">Cancelar</button>
+        <button class="btn-primary" onclick="AccountsModule._saveTG()">Guardar</button>
+      </div>`;
+    UI.openModal(html, 'Tramos — Ganancias de capital');
   }
-
   function _collectTG() {
     const rows = []; let i = 0;
     while (document.getElementById(`tg-min-${i}`)) {
@@ -557,42 +549,24 @@ const AccountsModule = (() => {
     }
     return rows;
   }
-
-  function _renderTGRows() { document.getElementById('tg-rows').innerHTML = _tgRowsHtml(); }
-  function _addTG() { _tgEditRows = _collectTG(); _tgEditRows.push([0,0]); _renderTGRows(); }
-  function _rmTG(i) { _tgEditRows = _collectTG(); _tgEditRows.splice(i,1); _renderTGRows(); }
-
-  function _tgAddYear() {
-    const año = parseInt(document.getElementById('tg-new-year')?.value);
-    if (!año || año < 2000 || año > 2100) { UI.toast('Año inválido','err'); return; }
-    const historico = State.get('tramosGananciasCapitalHistorico') || [];
-    if (historico.find(e => e.año === año)) { UI.toast('Ya existe una tabla para ese año','err'); return; }
-    const defTramos = (State.get('config').tramosGananciasCapital || [[0,19],[6000,21],[50000,23],[200000,27],[300000,28]]).map(t=>[...t]);
-    const updated = [...historico, { _id: Date.now().toString(36), año, tramos: defTramos }];
-    State.set('tramosGananciasCapitalHistorico', updated);
-    openTramosGananciasForm(año);
+  function _renderTGRows() {
+    document.getElementById('tg-rows').innerHTML = _tramosGanEd.map((t, i) => `
+      <div class="grid-2 mt-8">
+        <input class="form-input" type="number" id="tg-min-${i}" value="${t[0]}" placeholder="Desde €" min="0"/>
+        <div class="flex gap-8">
+          <input class="form-input" type="number" id="tg-pct-${i}" value="${t[1]}" placeholder="%" min="0" max="100" style="flex:1"/>
+          <button class="btn-danger" onclick="AccountsModule._rmTG(${i})">✕</button>
+        </div>
+      </div>`).join('');
   }
-
-  function _tgDeleteYear(año) {
-    const historico = (State.get('tramosGananciasCapitalHistorico') || []).filter(e => e.año !== año);
-    State.set('tramosGananciasCapitalHistorico', historico);
-    UI.toast(`Tabla ${año} eliminada`);
-    openTramosGananciasForm();
-  }
-
+  function _addTG() { _tramosGanEd = _collectTG(); _tramosGanEd.push([0,0]); _renderTGRows(); }
+  function _rmTG(i) { _tramosGanEd = _collectTG(); _tramosGanEd.splice(i,1); _renderTGRows(); }
   function _saveTG() {
     const tramos = _collectTG().sort((a,b)=>a[0]-b[0]);
     if (!tramos.length) { UI.toast('Añade al menos un tramo','err'); return; }
-    if (_tgEditYear === 'default') {
-      State.set('config', { ...State.get('config'), tramosGananciasCapital: tramos });
-      UI.toast('Tabla por defecto guardada');
-    } else {
-      const historico = (State.get('tramosGananciasCapitalHistorico') || []).map(e => e.año === _tgEditYear ? {...e, tramos} : e);
-      State.set('tramosGananciasCapitalHistorico', historico);
-      UI.toast(`Tabla ${_tgEditYear} guardada`);
-    }
-    openTramosGananciasForm();
+    State.set('config', { ...State.get('config'), tramosGananciasCapital: tramos });
+    UI.toast('Tramos guardados'); UI.closeModal(); render();
   }
 
-  return { render, saveAccount, openHistorico, saveHistorico, deleteHistorico, setAsPrincipal, resetearPuntoInicial, openTramosGananciasForm, _tgAddYear, _tgDeleteYear, _addTG, _rmTG, _saveTG };
+  return { render, saveAccount, openHistorico, saveHistorico, deleteHistorico, setAsPrincipal, resetearPuntoInicial, _addAport, _removeAport, openTramosGananciasForm, _addTG, _rmTG, _saveTG, setInvModo };
 })();

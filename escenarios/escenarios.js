@@ -2,7 +2,6 @@
 const EscenariosModule = (() => {
   let chartComparacion = null;
   let filtroAccountsExcluidos = new Set();
-  let _chartMode = 'lineas'; // 'lineas' | 'velas'
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
   function escenarioName(id) {
@@ -57,12 +56,9 @@ const EscenariosModule = (() => {
       : config.dashboardEnd;
     const cfgExt = { ...config, dashboardEnd: horizonte };
 
-    // Pass included account IDs so expenses/loans linked to excluded accounts are also filtered
-    const filtroAccounts = excludeAccountIds.length ? accounts.map(a => a._id) : null;
-
     const eventos = FinanceMath.generarExtracto(
       filtered.loans, filtered.expenses, accounts, cfgExt,
-      filtroAccounts, filtered.nominas, inflPeriodos
+      null, filtered.nominas, inflPeriodos
     );
     return { eventos, horizonte };
   }
@@ -146,12 +142,8 @@ const EscenariosModule = (() => {
 
       ${escenarios.length > 0 ? `
       <div class="card-title mt-24" style="margin-bottom:12px">Comparativa de escenarios</div>
-      <div class="card" style="padding:16px;max-width:780px">
+      <div class="card" style="padding:16px">
         <div id="esc-account-filter-pills">${_accountFilterPillsHtml()}</div>
-        <div class="flex gap-6 mb-8" style="justify-content:flex-end">
-          <button class="btn-sm ${_chartMode==='lineas'?'btn-primary':'btn-secondary'}" onclick="EscenariosModule.setChartMode('lineas')">Líneas</button>
-          <button class="btn-sm ${_chartMode==='velas'?'btn-primary':'btn-secondary'}" onclick="EscenariosModule.setChartMode('velas')">Velas</button>
-        </div>
         <canvas id="chart-comparacion" height="160"></canvas>
       </div>
       <div class="card mt-12" style="padding:14px" id="esc-comparativa-wrapper">
@@ -259,25 +251,14 @@ const EscenariosModule = (() => {
     return past.length > 0 ? past[past.length-1].saldoAcum : null;
   }
 
-  // ── Gráfico de comparación ───────────────────────────────────────────────────
-  function setChartMode(mode) {
-    _chartMode = mode;
-    if (chartComparacion) { try { chartComparacion.destroy(); } catch {} chartComparacion = null; }
-    renderChart(State.get('escenarios') || []);
-    // Re-render toggle buttons
-    document.querySelectorAll('#view-escenarios .btn-sm').forEach(btn => {
-      const m = btn.textContent.trim() === 'Líneas' ? 'lineas' : btn.textContent.trim() === 'Velas' ? 'velas' : null;
-      if (m) { btn.className = `btn-sm ${m === _chartMode ? 'btn-primary' : 'btn-secondary'}`; }
-    });
-  }
-
-  function _toOHLC(eventos) {
-    const ohlc = FinanceMath.agruparOHLC(eventos, 'mes');
-    return ohlc.map(d => ({
+  // ── Gráfico de comparación (líneas mensuales) ────────────────────────────────
+  function _monthlyLine(eventos) {
+    return FinanceMath.agruparOHLC(eventos, 'mes').map(d => ({
       x: new Date(d.key + '-15T00:00:00').getTime(),
-      o: d.open, h: d.high, l: d.low, c: d.close,
+      y: d.close,
     }));
   }
+
 
   function renderChart(escenarios) {
     const ctx = document.getElementById('chart-comparacion');
@@ -286,68 +267,42 @@ const EscenariosModule = (() => {
     const excl = [...filtroAccountsExcluidos];
     const base = _extractoParaEscenario(null, excl);
     const COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6','#06b6d4','#f97316'];
-    const datasets = [];
-    const isVelas = _chartMode === 'velas';
 
-    if (isVelas) {
+    const datasets = [{
+      label: 'Base (sin escenario)',
+      data: _monthlyLine(base.eventos),
+      borderColor: '#6b7280',
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      borderDash: [4,3],
+      pointRadius: 2,
+      tension: 0.3,
+    }];
+
+    escenarios.forEach((esc, i) => {
+      const { eventos } = _extractoParaEscenario(esc, excl);
+      const color = esc.color || COLORS[i % COLORS.length];
       datasets.push({
-        label: 'Base (sin escenario)',
-        data: _toOHLC(base.eventos),
-        color: { up: '#6b7280', down: '#6b7280', unchanged: '#6b7280' },
-        borderColor: '#6b7280',
-      });
-      escenarios.forEach((esc, i) => {
-        const { eventos } = _extractoParaEscenario(esc, excl);
-        const color = esc.color || COLORS[i % COLORS.length];
-        datasets.push({
-          label: esc.nombre,
-          data: _toOHLC(eventos),
-          color: { up: color, down: color, unchanged: color },
-          borderColor: color,
-        });
-      });
-    } else {
-      datasets.push({
-        label: 'Base (sin escenario)',
-        data: base.eventos.map(e => ({ x: new Date(e.fecha+'T00:00:00').getTime(), y: e.saldoAcum })),
-        borderColor: '#6b7280',
-        backgroundColor: 'transparent',
-        borderWidth: 1.5,
-        borderDash: [4,3],
-        pointRadius: 0,
+        label: esc.nombre,
+        data: _monthlyLine(eventos),
+        borderColor: color,
+        backgroundColor: color + '18',
+        borderWidth: 2,
+        pointRadius: 2,
         tension: 0.3,
+        fill: false,
       });
-      escenarios.forEach((esc, i) => {
-        const { eventos } = _extractoParaEscenario(esc, excl);
-        const color = esc.color || COLORS[i % COLORS.length];
-        datasets.push({
-          label: esc.nombre,
-          data: eventos.map(e => ({ x: new Date(e.fecha+'T00:00:00').getTime(), y: e.saldoAcum })),
-          borderColor: color,
-          backgroundColor: color + '18',
-          borderWidth: 2,
-          pointRadius: 0,
-          tension: 0.3,
-          fill: false,
-        });
-      });
-    }
+    });
 
     chartComparacion = new Chart(ctx, {
-      type: isVelas ? 'candlestick' : 'line',
+      type: 'line',
       data: { datasets },
       options: {
         responsive: true,
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { labels: { color: 'var(--text2)', font: { size: 11 } } },
-          tooltip: {
-            callbacks: {
-              label: c => isVelas
-                ? `${c.dataset.label}: C ${FinanceMath.eur(c.raw.c)} H ${FinanceMath.eur(c.raw.h)} L ${FinanceMath.eur(c.raw.l)}`
-                : `${c.dataset.label}: ${FinanceMath.eur(c.parsed.y)}`,
-            },
-          },
+          tooltip: { callbacks: { label: c => `${c.dataset.label}: ${FinanceMath.eur(c.parsed.y)}` } },
         },
         scales: {
           x: {
@@ -469,7 +424,7 @@ const EscenariosModule = (() => {
     render, activar, desactivar,
     openForm, saveForm, deleteEscenario,
     escenarioName, checkboxesHtml, readCheckedEscenarios,
-    toggleAccountFilter, setChartMode,
+    toggleAccountFilter,
     _pickColor,
   };
 })();
