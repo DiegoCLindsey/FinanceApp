@@ -56,9 +56,12 @@ const EscenariosModule = (() => {
       : config.dashboardEnd;
     const cfgExt = { ...config, dashboardEnd: horizonte };
 
+    // Pass included account IDs so expenses/loans linked to excluded accounts are also filtered
+    const filtroAccounts = excludeAccountIds.length ? accounts.map(a => a._id) : null;
+
     const eventos = FinanceMath.generarExtracto(
       filtered.loans, filtered.expenses, accounts, cfgExt,
-      null, filtered.nominas, inflPeriodos
+      filtroAccounts, filtered.nominas, inflPeriodos
     );
     return { eventos, horizonte };
   }
@@ -252,11 +255,36 @@ const EscenariosModule = (() => {
   }
 
   // ── Gráfico de comparación (líneas mensuales) ────────────────────────────────
-  function _monthlyLine(eventos) {
-    return FinanceMath.agruparOHLC(eventos, 'mes').map(d => ({
-      x: new Date(d.key + '-15T00:00:00').getTime(),
-      y: d.close,
-    }));
+  // Monthly balance line: for each month in [fechaStart, fechaEnd], sum per-account
+  // balances. Months with no events carry the last known total forward, so the series
+  // is always continuous with no gaps.
+  function _monthlyLine(eventos, fechaStart, fechaEnd) {
+    if (!eventos.length) return [];
+
+    // Build per-account running balance from deltas
+    const accBal = {};
+    // Snapshot: last total balance seen at end of each month key
+    const monthSnap = new Map();
+    for (const ev of eventos) {
+      if (ev.delta !== undefined && ev.cuenta) {
+        accBal[ev.cuenta] = (accBal[ev.cuenta] || 0) + ev.delta;
+      }
+      const key = ev.fecha.slice(0, 7);
+      monthSnap.set(key, Object.values(accBal).reduce((s, v) => s + v, 0));
+    }
+
+    // Walk every calendar month in range, carrying forward if no events
+    const result = [];
+    let cur = new Date((fechaStart || eventos[0].fecha).slice(0, 7) + '-01T00:00:00');
+    const endKey = (fechaEnd || eventos[eventos.length - 1].fecha).slice(0, 7);
+    let lastY = eventos[0].saldoAcum - (eventos[0].delta || 0);
+    while (cur.toISOString().slice(0, 7) <= endKey) {
+      const key = cur.toISOString().slice(0, 7);
+      if (monthSnap.has(key)) lastY = monthSnap.get(key);
+      result.push({ x: new Date(key + '-15T00:00:00').getTime(), y: lastY });
+      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+    }
+    return result;
   }
 
 
@@ -264,13 +292,14 @@ const EscenariosModule = (() => {
     const ctx = document.getElementById('chart-comparacion');
     if (!ctx) return;
 
+    const config = State.get('config');
     const excl = [...filtroAccountsExcluidos];
     const base = _extractoParaEscenario(null, excl);
     const COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6','#06b6d4','#f97316'];
 
     const datasets = [{
       label: 'Base (sin escenario)',
-      data: _monthlyLine(base.eventos),
+      data: _monthlyLine(base.eventos, config.dashboardStart, config.dashboardEnd),
       borderColor: '#6b7280',
       backgroundColor: 'transparent',
       borderWidth: 1.5,
@@ -280,11 +309,11 @@ const EscenariosModule = (() => {
     }];
 
     escenarios.forEach((esc, i) => {
-      const { eventos } = _extractoParaEscenario(esc, excl);
+      const { eventos, horizonte } = _extractoParaEscenario(esc, excl);
       const color = esc.color || COLORS[i % COLORS.length];
       datasets.push({
         label: esc.nombre,
-        data: _monthlyLine(eventos),
+        data: _monthlyLine(eventos, config.dashboardStart, horizonte),
         borderColor: color,
         backgroundColor: color + '18',
         borderWidth: 2,
