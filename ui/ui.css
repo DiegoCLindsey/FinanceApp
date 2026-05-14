@@ -8,7 +8,7 @@
 .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 49; }
 
 /* ---- Main shell ---- */
-.main-shell { display: flex; height: 100vh; flex-direction: row; }
+.main-shell { display: flex; height: 100vh; height: 100dvh; flex-direction: row; }
 @media (max-width: 768px) {
   .main-shell { flex-direction: column; }
   .sidebar {
@@ -17,7 +17,16 @@
   }
   .sidebar.open { left: 0; }
   .sidebar .sidebar-logo { display: none; }
-  .view-container { margin-left: 0 !important; height: calc(100vh - var(--mobile-header-h)); margin-top: var(--mobile-header-h); }
+  /* main-area must clip so view-container scroll is self-contained */
+  .main-area { overflow: hidden; min-height: 0; }
+  /* view-container fills remaining space via flex, no fixed height needed */
+  .view-container {
+    margin-left: 0 !important;
+    margin-top: 0 !important;
+    height: auto !important;
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 .sidebar { width: var(--sidebar-w); flex-shrink: 0; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 16px 10px; overflow-y: auto; }
@@ -36,7 +45,7 @@
 .period-bar .form-input { height: 30px; padding: 4px 8px; font-size: 12px; }
 .period-bar .btn-secondary { padding: 4px 7px; font-size: 11px; }
 .view-container { flex: 1; overflow-y: auto; padding: 24px 28px; background: var(--bg); min-width: 0; }
-@media (max-width: 768px) { .period-bar { padding: 6px 12px; } .main-area { overflow: visible; } }
+@media (max-width: 768px) { .period-bar { padding: 6px 12px; } }
 @media (max-width: 600px) { .view-container { padding: 12px; } }
 @media (max-width: 480px) { .view-container { padding: 10px 8px; } }
 .view.hidden { display: none !important; }
