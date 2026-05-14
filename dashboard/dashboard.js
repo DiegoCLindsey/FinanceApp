@@ -85,7 +85,11 @@ const DashboardModule = (() => {
     const score = FinanceMath.calcScore(extracto, loans, expenses, accounts, config);
     const alertas = FinanceMath.detectarPuntosCriticos(extracto, colchon).slice(0,5);
     const goals = State.get('goals') || [];
-    if (activeTags.size===0) allTags.forEach(t=>activeTags.add(t));
+    if (activeTags.size===0) {
+      const saved = config.activeTagsFilter;
+      if (saved && saved.length > 0) saved.forEach(t=>activeTags.add(t));
+      else allTags.forEach(t=>activeTags.add(t));
+    }
 
     // ── Métricas financieras KPI ────────────────────────────────────────────────
     // Los KPIs del "mes actual" usan un extracto propio para ese mes, independiente
@@ -575,14 +579,22 @@ const DashboardModule = (() => {
         <div class="card-title">Extracto proyectado (${extracto.length} movimientos)</div>
         <div class="extr-head"><span>FECHA</span><span>CONCEPTO</span><span>IMPORTE</span><span class="extr-col-hide">CUENTA</span><span class="extr-col-hide">DELTA</span><span>SALDO</span></div>
         <div style="max-height:360px;overflow-y:auto">
-          ${extracto.slice(0,300).map(ev=>`<div class="extr-row">
+          ${extracto.slice(0,300).map(ev=>{
+            const srcBadge = ev.sourceType==='nomina'
+              ? '<span style="font-size:9px;background:rgba(0,229,160,0.15);color:var(--accent);padding:1px 5px;border-radius:3px;margin-right:4px;flex-shrink:0">💼</span>'
+              : ev.sourceType==='account-interest'
+              ? '<span style="font-size:9px;background:rgba(77,159,255,0.15);color:#4d9fff;padding:1px 5px;border-radius:3px;margin-right:4px;flex-shrink:0">%</span>'
+              : ev.sourceType==='loan'||ev.sourceType==='loan-amort'
+              ? '<span style="font-size:9px;background:rgba(255,77,109,0.12);color:var(--red);padding:1px 5px;border-radius:3px;margin-right:4px;flex-shrink:0">🔒</span>'
+              : '';
+            return `<div class="extr-row">
             <span class="num">${ev.fecha}</span>
-            <span>${ev.concepto}${ev.simulacion?' <span class="badge badge-sim" style="font-size:9px">SIM</span>':''}</span>
+            <span style="display:flex;align-items:center;gap:0;min-width:0">${srcBadge}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.concepto}${ev.simulacion?' <span class="badge badge-sim" style="font-size:9px">SIM</span>':''}</span></span>
             <span class="num ${ev.tipo==='ingreso'?'pos':'neg'}">${FinanceMath.eur(ev.cuantia)}</span>
             <span class="text-sm extr-col-hide">${State.accountName(ev.cuenta||'default')}</span>
             <span class="num ${ev.delta>=0?'pos':'neg'} extr-col-hide">${ev.delta>=0?'+':''}${FinanceMath.eur(ev.delta)}</span>
             <span class="num ${ev.saldoAcum>=0?'':'neg'}">${FinanceMath.eur(ev.saldoAcum)}</span>
-          </div>`).join('')}
+          </div>`;}).join('')}
           ${extracto.length>300?`<div class="text-sm" style="text-align:center;padding:10px">… y ${extracto.length-300} más</div>`:''}
         </div>
       </div>
@@ -613,14 +625,15 @@ const DashboardModule = (() => {
             const totalGasto = cuotas + basicos + otros;
             const neto  = ing - totalGasto;
             const esHoy = ml === hoyStr.slice(0,7);
+            const p = 'padding:6px 8px';
             return '<tr style="' + (esHoy ? 'background:rgba(0,229,160,0.05)' : '') + '">' +
-              '<td class="num" style="font-weight:' + (esHoy?'700':'400') + '">' + ml + (esHoy?' ◉':'') + '</td>' +
-              '<td class="num pos">' + FinanceMath.eur(ing) + '</td>' +
-              '<td class="num neg">' + FinanceMath.eur(cuotas) + '</td>' +
-              '<td class="num neg">' + FinanceMath.eur(basicos) + '</td>' +
-              '<td class="num neg">' + FinanceMath.eur(otros) + '</td>' +
-              (amorts > 0 ? '<td class="num neg" style="color:var(--text3)">' + FinanceMath.eur(amorts) + '</td>' : '<td class="num" style="color:var(--text3)">—</td>') +
-              '<td class="num ' + (neto>=0?'pos':'neg') + '" style="font-weight:600">' + (neto>=0?'+':'') + FinanceMath.eur(neto) + '</td>' +
+              '<td class="num" style="' + p + ';font-weight:' + (esHoy?'700':'400') + '">' + ml + (esHoy?' ◉':'') + '</td>' +
+              '<td class="num pos" style="' + p + '">' + FinanceMath.eur(ing) + '</td>' +
+              '<td class="num neg" style="' + p + '">' + FinanceMath.eur(cuotas) + '</td>' +
+              '<td class="num neg" style="' + p + '">' + FinanceMath.eur(basicos) + '</td>' +
+              '<td class="num neg" style="' + p + '">' + FinanceMath.eur(otros) + '</td>' +
+              (amorts > 0 ? '<td class="num neg" style="' + p + ';color:var(--text3)">' + FinanceMath.eur(amorts) + '</td>' : '<td class="num" style="' + p + ';color:var(--text3)">—</td>') +
+              '<td class="num ' + (neto>=0?'pos':'neg') + '" style="' + p + ';font-weight:600">' + (neto>=0?'+':'') + FinanceMath.eur(neto) + '</td>' +
               '</tr>';
           }).join('');
 
@@ -657,7 +670,7 @@ const DashboardModule = (() => {
         const mape = desv.reduce((s,r)=>s+Math.abs(r.pct),0)/desv.length;
         return `<div class="card mt-14">
           <div class="card-title">Desviación real vs estimado</div>
-          <div class="text-sm mb-8" style="color:var(--text2)">Precisión media del modelo (MAPE): <span class="num" style="color:${mape<10?'var(--accent)':mape<25?'var(--yellow)':'var(--red)'}">${mape.toFixed(1)}%</span></div>
+          <div class="text-sm mb-8" style="color:var(--text2)">Precisión del modelo: <span class="num" style="color:${(100-mape)>90?'var(--accent)':(100-mape)>75?'var(--yellow)':'var(--red)'}">${(100-mape).toFixed(1)}%</span></div>
           <div class="dev-row dev-head"><span>Fecha</span><span>Estimado</span><span>Real</span><span>Desviación</span><span>%</span></div>
           ${desv.slice(-20).reverse().map(r=>`<div class="dev-row">
             <span class="num">${r.fecha}</span>
@@ -1153,7 +1166,11 @@ const DashboardModule = (() => {
     render();
   }
   function setVentana(v) { ventana=v; render(); }
-  function toggleTag(t) { if(activeTags.has(t))activeTags.delete(t); else activeTags.add(t); render(); }
+  function toggleTag(t) {
+    if(activeTags.has(t))activeTags.delete(t); else activeTags.add(t);
+    State.set('config', {...State.get('config'), activeTagsFilter: [...activeTags]});
+    render();
+  }
   function toggleAccFilter(id) { if(filtroAccounts.includes(id)) filtroAccounts=filtroAccounts.filter(a=>a!==id); else filtroAccounts.push(id); render(); }
   function clearAccFilter() { filtroAccounts=[]; render(); }
   function toggleCriticos() {
