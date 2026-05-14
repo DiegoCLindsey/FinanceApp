@@ -89,6 +89,7 @@ const AccountsModule = (() => {
     const modeloFondo = acc.modeloFondo || (acc.esFondoPension ? 'pension' : 'cuenta');
     const pension   = modeloFondo === 'pension'   ? FinanceMath.calcFondosPension(acc) : null;
     const inversion = modeloFondo === 'inversion' ? FinanceMath.calcFondoInversion(acc, State.get('config')?.tramosGananciasCapital) : null;
+    const esBeneficio = modeloFondo === 'beneficio';
 
     // Remuneration summary: projected interest for the dashboard period
     const remuneracionBlock = (() => {
@@ -130,6 +131,31 @@ const AccountsModule = (() => {
         </div>${realBlock}
       </div>`;
     })();
+
+    const beneficioBlock = esBeneficio ? (() => {
+      const config   = State.get('config');
+      const nominas  = State.get('nominas') || [];
+      const tipoLabel = { transporte: 'Transporte', restaurante: 'Restaurante', otros: 'Otros' }[acc.tipoBeneficio] || 'Beneficio';
+      const limiteAnual = { transporte: 1500, restaurante: 2640, otros: null }[acc.tipoBeneficio];
+      // Find nominas that have a flex component linked to this account
+      const recargas = nominas.flatMap(n => (n.retribucionFlexible||[]).filter(c => c.cuenta===acc._id).map(c => ({ nomina: n.nombre, importe: c.importe })));
+      const recargoMensual = recargas.reduce((s, r) => s + r.importe, 0);
+      const recargaAnual   = recargoMensual * 12;
+      const overLimit = limiteAnual && recargaAnual > limiteAnual;
+      return `<div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:var(--radius);border:1px solid rgba(99,214,160,0.35)">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Tarjeta beneficio — ${tipoLabel}</div>
+        <div class="flex justify-between mb-5">
+          <span class="text-sm" style="color:var(--text2)">Recarga mensual</span>
+          <span class="num pos">${FinanceMath.eur(recargoMensual)}/mes</span>
+        </div>
+        <div class="flex justify-between mb-5">
+          <span class="text-sm" style="color:var(--text2)">Recarga anual</span>
+          <span class="num ${overLimit ? 'neg' : 'pos'}">${FinanceMath.eur(recargaAnual)}/año${overLimit ? ` ⚠ excede límite ${FinanceMath.eur(limiteAnual)}` : ''}</span>
+        </div>
+        ${limiteAnual ? `<div class="flex justify-between mb-5"><span class="text-sm" style="color:var(--text2)">Límite exención</span><span class="num">${FinanceMath.eur(limiteAnual)}/año</span></div>` : ''}
+        ${recargas.length > 0 ? recargas.map(r => `<div style="font-size:11px;color:var(--text3)">↩ ${r.nomina}: ${FinanceMath.eur(r.importe)}/mes</div>`).join('') : '<div style="font-size:11px;color:var(--yellow)">Sin nómina vinculada — configúrala en Rendimientos del Trabajo.</div>'}
+      </div>`;
+    })() : '';
 
     const pensionBlock = pension ? `
       <div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--yellow-dark, #7a6010)">
@@ -250,6 +276,8 @@ const AccountsModule = (() => {
           ${isPrincipal?'<span class="badge badge-blue" title="Cuenta seleccionada por defecto en nuevos gastos">Principal</span>':''}
           ${modeloFondo==='pension'?'<span class="badge" style="background:rgba(255,209,102,0.15);color:var(--yellow)">🔒 Pensión</span>':''}
           ${modeloFondo==='inversion'?'<span class="badge" style="background:rgba(16,185,129,0.12);color:#10b981">📈 Inversión</span>':''}
+          ${modeloFondo==='beneficio'?`<span class="badge" style="background:rgba(99,214,160,0.12);color:#63d6a0">🎫 ${{transporte:'Transporte',restaurante:'Restaurante',otros:'Beneficio'}[acc.tipoBeneficio]||'Beneficio'}</span>`:''}
+
           ${acc.simulacion?'<span class="badge badge-sim">SIM</span>':''}
           ${(acc.escenarioIds||[]).map(id=>`<span class="badge badge-yellow">🔭 ${EscenariosModule.escenarioName(id)}</span>`).join('')}
         </div>
@@ -268,6 +296,7 @@ const AccountsModule = (() => {
       </div>
       ${acc.interes>0?`<div class="flex gap-8 flex-wrap mb-8"><span class="badge badge-active">${acc.interes}% rentabilidad</span><span class="badge badge-blue">Cap. ${acc.periodoCobro}</span></div>`:'<div class="mb-8"><span class="badge badge-inactive">Sin remuneración</span></div>'}
       ${remuneracionBlock}
+      ${beneficioBlock}
       ${pensionBlock}
       ${inversionBlock}
       ${hist.length>0?`<div class="text-sm mt-8">${hist.length} punto${hist.length>1?'s':''} en histórico · último ${lastHist.fecha}</div>`:'<div class="text-sm" style="color:var(--text3)">Sin histórico</div>'}
@@ -343,6 +372,7 @@ const AccountsModule = (() => {
           ['cuenta','Cuenta bancaria'],
           ['inversion','Fondo de inversión (ganancias de capital)'],
           ['pension','Plan de pensiones (FIFO + IRPF)'],
+          ['beneficio','Tarjeta beneficio (retribución flexible)'],
         ], modeloFondo)}
       </div>
       <div id="pension-fields" style="${modeloFondo==='pension'?'':'display:none'}">
@@ -359,10 +389,23 @@ const AccountsModule = (() => {
           📈 <strong>Fondo de inversión:</strong> la tarjeta mostrará plusvalía e impuesto estimado sobre ganancias de capital usando los tramos configurados en Ajustes.
         </div>
       </div>
+      <div id="beneficio-fields" style="${modeloFondo==='beneficio'?'':'display:none'}">
+        <div class="auth-hint mt-8" style="border-color:var(--accent)">
+          🎫 <strong>Tarjeta beneficio:</strong> se recarga mensualmente desde la nómina. Los gastos (metro, restaurante) se registran como movimientos sobre esta cuenta.
+        </div>
+        <div class="form-group mt-8">
+          ${UI.select('ac-tipo-beneficio','Tipo de beneficio',[
+            ['transporte','Transporte (límite €1.500/año)'],
+            ['restaurante','Restaurante (límite €11/día)'],
+            ['otros','Otros beneficios'],
+          ], acc?.tipoBeneficio||'transporte')}
+        </div>
+      </div>
       <script>
         document.getElementById('ac-modelo').onchange = function() {
-          document.getElementById('pension-fields').style.display = this.value==='pension' ? '' : 'none';
-          document.getElementById('inversion-hint').style.display = this.value==='inversion' ? '' : 'none';
+          document.getElementById('pension-fields').style.display   = this.value==='pension'   ? '' : 'none';
+          document.getElementById('inversion-hint').style.display   = this.value==='inversion' ? '' : 'none';
+          document.getElementById('beneficio-fields').style.display = this.value==='beneficio' ? '' : 'none';
         };
       </script>
       <div class="form-group mt-12">
@@ -387,6 +430,7 @@ const AccountsModule = (() => {
     const modeloFondo = document.getElementById('ac-modelo')?.value || 'cuenta';
     const esPension   = modeloFondo === 'pension';
     const esInversion = modeloFondo === 'inversion';
+    const esBeneficio = modeloFondo === 'beneficio';
     const acc={
       nombre:           document.getElementById('ac-nombre').value.trim(),
       saldo:            nuevoSaldo,
@@ -403,6 +447,7 @@ const AccountsModule = (() => {
       planAportaciones: _editPlan,
       bloqueoMeses:     esPension ? (parseInt(document.getElementById('ac-bloqueo')?.value)||120) : 120,
       impuestoRetirada: esPension ? (parseFloat(document.getElementById('ac-impuesto-ret')?.value)||0) : 0,
+      tipoBeneficio:    esBeneficio ? (document.getElementById('ac-tipo-beneficio')?.value||'transporte') : undefined,
     };
     if (!acc.nombre) { UI.toast('Nombre obligatorio','err'); return; }
     if (id) {

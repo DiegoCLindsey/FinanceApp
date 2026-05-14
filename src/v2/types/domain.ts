@@ -56,6 +56,18 @@ export interface Expense {
   tags: string[];
 }
 
+// ── Retribución flexible ─────────────────────────────────────────────────────
+// Beneficios en especie exentos de IRPF y SS (art. 42 LIRPF).
+// Límites legales 2025: transporte €1.500/año · restaurante €11/día.
+export type TipoBeneficioFlexible = 'transporte' | 'restaurante' | 'otros';
+
+export interface RetribucionFlexibleComponente {
+  _id: string;
+  tipo: TipoBeneficioFlexible;
+  importe: number;   // importe mensual (€)
+  cuenta?: string;   // Account _id de la tarjeta beneficio (opcional)
+}
+
 // ── Account ──────────────────────────────────────────────────────────────────
 export interface BalanceRecord {
   _id: string;
@@ -83,6 +95,8 @@ export interface Account {
   simulacion: boolean;
   esCuentaPrincipal: boolean;
   esFondoPension: boolean;
+  modeloFondo?: 'cuenta' | 'inversion' | 'pension' | 'beneficio';
+  tipoBeneficio?: TipoBeneficioFlexible; // solo cuando modeloFondo = 'beneficio'
   // Pension fund fields (only relevant when esFondoPension = true)
   bloqueoMeses: number; // Lock period in months
   impuestoRetirada: number; // Tax % on profit at withdrawal
