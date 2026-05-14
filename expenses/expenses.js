@@ -64,6 +64,7 @@ const ExpensesModule = (() => {
       const bd=view.querySelector(`[data-del-exp="${exp._id}"]`); if(bd)bd.onclick=()=>deleteExpense(exp._id);
       const tog=view.querySelector(`[data-tog-exp="${exp._id}"]`); if(tog)tog.onchange=e=>{State.updateItem('expenses',exp._id,{activo:e.target.checked});render();};
       const bh=view.querySelector(`[data-hist-exp="${exp._id}"]`); if(bh)bh.onclick=()=>openHistorialPrecios(exp._id);
+      const bdup=view.querySelector(`[data-dup-exp="${exp._id}"]`); if(bdup)bdup.onclick=()=>duplicateExpense(exp._id);
     });
   }
 
@@ -117,8 +118,9 @@ const ExpensesModule = (() => {
         ${exp.basico?'<span class="badge badge-orange" title="Gasto básico">⚑ básico</span>':''}
         ${expirado?'<span class="badge badge-inactive">Exp.</span>':''}
       </div>
-      <div class="flex gap-8">
+      <div class="flex gap-8" style="flex-wrap:nowrap;align-items:center">
         ${!isTransfer?`<button class="btn-icon" data-hist-exp="${exp._id}" title="Historial de precios" style="font-size:15px">📋</button>`:''}
+        <button class="btn-icon" data-dup-exp="${exp._id}" title="Duplicar"><svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></button>
         <button class="btn-icon" data-edit-exp="${exp._id}"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button>
         <button class="btn-danger" data-del-exp="${exp._id}">✕</button>
       </div>
@@ -219,6 +221,69 @@ const ExpensesModule = (() => {
 
   function deleteExpense(id) { if(!UI.confirm('¿Eliminar?'))return; State.removeItem('expenses',id); UI.toast('Eliminado'); render(); }
 
+  function duplicateExpense(id) {
+    const src = State.get('expenses').find(e=>e._id===id);
+    if (!src) return;
+    const copy = { ...src, _id: undefined, concepto: src.concepto + ' (copia)' };
+    const isTransfer = copy.tipo === 'transferencia';
+    const html = `
+      <div class="grid-2">
+        ${UI.input('ef-concepto','Concepto','text',copy.concepto,'Ej: Alquiler')}
+        ${UI.select('ef-tipo','Tipo',[['gasto','Gasto'],['ingreso','Ingreso'],['transferencia','Transferencia entre cuentas']],copy.tipo||'gasto')}
+      </div>
+      <div class="grid-3 mt-8">
+        ${UI.input('ef-cuantia','Cuantía (€)','number',copy.cuantia||'','500')}
+        ${UI.input('ef-frecuencia','Frecuencia','number',copy.frecuencia||1,'1')}
+        ${UI.select('ef-tipo-frec','Tipo frecuencia',[['extraordinario','Extraordinario'],['diaria','Diaria'],['mensual','Mensual']],copy.tipoFrecuencia||'mensual')}
+      </div>
+      <div class="grid-2 mt-8">
+        ${UI.input('ef-fecha-ini','Fecha inicio','date',copy.fechaInicio||new Date().toISOString().slice(0,10))}
+        ${UI.input('ef-fecha-fin','Fecha fin (opcional)','date',copy.fechaFin||'')}
+      </div>
+      <div class="mt-8">${UI.diaPagoWidget('exp', copy.diaPago||'')}</div>
+      <div id="ef-varianza-wrap" class="grid-2 mt-8" style="${isTransfer?'display:none':''}"><div class="form-group"><label class="form-label">Varianza ± % (para simulación Monte Carlo)</label><input class="form-input" type="number" id="ef-varianza" value="${copy.varianza||0}" min="0" max="100" placeholder="0"/></div><div class="form-group"><label class="form-label">Inflación anual % (0 = global)</label><input class="form-input" type="number" id="ef-inflacion" value="${copy.inflacion||0}" min="0" max="30" placeholder="0"/></div></div>
+      <div class="grid-2 mt-8">
+        ${UI.accountSelect('ef-cuenta','Cuenta origen',copy.cuenta||'default')}
+        <div id="ef-destino-wrap" style="${isTransfer?'':'display:none'}">
+          ${UI.accountSelect('ef-cuenta-dest','Cuenta destino',copy.cuentaDestino||'default')}
+        </div>
+      </div>
+      <div id="ef-basico-wrap" style="${isTransfer?'display:none':''}">
+        <div class="form-group mt-8"><label class="form-label">Etiquetas (separadas por coma)</label><input class="form-input" type="text" id="ef-tags" value="${(copy.tags||[]).join(', ')}" placeholder="alquiler, vivienda"/></div>
+        <div class="form-row mt-8">
+          <label class="form-label">Gasto básico</label>
+          <label class="toggle"><input type="checkbox" id="ef-basico" ${copy.basico?'checked':''}/><span class="toggle-slider"></span></label>
+          <span class="text-sm" style="margin-left:6px">Incluir en el cálculo del colchón económico</span>
+        </div>
+        <div class="form-row mt-8" id="ef-irpf-wrap" style="${copy.tipo==='ingreso'?'':'display:none'}">
+          <label class="form-label">Sujeto a retención IRPF</label>
+          <label class="toggle"><input type="checkbox" id="ef-sujetoIRPF" ${copy.sujetoIRPF?'checked':''}/><span class="toggle-slider"></span></label>
+          <span class="text-sm" style="margin-left:6px">Calcula y proyecta la retención mensual</span>
+        </div>
+      </div>
+      ${EscenariosModule.checkboxesHtml(copy.escenarioIds||[])}
+      <div class="form-row mt-8">
+        <label class="form-label">Activo</label>
+        <label class="toggle"><input type="checkbox" id="ef-activo" ${copy.activo!==false?'checked':''}/><span class="toggle-slider"></span></label>
+      </div>
+      <div class="flex gap-8 mt-16" style="justify-content:flex-end">
+        <button class="btn-secondary" onclick="UI.closeModal()">Cancelar</button>
+        <button class="btn-primary" onclick="ExpensesModule.saveExpense('')">Guardar</button>
+      </div>`;
+    UI.openModal(html, 'Duplicar movimiento');
+    setTimeout(()=>{
+      const sel = document.getElementById('ef-tipo');
+      if (sel) sel.onchange = () => {
+        const t = sel.value;
+        document.getElementById('ef-destino-wrap').style.display   = t==='transferencia' ? '' : 'none';
+        document.getElementById('ef-basico-wrap').style.display    = t==='transferencia' ? 'none' : '';
+        document.getElementById('ef-varianza-wrap').style.display  = t==='transferencia' ? 'none' : '';
+        const irpfWrap = document.getElementById('ef-irpf-wrap');
+        if(irpfWrap) irpfWrap.style.display = t==='ingreso' ? '' : 'none';
+      };
+    }, 50);
+  }
+
   function openHistorialPrecios(expId) {
     const exp = State.get('expenses').find(e=>e._id===expId);
     if (!exp) return;
@@ -284,5 +349,5 @@ const ExpensesModule = (() => {
     openHistorialPrecios(expId);
   }
 
-  return { render, saveExpense, deleteExpense, clearFilters, openHistorialPrecios, _addHistorialEntry, _deleteHistorialEntry };
+  return { render, saveExpense, deleteExpense, duplicateExpense, clearFilters, openHistorialPrecios, _addHistorialEntry, _deleteHistorialEntry };
 })();
