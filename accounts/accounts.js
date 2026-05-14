@@ -30,7 +30,7 @@ const AccountsModule = (() => {
           <div class="stat-card"><div class="stat-label">Impuesto estimado</div><div class="stat-value neg">${FinanceMath.eur(totalImpuesto)}</div><div class="stat-sub">Neto: ${FinanceMath.eur(totalNeto)}</div></div>
         </div>
         <div class="auth-hint mt-8" style="border-color:rgba(16,185,129,0.3)">
-          📈 Los traspasos entre fondos son <strong>neutros fiscalmente</strong> (art. 94 LIRPF). El impuesto sólo se devenga al reembolsar (retirar a cuenta bancaria).
+          📈 Los traspasos entre fondos son <strong>neutros fiscalmente</strong> (art. 94 LIRPF). El impuesto solo se devenga al reembolsar (retirar a cuenta bancaria).
         </div>
       </div>`;
   }
@@ -138,10 +138,19 @@ const AccountsModule = (() => {
       const tipoLabel = { transporte: 'Transporte', restaurante: 'Restaurante', otros: 'Otros' }[acc.tipoBeneficio] || 'Beneficio';
       const limiteAnual = { transporte: 1500, restaurante: 2640, otros: null }[acc.tipoBeneficio];
       // Find nominas that have a flex component linked to this account
-      const recargas = nominas.flatMap(n => (n.retribucionFlexible||[]).filter(c => c.cuenta===acc._id).map(c => ({ nomina: n.nombre, importe: c.importe })));
+      const recargas = nominas.flatMap(n => (n.retribucionFlexible||[]).filter(c => c.cuenta===acc._id).map(c => ({ nomina: n.nombre, importe: c.importe, nominaObj: n })));
       const recargoMensual = recargas.reduce((s, r) => s + r.importe, 0);
       const recargaAnual   = recargoMensual * 12;
       const overLimit = limiteAnual && recargaAnual > limiteAnual;
+      // Estimate IRPF savings using marginal rate of the first linked nomina
+      const tramos = config.tramos_irpf || [];
+      const ahorroFiscal = (() => {
+        if (!recargas.length) return 0;
+        const nom = recargas[0].nominaObj;
+        const brutoAnual = (nom.bruto || 0) * (nom.nPagas || 12);
+        const tipoMarginal = tramos.reduce((rate, [min, r]) => brutoAnual >= min ? r : rate, 0);
+        return Math.min(recargaAnual, limiteAnual || recargaAnual) * tipoMarginal / 100;
+      })();
       return `<div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:var(--radius);border:1px solid rgba(99,214,160,0.35)">
         <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Tarjeta beneficio — ${tipoLabel}</div>
         <div class="flex justify-between mb-5">
@@ -153,7 +162,8 @@ const AccountsModule = (() => {
           <span class="num ${overLimit ? 'neg' : 'pos'}">${FinanceMath.eur(recargaAnual)}/año${overLimit ? ` ⚠ excede límite ${FinanceMath.eur(limiteAnual)}` : ''}</span>
         </div>
         ${limiteAnual ? `<div class="flex justify-between mb-5"><span class="text-sm" style="color:var(--text2)">Límite exención</span><span class="num">${FinanceMath.eur(limiteAnual)}/año</span></div>` : ''}
-        ${recargas.length > 0 ? recargas.map(r => `<div style="font-size:11px;color:var(--text3)">↩ ${r.nomina}: ${FinanceMath.eur(r.importe)}/mes</div>`).join('') : '<div style="font-size:11px;color:var(--yellow)">Sin nómina vinculada — configúrala en Rendimientos del Trabajo.</div>'}
+        ${ahorroFiscal > 0 ? `<div class="flex justify-between mb-5"><span class="text-sm" style="color:var(--text2)">Ahorro IRPF estimado</span><span class="num pos" title="Importe exento × tipo marginal">≈ ${FinanceMath.eur(ahorroFiscal)}/año</span></div>` : ''}
+        ${recargas.length > 0 ? recargas.map(r => `<div style="font-size:11px;color:var(--text3)">↩ ${r.nomina}: ${FinanceMath.eur(r.importe)}/mes</div>`).join('') : '<div style="font-size:11px;color:var(--yellow)">Sin nómina vinculada — confígurala en Rendimientos del Trabajo.</div>'}
       </div>`;
     })() : '';
 
@@ -407,7 +417,7 @@ const AccountsModule = (() => {
           document.getElementById('inversion-hint').style.display   = this.value==='inversion' ? '' : 'none';
           document.getElementById('beneficio-fields').style.display = this.value==='beneficio' ? '' : 'none';
         };
-      </script>
+      <\/script>
       <div class="form-group mt-12">
         <label class="form-label">Aportaciones programadas</label>
         <div id="aport-container">${_planAportacionesHtml(_editPlan)}</div>
