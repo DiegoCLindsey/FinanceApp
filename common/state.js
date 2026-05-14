@@ -29,6 +29,7 @@ const State = (() => {
       colchonTipo: 'meses',   // 'meses' | 'fijo'
       colchonFijo: 0,         // € cuando colchonTipo='fijo'
       escenarioActivo: null,  // _id del escenario activo o null (realidad base)
+      activeTagsFilter: [],   // persisted tag filter selection for dashboard
     }
   };
   let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
