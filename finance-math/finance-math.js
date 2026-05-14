@@ -638,16 +638,21 @@ const FinanceMath = (() => {
 
     // Returns the IRPF anual for nom at a payment date, accounting for group stacking.
     // Uses the tramos for the year of the payment date (per-year fiscal tables).
+    // Retribución flexible (art. 42 LIRPF) reduces the taxable base: the monthly importe
+    // of each component × 12 is subtracted from bruto before applying brackets.
     function irpfAnualNomina(nom, fechaStr) {
       const bruto = brutoAjustado(nom, fechaStr);
       if (nom.irpfModo === 'manual') return bruto * ((nom.irpfPct || 0) / 100);
+      const flexAnual = (nom.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
+      const baseIRPF = Math.max(0, bruto - flexAnual);
       const tramosYear = tramosIRPFParaAño(parseInt(fechaStr.slice(0, 4)));
       const g = nom.grupoNomina || '';
-      if (!g) return calcIRPF(bruto, tramosYear);
+      if (!g) return calcIRPF(baseIRPF, tramosYear);
+      // Group stacking: position determined by full bruto, but tax calculated on flex-reduced base
       const baseAcum = grupos[g]
         .filter(n => n.activo && n._id !== nom._id && (n.bruto || 0) > (nom.bruto || 0))
         .reduce((s, n) => s + brutoAjustado(n, fechaStr), 0);
-      return calcIRPF(baseAcum + bruto, tramosYear) - calcIRPF(baseAcum, tramosYear);
+      return calcIRPF(baseAcum + baseIRPF, tramosYear) - calcIRPF(baseAcum, tramosYear);
     }
 
     for (const nom of nominas) {
@@ -660,17 +665,27 @@ const FinanceMath = (() => {
       const dF = nom.fechaFin ? new Date(nom.fechaFin+'T00:00:00') : dE;
 
       // Bruto and IRPF are computed per-payment to account for IPC adjustment and group stacking
+      const _flexTipoLabel = t => ({ transporte: 'Transporte', restaurante: 'Restaurante', otros: 'Beneficio' }[t] || t);
       const pushPago = (fecha) => {
-        const bruto        = brutoAjustado(nom, fecha);
-        const irpf         = irpfAnualNomina(nom, fecha);
-        const brutoPorPaga = bruto / nPagas;
-        const irpfPorPaga  = irpf  / nPagas;
+        const bruto    = brutoAjustado(nom, fecha);
+        const irpf     = irpfAnualNomina(nom, fecha);
+        // Cash portion = bruto minus flex components (benefit in kind, non-cash)
+        const flexAnual    = (nom.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
+        const brutoCash    = Math.max(0, bruto - flexAnual);
+        const brutoCashPorPaga = brutoCash / nPagas;
+        const irpfPorPaga  = irpf / nPagas;
         const ingresoPorPaga = nom.representacion === 'simplificado'
-          ? (brutoPorPaga - irpfPorPaga)
-          : brutoPorPaga;
+          ? (brutoCashPorPaga - irpfPorPaga)
+          : brutoCashPorPaga;
         events.push({ fecha, concepto: nom.nombre, cuantia: ingresoPorPaga, tipo: 'ingreso', cuenta, tags: nom.tags||[], sourceId: nom._id, sourceType: 'nomina' });
         if (nom.representacion === 'detallado' && irpfPorPaga > 0) {
           events.push({ fecha, concepto: `IRPF ${nom.nombre}`, cuantia: irpfPorPaga, tipo: 'gasto', cuenta, tags: ['irpf','fiscal'], sourceId: nom._id+'_irpf', sourceType: 'nomina' });
+        }
+        // Flex recharges: monthly credit to each benefit card account
+        for (const comp of (nom.retribucionFlexible || [])) {
+          if (!comp.cuenta || !(comp.importe > 0)) continue;
+          if (filtroAccounts && filtroAccounts.length > 0 && !filtroAccounts.includes(comp.cuenta)) continue;
+          events.push({ fecha, concepto: `${nom.nombre} — ${_flexTipoLabel(comp.tipo)}`, cuantia: comp.importe, tipo: 'ingreso', cuenta: comp.cuenta, tags: ['retribucion-flexible', comp.tipo], sourceId: `${nom._id}_flex_${comp._id||comp.tipo}`, sourceType: 'nomina' });
         }
       };
 

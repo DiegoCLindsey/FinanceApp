@@ -138,12 +138,16 @@ const NominasModule = (() => {
     const varianzaBadge = n.varianza > 0
       ? `<span class="badge" style="background:rgba(100,200,255,0.1);color:var(--accent)">±${n.varianza}% MC</span>`
       : '';
+    const flexAnualRow = (n.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
+    const flexBadge = flexAnualRow > 0
+      ? `<span class="badge" style="background:rgba(99,214,160,0.12);color:#63d6a0" title="Retribución flexible exenta IRPF">RF ${FinanceMath.eur(flexAnualRow)}/año</span>`
+      : '';
     return `<div class="exp-table-row">
       <div>
         <div style="font-weight:500">${n.nombre || '—'}</div>
-        <div class="flex gap-4 mt-4 flex-wrap">${ipcBadge}${varianzaBadge}</div>
+        <div class="flex gap-4 mt-4 flex-wrap">${ipcBadge}${varianzaBadge}${flexBadge}</div>
       </div>
-      <div class="num">${FinanceMath.eur(brutoAnual)}<div class="text-sm" style="color:var(--text2)">${FinanceMath.eur(brutoAnual/nPagas)}/paga</div></div>
+      <div class="num">${FinanceMath.eur(brutoAnual)}${flexAnualRow > 0 ? `<div class="text-sm" style="color:var(--accent)">Diner. ${FinanceMath.eur(brutoAnual-flexAnualRow)}</div>` : `<div class="text-sm" style="color:var(--text2)">${FinanceMath.eur(brutoAnual/nPagas)}/paga</div>`}</div>
       <div class="text-sm">${nPagas} pagas</div>
       <div class="text-sm ${grupoNoms && n.irpfModo !== 'manual' ? 'neg' : ''}">${n.irpfModo === 'manual' ? n.irpfPct+'% (manual)' : irpfPct.toFixed(1)+'% (auto)'}${grupoNoms && n.irpfModo !== 'manual' ? ' <span title="Tipo marginal del grupo" style="font-size:10px;color:var(--text3)">marginal</span>' : ''}</div>
       <div>${modoBadge}</div>
@@ -158,6 +162,7 @@ const NominasModule = (() => {
 
   function openForm(id = null) {
     const n = id ? (State.get('nominas') || []).find(x => x._id === id) : null;
+    _editFlexPlan = [...(n?.retribucionFlexible || [])];
     const meses = ['', 'Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
     const html = `
       <div class="grid-2">
@@ -211,7 +216,14 @@ const NominasModule = (() => {
           <div class="text-sm mt-4" style="color:var(--text3)">Desviación estándar del bruto en MC</div>
         </div>
       </div>
-      <div class="grid-2 mt-8">
+      <div class="mt-16" style="border-top:1px solid var(--border);padding-top:14px">
+        <div style="font-weight:600;font-size:13px;margin-bottom:6px">Retribución flexible <span style="font-weight:400;color:var(--text3);font-size:11px">(art. 42 LIRPF — exento IRPF y SS)</span></div>
+        <div class="auth-hint mb-8" style="border-color:var(--accent)">
+          Los importes mensuales reducen la base IRPF. Límites orientativos: <strong>transporte €125/mes</strong> (€1.500/año) · <strong>restaurante €220/mes</strong> (~€11/día × 20 días).
+        </div>
+        <div id="flex-comp-container">${_flexCompHtml(_editFlexPlan)}</div>
+      </div>
+      <div class="grid-2 mt-16">
         ${UI.input('nf-fecha-ini', 'Fecha inicio', 'date', n?.fechaInicio||new Date().toISOString().slice(0,10))}
         ${UI.input('nf-fecha-fin', 'Fecha fin (opcional)', 'date', n?.fechaFin||'')}
       </div>
@@ -233,30 +245,35 @@ const NominasModule = (() => {
         const irpfModo = document.getElementById('nf-irpfmodo')?.value;
         const config = State.get('config');
         const tramos = config.tramos_irpf || [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]];
+        const flexAnual = _editFlexPlan.reduce((s, c) => s + (c.importe || 0) * 12, 0);
+        const baseIRPF  = Math.max(0, bruto - flexAnual);
         const irpfAnual = irpfModo === 'manual'
           ? bruto * ((parseFloat(document.getElementById('nf-irpfpct')?.value)||0) / 100)
-          : FinanceMath.calcIRPF(bruto, tramos);
-        const netoAnual = bruto - irpfAnual;
-        const brutoPorPaga = bruto / nPagas;
-        const irpfPorPaga  = irpfAnual / nPagas;
-        const netoPorPaga  = brutoPorPaga - irpfPorPaga;
-        const repr = document.getElementById('nf-representacion')?.value;
+          : FinanceMath.calcIRPF(baseIRPF, tramos);
+        const netoDinerario = baseIRPF - irpfAnual;
+        const brutoCashPorPaga = baseIRPF / nPagas;
+        const irpfPorPaga      = irpfAnual / nPagas;
+        const netoPorPaga      = brutoCashPorPaga - irpfPorPaga;
+        const repr  = document.getElementById('nf-representacion')?.value;
         const grupo = document.getElementById('nf-grupo')?.value.trim();
-        // Show group hint if other nominas in same group exist
         const otrasEnGrupo = grupo ? (State.get('nominas') || []).filter(m => m.grupoNomina === grupo && m._id !== (id||'')) : [];
         const grupoHint = grupo && otrasEnGrupo.length > 0
           ? `<div style="margin-top:6px;color:var(--yellow);font-size:11px">⚡ En el grupo "${grupo}" con ${otrasEnGrupo.map(m=>m.nombre).join(', ')} — IRPF calculado al tipo marginal.</div>`
           : '';
+        const flexHtml = flexAnual > 0 ? `
+            <span style="color:var(--text2)">Retrib. flexible:</span><span style="color:var(--accent)">-${FinanceMath.eur(flexAnual)}/año (exento IRPF)</span>
+            <span style="color:var(--text2)">Base IRPF:</span><span>${FinanceMath.eur(baseIRPF)}</span>` : '';
         const box = document.getElementById('nf-preview');
         if (box) box.innerHTML = `
           <strong>Vista previa</strong>
           <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:4px">
-            <span style="color:var(--text2)">Bruto anual:</span><span>${FinanceMath.eur(bruto)}</span>
-            <span style="color:var(--text2)">IRPF anual:</span><span class="neg">${FinanceMath.eur(irpfAnual)} (${bruto>0?(irpfAnual/bruto*100).toFixed(1):0}%)</span>
-            <span style="color:var(--text2)">Neto anual:</span><span class="pos">${FinanceMath.eur(netoAnual)}</span>
-            <span style="color:var(--text2)">Bruto/paga:</span><span>${FinanceMath.eur(brutoPorPaga)}</span>
-            <span style="color:var(--text2)">IRPF/paga:</span><span class="neg">${FinanceMath.eur(irpfPorPaga)}</span>
-            <span style="color:var(--text2)">En predicciones:</span><span>${repr==='simplificado' ? `ingreso ${FinanceMath.eur(netoPorPaga)}/paga` : `ingreso ${FinanceMath.eur(brutoPorPaga)} + gasto IRPF ${FinanceMath.eur(irpfPorPaga)}`}</span>
+            <span style="color:var(--text2)">Bruto total:</span><span>${FinanceMath.eur(bruto)}</span>
+            ${flexHtml}
+            <span style="color:var(--text2)">IRPF anual:</span><span class="neg">${FinanceMath.eur(irpfAnual)} (${baseIRPF>0?(irpfAnual/baseIRPF*100).toFixed(1):0}%)</span>
+            <span style="color:var(--text2)">Neto dinerario:</span><span class="pos">${FinanceMath.eur(netoDinerario)}</span>
+            ${flexAnual > 0 ? `<span style="color:var(--text2)">+ Beneficios especie:</span><span style="color:var(--accent)">${FinanceMath.eur(flexAnual)}</span>` : ''}
+            <span style="color:var(--text2)">Neto/paga (dinerario):</span><span>${FinanceMath.eur(netoPorPaga)}</span>
+            <span style="color:var(--text2)">En predicciones:</span><span>${repr==='simplificado' ? `ingreso ${FinanceMath.eur(netoPorPaga)}/paga` : `ingreso ${FinanceMath.eur(brutoCashPorPaga)} + gasto IRPF ${FinanceMath.eur(irpfPorPaga)}`}${flexAnual > 0 ? ` + recargas flex` : ''}</span>
           </div>${grupoHint}`;
       };
       ['nf-bruto','nf-irpfpct','nf-npagas-custom','nf-grupo'].forEach(id => document.getElementById(id)?.addEventListener('input', updatePreview));
@@ -292,6 +309,7 @@ const NominasModule = (() => {
       mesActualizacionIPC: mesIPC,
       varianza:         parseFloat(document.getElementById('nf-varianza').value) || 0,
       escenarioIds:     EscenariosModule.readCheckedEscenarios(),
+      retribucionFlexible: _editFlexPlan,
     };
     if (!nom.nombre || nom.bruto <= 0) { UI.toast('Nombre y bruto anual son obligatorios', 'err'); return; }
     if (id) { State.updateItem('nominas', id, nom); UI.toast('Nómina actualizada'); }
@@ -492,6 +510,61 @@ const NominasModule = (() => {
       </div>`;
   }
 
+  // ── Retribución flexible ────────────────────────────────────────────────────
+  let _editFlexPlan = [];
+
+  const _FLEX_LIMITES = { transporte: 125, restaurante: 220, otros: null }; // €/mes orientativos
+
+  function _flexCompHtml(plan) {
+    const accounts = State.get('accounts') || [];
+    const rows = (plan || []).map((c, i) => {
+      const acc = accounts.find(a => a._id === c.cuenta);
+      const limite = _FLEX_LIMITES[c.tipo];
+      const overLimit = limite && c.importe > limite;
+      return `
+        <div class="flex gap-8 items-center" style="padding:5px 0;border-bottom:1px solid var(--border)">
+          <span class="badge badge-blue" style="min-width:88px;text-align:center">${{transporte:'Transporte',restaurante:'Restaurante',otros:'Otros'}[c.tipo]||c.tipo}</span>
+          <span style="flex:1;font-size:12px">${FinanceMath.eur(c.importe)}/mes${overLimit ? ` <span style="color:var(--red)" title="Supera el límite orientativo de ${FinanceMath.eur(limite)}/mes">⚠</span>` : ''}</span>
+          <span style="font-size:11px;color:var(--text3);min-width:120px">${acc ? acc.nombre : '<span style="color:var(--yellow)">Sin cuenta</span>'}</span>
+          <button class="btn-danger btn-sm" onclick="NominasModule._removeFlexComp(${i})">✕</button>
+        </div>`;
+    }).join('');
+    const beneficioCuentas = accounts.filter(a => (a.modeloFondo || 'cuenta') === 'beneficio' && a.activo !== false);
+    const todasCuentas     = accounts.filter(a => (a.modeloFondo || 'cuenta') !== 'pension' && a.activo !== false);
+    const opts = todasCuentas.map(a => `<option value="${a._id}">${a.nombre}${(a.modeloFondo||'cuenta')==='beneficio' ? ' ★' : ''}</option>`).join('');
+    return `<div id="flex-comp-list" style="margin-bottom:8px">${rows || '<div style="font-size:12px;color:var(--text3);padding:4px 0">Sin componentes. Añade transporte o restaurante.</div>'}</div>
+      <div class="grid-3 mt-6" style="gap:6px">
+        <select class="form-select" id="fc-tipo" style="font-size:12px">
+          <option value="transporte">Transporte</option>
+          <option value="restaurante">Restaurante</option>
+          <option value="otros">Otros</option>
+        </select>
+        <input class="form-input" type="number" id="fc-importe" placeholder="€/mes" min="0" style="font-size:12px"/>
+        <select class="form-select" id="fc-cuenta" style="font-size:12px">
+          <option value="">Sin cuenta vinculada</option>
+          ${opts}
+        </select>
+      </div>
+      ${beneficioCuentas.length === 0 ? '<div class="text-sm mt-4" style="color:var(--text3)">Tip: crea una cuenta de tipo "Tarjeta beneficio" en <em>Capital Mobiliario</em> para vincularla aquí (★).</div>' : ''}
+      <button class="btn-secondary btn-sm mt-6" onclick="NominasModule._addFlexComp()">+ Añadir componente</button>`;
+  }
+
+  function _addFlexComp() {
+    const tipo    = document.getElementById('fc-tipo')?.value || 'transporte';
+    const importe = parseFloat(document.getElementById('fc-importe')?.value) || 0;
+    const cuenta  = document.getElementById('fc-cuenta')?.value || '';
+    if (!importe) { UI.toast('Importe requerido', 'err'); return; }
+    _editFlexPlan.push({ _id: Date.now().toString(36), tipo, importe, cuenta });
+    const c = document.getElementById('flex-comp-container');
+    if (c) c.innerHTML = _flexCompHtml(_editFlexPlan);
+  }
+
+  function _removeFlexComp(idx) {
+    _editFlexPlan.splice(idx, 1);
+    const c = document.getElementById('flex-comp-container');
+    if (c) c.innerHTML = _flexCompHtml(_editFlexPlan);
+  }
+
   let _editPensionPlan = [];
 
   function openPensionForm(id = null) {
@@ -641,5 +714,5 @@ const NominasModule = (() => {
     render();
   }
 
-  return { render, saveNomina, deleteNomina, openTramosForm, _removeTramo, _addTramo, _saveTramos, _irpfAddYear, _irpfDeleteYear, openPensionForm, savePension, deletePension, _addPensionAport, _removePensionAport };
+  return { render, saveNomina, deleteNomina, openTramosForm, _removeTramo, _addTramo, _saveTramos, _irpfAddYear, _irpfDeleteYear, openPensionForm, savePension, deletePension, _addPensionAport, _removePensionAport, _addFlexComp, _removeFlexComp };
 })();
