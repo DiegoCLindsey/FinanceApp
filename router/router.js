@@ -1,7 +1,7 @@
-// Depends on: DashboardModule, LoansModule, ExpensesModule, AccountsModule, CalendarModule
+// Depends on: DashboardModule, LoansModule, ExpensesModule, AccountsModule
 const Router = (() => {
-  const views=['dashboard','loans','expenses','accounts','nominas','calendar','inflacion','escenarios'];
-  const mods={ dashboard:DashboardModule, loans:LoansModule, expenses:ExpensesModule, accounts:AccountsModule, nominas:NominasModule, calendar:CalendarModule, inflacion:InflacionModule, escenarios:EscenariosModule };
+  const views=['dashboard','loans','expenses','accounts','nominas','inflacion','escenarios'];
+  const mods={ dashboard:DashboardModule, loans:LoansModule, expenses:ExpensesModule, accounts:AccountsModule, nominas:NominasModule, inflacion:InflacionModule, escenarios:EscenariosModule };
   let _current = 'dashboard';
   function navigate(view) {
     if(!views.includes(view))return;
