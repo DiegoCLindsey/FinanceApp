@@ -169,32 +169,40 @@ const GoalsModule = (() => {
       </label>`;
     }).join('');
 
+    const isEdit = !!id;
     const html = `
       ${UI.input('goal-nombre','Nombre del objetivo','text',g?.nombre||'','Ej: Fondo de emergencia')}
-      <div class="grid-3 mt-8">
+      <div class="grid-2 mt-8">
         ${UI.input('goal-amount','Importe objetivo (€)','number',g?.targetAmount||'','10000')}
         ${UI.input('goal-date','Fecha límite (opcional)','date',g?.targetDate||'')}
-        ${UI.input('goal-prio','Prioridad (1=mayor)','number',nextPrio,'1')}
       </div>
-      <div class="form-group mt-8">
-        <label class="form-label">Cuentas a considerar (vacío = todas las activas)</label>
-        <div style="display:flex;flex-direction:column;gap:6px;padding:8px;background:var(--bg3);border-radius:var(--radius)">
-          ${accChecks || '<span class="text-sm" style="color:var(--text3)">Sin cuentas activas</span>'}
+
+      <details class="form-advanced mt-12" ${isEdit ? 'open' : ''}>
+        <summary class="form-advanced-summary">Opciones</summary>
+        <div class="form-advanced-body">
+          <div class="mt-8">${UI.input('goal-prio','Prioridad (1=mayor)','number',nextPrio,'1')}</div>
+          <div class="form-group mt-8">
+            <label class="form-label">Cuentas a considerar (vacío = todas las activas)</label>
+            <div style="display:flex;flex-direction:column;gap:6px;padding:8px;background:var(--bg3);border-radius:var(--radius)">
+              ${accChecks || '<span class="text-sm" style="color:var(--text3)">Sin cuentas activas</span>'}
+            </div>
+          </div>
+          <div class="form-row mt-8">
+            <label class="form-label">Descontar colchón económico</label>
+            <label class="toggle"><input type="checkbox" id="goal-colchon" ${g?.usarColchon!==false?'checked':''}/><span class="toggle-slider"></span></label>
+            <span class="text-sm" style="margin-left:6px;color:var(--text3)">Muestra el excedente sobre el mínimo de seguridad</span>
+          </div>
+          <div class="form-row mt-8">
+            <label class="form-label">Marcar como completado</label>
+            <label class="toggle"><input type="checkbox" id="goal-completado" ${g?.completado?'checked':''}/><span class="toggle-slider"></span></label>
+          </div>
+          <div class="form-group mt-8">
+            <label class="form-label">Color</label>
+            <select class="form-select" id="goal-color">${colorOpts}</select>
+          </div>
         </div>
-      </div>
-      <div class="form-row mt-8">
-        <label class="form-label">Descontar colchón económico</label>
-        <label class="toggle"><input type="checkbox" id="goal-colchon" ${g?.usarColchon!==false?'checked':''}/><span class="toggle-slider"></span></label>
-        <span class="text-sm" style="margin-left:6px;color:var(--text3)">Muestra el excedente sobre el mínimo de seguridad</span>
-      </div>
-      <div class="form-row mt-8">
-        <label class="form-label">Marcar como completado</label>
-        <label class="toggle"><input type="checkbox" id="goal-completado" ${g?.completado?'checked':''}/><span class="toggle-slider"></span></label>
-      </div>
-      <div class="form-group mt-8">
-        <label class="form-label">Color</label>
-        <select class="form-select" id="goal-color">${colorOpts}</select>
-      </div>
+      </details>
+
       <div class="flex gap-8 mt-16" style="justify-content:flex-end">
         <button class="btn-secondary" onclick="UI.closeModal()">Cancelar</button>
         <button class="btn-primary" onclick="GoalsModule.saveGoal('${id||''}')">Guardar</button>
