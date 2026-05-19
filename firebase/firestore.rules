@@ -5,14 +5,17 @@
 // MODELO DE SEGURIDAD:
 //   1. Solo usuarios autenticados con email en /whitelist/{email} pueden acceder
 //   2. Cada usuario solo puede leer/escribir SUS propios datos
-//   3. La whitelist solo puede escribirla el administrador (consola de Firebase)
+//   3. La whitelist puede gestionarla cualquier usuario ya autorizado
+//      (el primer usuario debe añadirse manualmente desde la consola de Firebase)
 //   4. Los datos en Firestore están cifrados con AES-GCM en el cliente —
 //      incluso con acceso de admin a la base de datos, no son legibles sin la passphrase
 //
-// GESTIÓN DE WHITELIST (como admin):
+// PRIMER USUARIO (bootstrap):
 //   Firebase Console → Firestore → Colección "whitelist" → Añadir documento
-//   Document ID = email del usuario (ej: "usuario@ejemplo.com")
-//   Campos: { addedAt: <timestamp>, addedBy: "admin" }
+//   Document ID = tu email (ej: "diego@ejemplo.com")
+//   Campos: { addedAt: <timestamp>, addedBy: "console" }
+//
+//   A partir de ahí, puedes gestionar la lista desde la propia app.
 
 rules_version = '2';
 service cloud.firestore {
@@ -33,12 +36,13 @@ service cloud.firestore {
         && isWhitelisted();
     }
 
-    // Lista blanca: cada usuario puede leer solo su propio documento
-    // (para verificar si tiene acceso autorizado)
-    // Escritura: solo vía consola de Firebase (regla: false)
+    // Lista blanca:
+    //   - Cualquier usuario puede leer SU PROPIO documento (para verificar acceso)
+    //   - Leer y escribir cualquier documento: solo si el solicitante ya está en lista
+    //     (así cualquier usuario autorizado puede invitar o revocar a otros)
     match /whitelist/{email} {
-      allow read:  if request.auth != null && request.auth.token.email == email;
-      allow write: if false;
+      allow read:        if request.auth != null && request.auth.token.email == email;
+      allow read, write: if isWhitelisted();
     }
 
     // Denegar todo lo demás explícitamente

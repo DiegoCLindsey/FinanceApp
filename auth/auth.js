@@ -597,7 +597,7 @@ const AuthModule = (() => {
 
     if (mode === 'firebase' && FirebaseService.isConnected()) {
       ['btn-fbx-save','btn-fbx-pull','btn-fbx-push','btn-fbx-export-json',
-       'btn-fbx-import-json','btn-fbx-disconnect'].forEach(id => {
+       'btn-fbx-import-json','btn-fbx-whitelist','btn-fbx-disconnect'].forEach(id => {
         document.getElementById(id)?.classList.remove('hidden');
       });
       const emailEl = document.getElementById('fbx-user-email');
@@ -641,12 +641,15 @@ const AuthModule = (() => {
       }
     });
 
+    // Botón gestionar accesos (whitelist)
+    document.getElementById('btn-fbx-whitelist')?.addEventListener('click', _openWhitelistModal);
+
     // Botón desconectar Firebase
     document.getElementById('btn-fbx-disconnect')?.addEventListener('click', async () => {
       if (!UI.confirm('¿Cerrar sesión de Firebase? Los datos en la nube no se borrarán.')) return;
       await FirebaseService.logout();
       ['btn-fbx-save','btn-fbx-pull','btn-fbx-push','btn-fbx-export-json',
-       'btn-fbx-import-json','btn-fbx-disconnect'].forEach(id => {
+       'btn-fbx-import-json','btn-fbx-whitelist','btn-fbx-disconnect'].forEach(id => {
         document.getElementById(id)?.classList.add('hidden');
       });
       const emailEl = document.getElementById('fbx-user-email');
@@ -659,5 +662,100 @@ const AuthModule = (() => {
     DataIO.showWelcomeIfEmpty();
   }
 
-  return { init, launch };
+  // ── Modal de gestión de lista blanca ─────────────────────────────────────────
+  async function _openWhitelistModal() {
+    const me = FirebaseService.currentUserEmail();
+
+    const render = async () => {
+      let entries = [];
+      let loadErr = '';
+      try {
+        entries = await FirebaseService.listWhitelist();
+        entries.sort((a, b) => a.email.localeCompare(b.email));
+      } catch (e) {
+        loadErr = e.message;
+      }
+
+      const rows = entries.map(e => `
+        <tr>
+          <td style="padding:8px 10px;font-size:13px;color:var(--text)">${e.email}</td>
+          <td style="padding:8px 10px;font-size:11px;color:var(--text3)">${e.addedBy || '—'}</td>
+          <td style="padding:8px 4px;text-align:right">
+            ${e.email === me
+              ? `<span style="font-size:11px;color:var(--accent)">(tú)</span>`
+              : `<button onclick="AuthModule._wlRemove('${e.email}')"
+                   style="background:none;border:none;cursor:pointer;color:var(--red);font-size:18px;line-height:1;padding:2px 6px"
+                   title="Revocar acceso">×</button>`
+            }
+          </td>
+        </tr>`).join('');
+
+      const html = `
+        <div style="min-width:320px">
+          ${loadErr ? `<div class="auth-error" style="margin-bottom:12px">${loadErr}</div>` : ''}
+          <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border)">
+                <th style="padding:6px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:500">Email</th>
+                <th style="padding:6px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:500">Añadido por</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>${rows || `<tr><td colspan="3" style="padding:16px 10px;text-align:center;color:var(--text3);font-size:13px">Sin entradas</td></tr>`}</tbody>
+          </table>
+          <div style="display:flex;gap:8px;align-items:flex-end">
+            <div style="flex:1">
+              <label class="form-label" style="font-size:11px">Añadir email</label>
+              <input type="email" id="wl-new-email" class="auth-input"
+                     placeholder="nuevo@usuario.com" style="margin-top:4px"/>
+            </div>
+            <button id="wl-add-btn" class="btn-firebase"
+                    style="padding:10px 16px;white-space:nowrap">Añadir</button>
+          </div>
+          <div id="wl-error" class="auth-error hidden" style="margin-top:8px"></div>
+        </div>`;
+
+      UI.openModal(html, 'Gestionar accesos');
+
+      document.getElementById('wl-add-btn')?.addEventListener('click', async () => {
+        const emailInput = document.getElementById('wl-new-email');
+        const errEl      = document.getElementById('wl-error');
+        const email      = emailInput?.value?.trim();
+        errEl.classList.add('hidden');
+
+        if (!email) { errEl.textContent = 'Introduce un email.'; errEl.classList.remove('hidden'); return; }
+
+        document.getElementById('wl-add-btn').disabled = true;
+        try {
+          await FirebaseService.addToWhitelist(email);
+          await render();  // refrescar la lista
+        } catch (e) {
+          errEl.textContent = e.message;
+          errEl.classList.remove('hidden');
+          document.getElementById('wl-add-btn').disabled = false;
+        }
+      });
+
+      document.getElementById('wl-new-email')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') document.getElementById('wl-add-btn')?.click();
+      });
+
+      setTimeout(() => document.getElementById('wl-new-email')?.focus(), 50);
+    };
+
+    // Exponer función de eliminación globalmente (necesaria para onclick inline)
+    AuthModule._wlRemove = async (email) => {
+      if (!UI.confirm(`¿Revocar acceso a ${email}? No podrá iniciar sesión.`)) return;
+      try {
+        await FirebaseService.removeFromWhitelist(email);
+        await render();
+      } catch (e) {
+        UI.toast(e.message, 'err');
+      }
+    };
+
+    await render();
+  }
+
+  return { init, launch, _wlRemove: null };
 })();

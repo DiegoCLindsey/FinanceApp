@@ -255,16 +255,43 @@ const FirebaseService = (() => {
     }
   }
 
+  // ── Gestión de lista blanca ───────────────────────────────────────────────────
+
+  async function listWhitelist() {
+    if (!isConnected()) throw new Error('No autenticado en Firebase.');
+    const snap = await _db.collection('whitelist').get();
+    return snap.docs.map(d => ({ email: d.id, ...d.data() }));
+  }
+
+  async function addToWhitelist(email) {
+    if (!isConnected()) throw new Error('No autenticado en Firebase.');
+    const normalized = email.trim().toLowerCase();
+    if (!normalized.includes('@')) throw new Error('Email inválido.');
+    await _db.collection('whitelist').doc(normalized).set({
+      addedAt:  firebase.firestore.FieldValue.serverTimestamp(),
+      addedBy:  _user.email,
+    });
+  }
+
+  async function removeFromWhitelist(email) {
+    if (!isConnected()) throw new Error('No autenticado en Firebase.');
+    const normalized = email.trim().toLowerCase();
+    if (normalized === _user.email.toLowerCase()) {
+      throw new Error('No puedes eliminarte a ti mismo de la lista.');
+    }
+    await _db.collection('whitelist').doc(normalized).delete();
+  }
+
   // ── Actualizar passphrase en memoria (sin re-autenticar) ─────────────────────
-  // Útil si el usuario quiere re-descifrar con una passphrase diferente.
   function setPassphrase(passphrase) {
     _passphrase = passphrase;
   }
 
   return {
-    isConfigured, getConfig, hasSavedSession, savedEmail,
+    isConfigured, getConfig, hasInjectedConfig, hasSavedSession, savedEmail,
     isConnected, currentUserEmail,
     login, register, logout, forget,
     uploadBackup, downloadBackup, setPassphrase,
+    listWhitelist, addToWhitelist, removeFromWhitelist,
   };
 })();
