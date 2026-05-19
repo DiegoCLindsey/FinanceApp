@@ -8,7 +8,7 @@ const RentasModule = (() => {
     if (!view) return;
     view.innerHTML = `
       <div class="page-header">
-        <h1 class="page-title">Rentas <span>Fiscales</span></h1>
+        <h1 class="page-title">Fiscalidad</h1>
       </div>
       <div style="display:flex;gap:0;margin-bottom:24px;border-bottom:1px solid var(--border)">
         ${_tabBtn('mobiliario', '📈 Capital Mobiliario')}

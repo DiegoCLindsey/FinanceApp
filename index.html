@@ -226,34 +226,53 @@
         <span class="logo-text" style="font-size:15px">Finance<span class="logo-accent">App</span></span>
       </div>
       <ul class="nav-list">
-        <li><button class="nav-btn active" data-view="dashboard">
-          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-          <span>Dashboard</span>
-        </button></li>
-        <li><button class="nav-btn" data-view="loans">
-          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1.41 16.09V20h-2.67v-1.93c-1.71-.36-3.16-1.46-3.27-3.4h1.96c.1 1.05.82 1.87 2.65 1.87 1.96 0 2.4-.98 2.4-1.59 0-.83-.44-1.61-2.67-2.14-2.48-.6-4.18-1.62-4.18-3.67 0-1.72 1.39-2.84 3.11-3.21V4h2.67v1.95c1.86.45 2.79 1.86 2.85 3.39H14.3c-.05-1.11-.64-1.87-2.22-1.87-1.5 0-2.4.68-2.4 1.64 0 .84.65 1.39 2.67 1.91s4.18 1.39 4.18 3.91c-.01 1.83-1.38 2.83-3.12 3.16z"/></svg>
-          <span>Préstamos</span>
-        </button></li>
-        <li><button class="nav-btn" data-view="expenses">
-          <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z"/></svg>
-          <span>Movimientos esperados</span>
-        </button></li>
-        <li><button class="nav-btn" data-view="accounts">
-          <svg viewBox="0 0 24 24"><path d="M4 10v7h3v-7H4zm6.5 0v7h3v-7h-3zM2 22h19v-3H2v3zm15-12v7h3v-7h-3zM11.5 1L2 6v2h19V6l-9.5-5z"/></svg>
-          <span>Capital Mobiliario</span>
-        </button></li>
-        <li><button class="nav-btn" data-view="nominas">
-          <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
-          <span>Rendimientos del Trabajo</span>
-        </button></li>
-        <li><button class="nav-btn" data-view="inflacion">
-          <svg viewBox="0 0 24 24"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>
-          <span>Inflación</span>
-        </button></li>
-        <li><button class="nav-btn" data-view="escenarios">
-          <svg viewBox="0 0 24 24"><path d="M17 8C8 10 5.9 16.17 3.82 21h2.24c.38-1.35.86-2.63 1.47-3.8C9.44 16.16 12.05 15 16 15c-.02 3.31-.02 6 0 9h2V9l-1-1zm-4.5 3.5l-1.5 1.5L12.5 14H10v-2.5L8.5 10 10 8.5V6h2.5l1.5-1.5L15.5 6H18v2.5L19.5 10 18 11.5V14h-2.5l-1-1z"/></svg>
-          <span>Escenarios</span>
-        </button></li>
+
+        <!-- ── INICIO ─────────────────────────────────────── -->
+        <li class="nav-section">
+          <button class="nav-btn active" data-view="dashboard">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <span>Dashboard</span>
+          </button>
+        </li>
+
+        <!-- ── MI DINERO ──────────────────────────────────── -->
+        <li class="nav-section">
+          <span class="nav-section-label">Mi dinero</span>
+          <button class="nav-btn" data-view="expenses">
+            <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z"/></svg>
+            <span>Gastos e Ingresos</span>
+          </button>
+          <button class="nav-btn" data-view="loans">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1.41 16.09V20h-2.67v-1.93c-1.71-.36-3.16-1.46-3.27-3.4h1.96c.1 1.05.82 1.87 2.65 1.87 1.96 0 2.4-.98 2.4-1.59 0-.83-.44-1.61-2.67-2.14-2.48-.6-4.18-1.62-4.18-3.67 0-1.72 1.39-2.84 3.11-3.21V4h2.67v1.95c1.86.45 2.79 1.86 2.85 3.39H14.3c-.05-1.11-.64-1.87-2.22-1.87-1.5 0-2.4.68-2.4 1.64 0 .84.65 1.39 2.67 1.91s4.18 1.39 4.18 3.91c-.01 1.83-1.38 2.83-3.12 3.16z"/></svg>
+            <span>Préstamos</span>
+          </button>
+          <button class="nav-btn" data-view="nominas">
+            <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
+            <span>Nóminas</span>
+          </button>
+          <button class="nav-btn" data-view="accounts">
+            <svg viewBox="0 0 24 24"><path d="M4 10v7h3v-7H4zm6.5 0v7h3v-7h-3zM2 22h19v-3H2v3zm15-12v7h3v-7h-3zM11.5 1L2 6v2h19V6l-9.5-5z"/></svg>
+            <span>Cuentas y Ahorro</span>
+          </button>
+        </li>
+
+        <!-- ── PLANIFICACIÓN ───────────────────────────────── -->
+        <li class="nav-section">
+          <span class="nav-section-label">Planificación</span>
+          <button class="nav-btn" data-view="escenarios">
+            <svg viewBox="0 0 24 24"><path d="M17 8C8 10 5.9 16.17 3.82 21h2.24c.38-1.35.86-2.63 1.47-3.8C9.44 16.16 12.05 15 16 15c-.02 3.31-.02 6 0 9h2V9l-1-1zm-4.5 3.5l-1.5 1.5L12.5 14H10v-2.5L8.5 10 10 8.5V6h2.5l1.5-1.5L15.5 6H18v2.5L19.5 10 18 11.5V14h-2.5l-1-1z"/></svg>
+            <span>Escenarios</span>
+          </button>
+          <button class="nav-btn" data-view="inflacion">
+            <svg viewBox="0 0 24 24"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>
+            <span>Inflación</span>
+          </button>
+          <button class="nav-btn" data-view="rentas">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11zM8 15h8v2H8v-2zm0-4h8v2H8v-2zm0-4h4v2H8V7z"/></svg>
+            <span>Fiscalidad</span>
+          </button>
+        </li>
+
       </ul>
       <div class="sidebar-footer">
         <button id="btn-data-mgmt" class="nav-btn" title="Exportar, importar, guardar en la nube">
@@ -297,6 +316,7 @@
         <div id="view-nominas"   class="view hidden"></div>
         <div id="view-inflacion"  class="view hidden"></div>
         <div id="view-escenarios" class="view hidden"></div>
+        <div id="view-rentas"    class="view hidden"></div>
       </main>
     </div>
   </div><!-- /#main-shell -->
@@ -376,6 +396,7 @@
 <script src="nominas/nominas.js"></script>
 <script src="inflacion/inflacion.js"></script>
 <script src="escenarios/escenarios.js"></script>
+<script src="rentas/rentas.js"></script>
 <script src="dashboard/history.js"></script>
 <script src="dashboard/dashboard.js"></script>
 <script src="onboarding/onboarding.js"></script>

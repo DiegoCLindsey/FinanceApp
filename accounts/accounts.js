@@ -163,7 +163,7 @@ const AccountsModule = (() => {
         </div>
         ${limiteAnual ? `<div class="flex justify-between mb-5"><span class="text-sm" style="color:var(--text2)">Límite exención</span><span class="num">${FinanceMath.eur(limiteAnual)}/año</span></div>` : ''}
         ${ahorroFiscal > 0 ? `<div class="flex justify-between mb-5"><span class="text-sm" style="color:var(--text2)">Ahorro IRPF estimado</span><span class="num pos" title="Importe exento × tipo marginal">≈ ${FinanceMath.eur(ahorroFiscal)}/año</span></div>` : ''}
-        ${recargas.length > 0 ? recargas.map(r => `<div style="font-size:11px;color:var(--text3)">↩ ${r.nomina}: ${FinanceMath.eur(r.importe)}/mes</div>`).join('') : '<div style="font-size:11px;color:var(--yellow)">Sin nómina vinculada — confígurala en Rendimientos del Trabajo.</div>'}
+        ${recargas.length > 0 ? recargas.map(r => `<div style="font-size:11px;color:var(--text3)">↩ ${r.nomina}: ${FinanceMath.eur(r.importe)}/mes</div>`).join('') : '<div style="font-size:11px;color:var(--yellow)">Sin nómina vinculada — confígurala en Nóminas.</div>'}
       </div>`;
     })() : '';
 
@@ -246,7 +246,7 @@ const AccountsModule = (() => {
             ${totalReembolsos > 0 ? `<div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">Total reembolsos</span><span class="num neg">${FinanceMath.eur(totalReembolsos)}</span></div>` : ''}
             ${totalRetencion > 0 ? `<div class="flex justify-between mt-4"><span class="text-sm" style="color:var(--text2)">Retención estimada (art. 101)</span><span class="num neg">${FinanceMath.eur(totalRetencion)}</span></div>` : (tOut.length ? `<div style="font-size:10px;color:var(--text3);margin-top:4px">⚠ Los reembolsos generan retención sobre plusvalía proporcional</div>` : '')}
           </div>
-        </div>` : `<div style="font-size:10px;color:var(--text3);margin-top:6px">Gestiona aportaciones/reembolsos en <em>Movimientos esperados</em> → tipo Transferencia</div>`;
+        </div>` : `<div style="font-size:10px;color:var(--text3);margin-top:6px">Gestiona aportaciones/reembolsos en <em>Gastos e Ingresos</em> → tipo Transferencia</div>`;
 
       const modo = _invModo[acc._id] || 'proyeccion';
       const btnStyle = (active) => `padding:3px 10px;border-radius:20px;border:1px solid ${active?'var(--accent)':'var(--border)'};background:${active?'var(--accent-dim)':'transparent'};color:${active?'var(--accent)':'var(--text3)'};cursor:pointer;font-size:11px`;
