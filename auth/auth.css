@@ -34,3 +34,22 @@
   font-family: var(--font-mono); font-size: 13px; font-weight: 700;
   color: var(--text); margin-bottom: 14px; letter-spacing: -0.3px;
 }
+
+/* ---- Firebase button ---- */
+.btn-firebase {
+  padding: 11px 18px; background: #FF6D00; color: #fff;
+  border: none; border-radius: var(--radius); font-family: var(--font-sans);
+  font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+  white-space: nowrap; display: flex; align-items: center; justify-content: center;
+}
+.btn-firebase:hover { background: #E65100; }
+.btn-firebase:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- Auth mode toggle (login / register) ---- */
+.auth-mode-toggle { display: flex; gap: 4px; margin-bottom: 16px; background: var(--bg3); border-radius: var(--radius); padding: 3px; }
+.auth-mode-toggle button { flex: 1; padding: 6px; border: none; background: transparent; color: var(--text2); font-family: var(--font-sans); font-size: 12px; cursor: pointer; border-radius: 5px; transition: all 0.15s; }
+.auth-mode-toggle button.active { background: var(--bg2); color: var(--text); font-weight: 500; }
+
+/* ---- Config textarea ---- */
+.auth-textarea { padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font-mono); font-size: 11px; outline: none; transition: border-color 0.15s; width: 100%; resize: vertical; min-height: 90px; line-height: 1.5; }
+.auth-textarea:focus { border-color: var(--accent); }

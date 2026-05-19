@@ -1,4 +1,4 @@
-// Depends on: State, UI, Router, OnboardingModule
+// Depends on: State, UI, Router, OnboardingModule, FirebaseService
 const DataIO = (() => {
 
   // ── Export ──────────────────────────────────────────────────────────────────
@@ -130,6 +130,81 @@ const DataIO = (() => {
     document.getElementById('welcome-overlay')?.classList.add('hidden');
   }
 
+  // ── Firebase: subir backup manualmente ───────────────────────────────────────
+  async function pushToFirebase() {
+    if (!FirebaseService.isConnected()) {
+      UI.toast('No estás conectado a Firebase.', 'err'); return;
+    }
+    try {
+      await FirebaseService.uploadBackup();
+      UI.toast('Datos guardados en Firebase ✓');
+    } catch (err) {
+      UI.toast('Error al guardar en Firebase: ' + err.message, 'err');
+    }
+  }
+
+  // ── Firebase: descargar y aplicar backup ──────────────────────────────────────
+  async function pullFromFirebase() {
+    if (!FirebaseService.isConnected()) {
+      UI.toast('No estás conectado a Firebase.', 'err'); return;
+    }
+    try {
+      const backup = await FirebaseService.downloadBackup();
+      if (!backup) { UI.toast('No hay backup en Firebase todavía.', 'warn'); return; }
+      if (!window.confirm('¿Sustituir los datos locales con el backup de Firebase?')) return;
+      await applyImport(backup);
+    } catch (err) {
+      UI.toast('Error al descargar de Firebase: ' + err.message, 'err');
+    }
+  }
+
+  // ── Firebase → JSON: exportar backup remoto a archivo local ──────────────────
+  async function exportFirebaseToJSON() {
+    if (!FirebaseService.isConnected()) {
+      UI.toast('No estás conectado a Firebase.', 'err'); return;
+    }
+    try {
+      const backup = await FirebaseService.downloadBackup();
+      if (!backup) { UI.toast('No hay backup en Firebase todavía.', 'warn'); return; }
+      const snapshot = {
+        _v: 2, _app: 'financeapp', _ts: new Date().toISOString(), ...backup,
+      };
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `financeapp-firebase-${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      UI.toast('Backup de Firebase exportado a JSON ✓');
+    } catch (err) {
+      UI.toast('Error al exportar de Firebase: ' + err.message, 'err');
+    }
+  }
+
+  // ── JSON → Firebase: importar archivo local y subirlo cifrado ────────────────
+  async function importJSONToFirebase(file) {
+    if (!FirebaseService.isConnected()) {
+      UI.toast('No estás conectado a Firebase.', 'err'); return;
+    }
+    if (!file || !file.name.endsWith('.json')) {
+      UI.toast('Selecciona un archivo .json', 'err'); return;
+    }
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data || typeof data !== 'object') { UI.toast('Archivo inválido', 'err'); return; }
+      if (!window.confirm('¿Subir este archivo a Firebase y sobrescribir el backup remoto?')) return;
+      // Aplicar localmente primero
+      await applyImport(data);
+      // Luego subir
+      await FirebaseService.uploadBackup();
+      UI.toast('Datos importados y subidos a Firebase ✓');
+    } catch (err) {
+      UI.toast('Error: ' + err.message, 'err');
+    }
+  }
+
   // ── Wire up all buttons & drag events ────────────────────────────────────────
   function init() {
     // Sidebar export
@@ -141,6 +216,17 @@ const DataIO = (() => {
     sidebarInput?.addEventListener('change', e => {
       const f = e.target.files?.[0]; if (f) importFromFile(f);
       sidebarInput.value = '';
+    });
+
+    // Firebase buttons
+    document.getElementById('btn-fbx-push')?.addEventListener('click', pushToFirebase);
+    document.getElementById('btn-fbx-pull')?.addEventListener('click', pullFromFirebase);
+    document.getElementById('btn-fbx-export-json')?.addEventListener('click', exportFirebaseToJSON);
+    const fbxImportInput = document.getElementById('fbx-import-file-input');
+    document.getElementById('btn-fbx-import-json')?.addEventListener('click', () => fbxImportInput?.click());
+    fbxImportInput?.addEventListener('change', e => {
+      const f = e.target.files?.[0]; if (f) importJSONToFirebase(f);
+      fbxImportInput.value = '';
     });
 
     // Welcome overlay buttons
@@ -185,5 +271,8 @@ const DataIO = (() => {
     });
   }
 
-  return { init, exportJSON, importFromFile, hasData, showWelcomeIfEmpty, hideWelcome };
+  return {
+    init, exportJSON, importFromFile, hasData, showWelcomeIfEmpty, hideWelcome,
+    pushToFirebase, pullFromFirebase, exportFirebaseToJSON, importJSONToFirebase,
+  };
 })();

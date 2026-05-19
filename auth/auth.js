@@ -1,7 +1,8 @@
 // ==================== AUTH ====================
 // Depends on: CryptoService (common/crypto.js), StorageAdapter (common/storage.js),
 //             State (common/state.js), UI (ui/ui.js),
-//             DataIO (data-io/data-io.js), Router (router/router.js)
+//             DataIO (data-io/data-io.js), Router (router/router.js),
+//             FirebaseService (firebase/firebase-service.js)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GOOGLE DRIVE — DESACTIVADO
@@ -230,9 +231,17 @@ const DropboxService = (() => {
 // ─────────────────────────────────────────────────────────────────────────────
 const AuthModule = (() => {
 
+  const ALL_STEPS = [
+    'auth-step-select',
+    'auth-step-dropbox',
+    'auth-step-unlock',
+    'auth-step-firebase-setup',
+    'auth-step-firebase-unlock',
+  ];
+
   // ── Helpers de UI ─────────────────────────────────────────────────────────────
   function _showStep(id) {
-    ['auth-step-select', 'auth-step-dropbox', 'auth-step-unlock'].forEach(s => {
+    ALL_STEPS.forEach(s => {
       document.getElementById(s)?.classList.toggle('hidden', s !== id);
     });
   }
@@ -254,7 +263,7 @@ const AuthModule = (() => {
     // Mostrar overlay de auth al arrancar
     document.getElementById('auth-overlay').classList.remove('hidden');
 
-    // ── Modal de instrucciones ─────────────────────────────────────────────────
+    // ── Modal de instrucciones Dropbox ────────────────────────────────────────
     document.getElementById('btn-dbx-help')?.addEventListener('click', () => {
       document.getElementById('dbx-help-overlay')?.classList.remove('hidden');
     });
@@ -262,7 +271,22 @@ const AuthModule = (() => {
       document.getElementById('dbx-help-overlay')?.classList.add('hidden');
     });
 
-    // ── ¿Hay sesión guardada? → ir directamente al desbloqueo ─────────────────
+    // ── Modal de instrucciones Firebase ───────────────────────────────────────
+    document.getElementById('btn-fbx-help')?.addEventListener('click', () => {
+      document.getElementById('fbx-help-overlay')?.classList.remove('hidden');
+    });
+    document.getElementById('btn-fbx-help-close')?.addEventListener('click', () => {
+      document.getElementById('fbx-help-overlay')?.classList.add('hidden');
+    });
+
+    // ── ¿Hay sesión Firebase guardada? ────────────────────────────────────────
+    if (FirebaseService.hasSavedSession()) {
+      _showStep('auth-step-firebase-unlock');
+      _wireFirebaseUnlockStep();
+      return;
+    }
+
+    // ── ¿Hay sesión Dropbox guardada? ─────────────────────────────────────────
     if (DropboxService.hasSavedSession()) {
       _showStep('auth-step-unlock');
       _wireUnlockStep();
@@ -277,8 +301,13 @@ const AuthModule = (() => {
       _wireDropboxStep();
     });
 
+    document.getElementById('btn-firebase')?.addEventListener('click', () => {
+      _showStep('auth-step-firebase-setup');
+      _wireFirebaseSetupStep();
+    });
+
     document.getElementById('btn-local')?.addEventListener('click', () => {
-      launch(false);
+      launch('local');
     });
   }
 
@@ -313,7 +342,7 @@ const AuthModule = (() => {
           UI.toast('Dropbox conectado. Sin backup previo — empezando desde cero.');
         }
 
-        await launch(true);
+        await launch('dropbox');
       } catch (err) {
         _err('dbx-error', err.message);
       } finally {
@@ -365,7 +394,7 @@ const AuthModule = (() => {
           UI.toast('Datos sincronizados desde Dropbox ✓');
         }
 
-        await launch(true);
+        await launch('dropbox');
       } catch (err) {
         _err('dbx-unlock-error', err.message);
       } finally {
@@ -387,16 +416,181 @@ const AuthModule = (() => {
     setTimeout(() => document.getElementById('dbx-unlock-passphrase')?.focus(), 50);
   }
 
+  // ── Paso: configuración inicial Firebase ──────────────────────────────────────
+  function _wireFirebaseSetupStep() {
+    _err('fbx-setup-error', '');
+
+    // Prerellenar con config guardada si existe
+    const savedCfg = FirebaseService.getConfig();
+    if (savedCfg) {
+      const ta = document.getElementById('fbx-config-json');
+      if (ta) ta.value = JSON.stringify(savedCfg, null, 2);
+    }
+
+    document.getElementById('btn-firebase-back')?.addEventListener('click', () => {
+      _showStep('auth-step-select');
+    });
+
+    // Toggle login / registro
+    const btnLogin    = document.getElementById('fbx-mode-login');
+    const btnRegister = document.getElementById('fbx-mode-register');
+    const passConfirm = document.getElementById('fbx-passphrase-confirm-row');
+    let mode = 'login';
+
+    const setMode = (m) => {
+      mode = m;
+      btnLogin?.classList.toggle('active', m === 'login');
+      btnRegister?.classList.toggle('active', m === 'register');
+      passConfirm?.classList.toggle('hidden', m !== 'register');
+      document.getElementById('btn-firebase-connect').textContent =
+        m === 'register' ? 'Registrar y continuar' : 'Entrar';
+    };
+    btnLogin?.addEventListener('click',    () => setMode('login'));
+    btnRegister?.addEventListener('click', () => setMode('register'));
+    setMode('login');
+
+    const doConnect = async () => {
+      _err('fbx-setup-error', '');
+      const configText = document.getElementById('fbx-config-json')?.value?.trim();
+      const email      = document.getElementById('fbx-email')?.value?.trim();
+      const password   = document.getElementById('fbx-password')?.value;
+      const passphrase = document.getElementById('fbx-passphrase')?.value;
+      const passConf   = document.getElementById('fbx-passphrase-confirm')?.value;
+
+      if (!configText) { _err('fbx-setup-error', 'Pega la configuración de tu proyecto Firebase.'); return; }
+      if (!email)      { _err('fbx-setup-error', 'Introduce tu email.'); return; }
+      if (!password)   { _err('fbx-setup-error', 'Introduce tu contraseña.'); return; }
+      if (!passphrase) { _err('fbx-setup-error', 'Introduce una clave de cifrado para tus datos.'); return; }
+
+      let config;
+      try { config = JSON.parse(configText); } catch {
+        _err('fbx-setup-error', 'El JSON de configuración no es válido.'); return;
+      }
+      if (!config.apiKey || !config.projectId) {
+        _err('fbx-setup-error', 'Faltan campos obligatorios en la configuración (apiKey, projectId).'); return;
+      }
+
+      if (mode === 'register') {
+        if (passphrase !== passConf) { _err('fbx-setup-error', 'Las claves de cifrado no coinciden.'); return; }
+      }
+
+      _setBusy('btn-firebase-connect', true, mode === 'register' ? 'Registrar y continuar' : 'Entrar');
+      try {
+        if (mode === 'register') {
+          await FirebaseService.register(config, email, password, passphrase);
+        } else {
+          await FirebaseService.login(config, email, password, passphrase);
+        }
+
+        const backup = await FirebaseService.downloadBackup();
+        if (backup) {
+          for (const [k, v] of Object.entries(backup)) {
+            if (v !== undefined) StorageAdapter.set('state_' + k, v);
+          }
+          UI.toast('Datos cargados desde Firebase ✓');
+        } else {
+          UI.toast('Firebase conectado. Sin backup previo.');
+        }
+
+        await launch('firebase');
+      } catch (err) {
+        _err('fbx-setup-error', err.message);
+      } finally {
+        _setBusy('btn-firebase-connect', true, mode === 'register' ? 'Registrar y continuar' : 'Entrar');
+        _setBusy('btn-firebase-connect', false, mode === 'register' ? 'Registrar y continuar' : 'Entrar');
+      }
+    };
+
+    document.getElementById('btn-firebase-connect')?.addEventListener('click', doConnect);
+    document.getElementById('fbx-passphrase')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') doConnect();
+    });
+
+    setTimeout(() => document.getElementById('fbx-email')?.focus(), 50);
+  }
+
+  // ── Paso: desbloqueo de sesión Firebase guardada ─────────────────────────────
+  function _wireFirebaseUnlockStep() {
+    _err('fbx-unlock-error', '');
+
+    // Prerellenar email
+    const emailEl = document.getElementById('fbx-unlock-email');
+    if (emailEl) emailEl.value = FirebaseService.savedEmail();
+
+    const doUnlock = async () => {
+      _err('fbx-unlock-error', '');
+      const email      = document.getElementById('fbx-unlock-email')?.value?.trim();
+      const password   = document.getElementById('fbx-unlock-password')?.value;
+      const passphrase = document.getElementById('fbx-unlock-passphrase')?.value;
+
+      if (!password)   { _err('fbx-unlock-error', 'Introduce tu contraseña de Firebase.'); return; }
+      if (!passphrase) { _err('fbx-unlock-error', 'Introduce tu clave de cifrado.'); return; }
+
+      _setBusy('btn-firebase-unlock', true, 'Entrar');
+      try {
+        const config = FirebaseService.getConfig();
+        if (!config) throw new Error('Configuración de Firebase no encontrada. Usa "Cambiar cuenta".');
+
+        await FirebaseService.login(config, email, password, passphrase);
+
+        const backup = await FirebaseService.downloadBackup();
+        if (backup) {
+          for (const [k, v] of Object.entries(backup)) {
+            if (v !== undefined) StorageAdapter.set('state_' + k, v);
+          }
+          UI.toast('Datos sincronizados desde Firebase ✓');
+        }
+
+        await launch('firebase');
+      } catch (err) {
+        _err('fbx-unlock-error', err.message);
+      } finally {
+        _setBusy('btn-firebase-unlock', false, 'Entrar');
+      }
+    };
+
+    document.getElementById('btn-firebase-unlock')?.addEventListener('click', doUnlock);
+    document.getElementById('fbx-unlock-passphrase')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') doUnlock();
+    });
+
+    document.getElementById('btn-firebase-forget')?.addEventListener('click', async () => {
+      await FirebaseService.forget();
+      _showStep('auth-step-firebase-setup');
+      _wireFirebaseSetupStep();
+    });
+
+    setTimeout(() => document.getElementById('fbx-unlock-password')?.focus(), 50);
+  }
+
   // ── Launch: arrancar la app ────────────────────────────────────────────────────
-  async function launch(withDropbox) {
+  // mode: 'local' | 'dropbox' | 'firebase'
+  async function launch(mode) {
     await State.load();
+
+    // Guardar modo de almacenamiento en config
+    const cfg = State.get('config');
+    if (cfg.storageMode !== mode) {
+      cfg.storageMode = mode;
+      State.set('config', cfg);
+    }
+
     document.getElementById('auth-overlay').classList.add('hidden');
     document.getElementById('main-shell').classList.remove('hidden');
     PeriodBar.init(State.get('config'));
 
-    if (withDropbox && DropboxService.isConnected()) {
+    if (mode === 'dropbox' && DropboxService.isConnected()) {
       document.getElementById('btn-dbx-save').classList.remove('hidden');
       document.getElementById('btn-dbx-disconnect').classList.remove('hidden');
+    }
+
+    if (mode === 'firebase' && FirebaseService.isConnected()) {
+      ['btn-fbx-save','btn-fbx-pull','btn-fbx-push','btn-fbx-export-json',
+       'btn-fbx-import-json','btn-fbx-disconnect'].forEach(id => {
+        document.getElementById(id)?.classList.remove('hidden');
+      });
+      const emailEl = document.getElementById('fbx-user-email');
+      if (emailEl) emailEl.textContent = FirebaseService.currentUserEmail();
     }
 
     // Botón guardar en Dropbox
@@ -422,10 +616,37 @@ const AuthModule = (() => {
       UI.toast('Dropbox desconectado');
     });
 
+    // Botón guardar en Firebase
+    document.getElementById('btn-fbx-save')?.addEventListener('click', async () => {
+      const label = document.getElementById('fbx-save-label');
+      label.textContent = '⏳ Guardando…';
+      try {
+        await FirebaseService.uploadBackup();
+        UI.toast('Backup guardado en Firebase ✓');
+      } catch (err) {
+        UI.toast('Error Firebase: ' + err.message, 'err');
+      } finally {
+        label.textContent = '🔥 Firebase';
+      }
+    });
+
+    // Botón desconectar Firebase
+    document.getElementById('btn-fbx-disconnect')?.addEventListener('click', async () => {
+      if (!UI.confirm('¿Cerrar sesión de Firebase? Los datos en la nube no se borrarán.')) return;
+      await FirebaseService.logout();
+      ['btn-fbx-save','btn-fbx-pull','btn-fbx-push','btn-fbx-export-json',
+       'btn-fbx-import-json','btn-fbx-disconnect'].forEach(id => {
+        document.getElementById(id)?.classList.add('hidden');
+      });
+      const emailEl = document.getElementById('fbx-user-email');
+      if (emailEl) emailEl.textContent = '';
+      UI.toast('Firebase: sesión cerrada');
+    });
+
     DataIO.init();
     Router.init();
     DataIO.showWelcomeIfEmpty();
   }
 
-  return { init };
+  return { init, launch };
 })();

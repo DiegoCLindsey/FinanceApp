@@ -46,9 +46,12 @@
       <!-- Paso 1: selector de método -->
       <div id="auth-step-select">
         <p style="font-size:13px;color:var(--text2);margin-bottom:18px;line-height:1.6">
-          Tus datos se guardan <strong>solo en tu dispositivo</strong>.
-          Conecta Dropbox para backup cifrado y sincronización entre dispositivos.
+          Elige cómo quieres guardar y sincronizar tus datos financieros.
         </p>
+        <button id="btn-firebase" class="btn-firebase full-width" style="margin-bottom:10px">
+          <svg viewBox="0 0 24 24" style="width:17px;height:17px;vertical-align:middle;margin-right:8px;flex-shrink:0"><path fill="currentColor" d="M3.89 15.672L6.255.461A.542.542 0 017.27.288l2.543 4.771zm16.794 3.692l-2.25-14a.54.54 0 00-.919-.295L3.316 19.365l7.856 4.427a1.621 1.621 0 001.588 0zM14.3 7.147l-1.82-3.482a.542.542 0 00-.96 0L3.53 17.984z"/></svg>
+          Iniciar sesión con Firebase
+        </button>
         <button id="btn-dropbox" class="btn-dropbox full-width" style="margin-bottom:10px">
           <svg viewBox="0 0 24 24" style="width:17px;height:17px;vertical-align:middle;margin-right:8px;flex-shrink:0"><path fill="currentColor" d="M6 2L0 6l6 4-6 4 6 4 6-4-6-4 6-4L6 2zm12 0l-6 4 6 4-6 4 6 4 6-4-6-4 6-4-6-4zm-6 10.5L6 16l6 4 6-4-6-3.5z"/></svg>
           Usar Dropbox
@@ -61,7 +64,71 @@
         <button id="btn-local" class="btn-secondary full-width">Solo local (sin backup)</button>
       </div>
 
-      <!-- Paso 2: formulario Dropbox (primera vez) -->
+      <!-- Paso 2a: formulario Firebase (primera vez / configuración) -->
+      <div id="auth-step-firebase-setup" class="hidden">
+        <button id="btn-firebase-back" class="auth-back-btn" style="margin-bottom:16px">← Volver</button>
+        <div class="auth-section-title">Conectar con Firebase</div>
+
+        <!-- Toggle login / registro -->
+        <div class="auth-mode-toggle">
+          <button id="fbx-mode-login" class="active">Iniciar sesión</button>
+          <button id="fbx-mode-register">Registrarse</button>
+        </div>
+
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label">Configuración del proyecto Firebase</label>
+          <textarea id="fbx-config-json" class="auth-textarea" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}'></textarea>
+          <div class="auth-hint" style="margin-top:6px">
+            Firebase Console → tu proyecto →
+            <strong>Configuración del proyecto</strong> → <strong>Tus apps</strong> → copia el objeto <code>firebaseConfig</code>.
+            Ver <span id="btn-fbx-help" style="color:var(--accent);cursor:pointer;text-decoration:underline">instrucciones</span>.
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label">Email</label>
+          <input type="email" id="fbx-email" class="auth-input" placeholder="tu@email.com" autocomplete="email"/>
+        </div>
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label">Contraseña de Firebase</label>
+          <input type="password" id="fbx-password" class="auth-input" placeholder="Contraseña de tu cuenta Firebase" autocomplete="current-password"/>
+        </div>
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label">Clave de cifrado de datos</label>
+          <input type="password" id="fbx-passphrase" class="auth-input" placeholder="Contraseña para cifrar tus datos localmente"/>
+          <div class="auth-hint" style="margin-top:6px">
+            🔐 Esta clave cifra tus datos <strong>antes</strong> de subirlos. Firebase nunca los ve en claro.
+            Ni el administrador puede leerlos sin esta clave. <strong>No la pierdas.</strong>
+          </div>
+        </div>
+        <div id="fbx-passphrase-confirm-row" class="form-group hidden" style="margin-bottom:8px">
+          <label class="form-label">Confirmar clave de cifrado</label>
+          <input type="password" id="fbx-passphrase-confirm" class="auth-input" placeholder="Repite la clave de cifrado"/>
+        </div>
+        <button id="btn-firebase-connect" class="btn-firebase full-width" style="margin-top:4px">Entrar</button>
+        <div id="fbx-setup-error" class="auth-error hidden" style="margin-top:8px"></div>
+      </div>
+
+      <!-- Paso 2b: desbloqueo Firebase (sesión guardada) -->
+      <div id="auth-step-firebase-unlock" class="hidden">
+        <div class="auth-section-title">Firebase — Iniciar sesión</div>
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label">Email</label>
+          <input type="email" id="fbx-unlock-email" class="auth-input" autocomplete="email"/>
+        </div>
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label">Contraseña de Firebase</label>
+          <input type="password" id="fbx-unlock-password" class="auth-input" placeholder="Contraseña de tu cuenta Firebase" autocomplete="current-password"/>
+        </div>
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label">Clave de cifrado de datos</label>
+          <input type="password" id="fbx-unlock-passphrase" class="auth-input" placeholder="Tu clave de cifrado personal"/>
+        </div>
+        <button id="btn-firebase-unlock" class="btn-firebase full-width">Entrar</button>
+        <button id="btn-firebase-forget" class="btn-secondary full-width" style="margin-top:8px;font-size:12px">Cambiar cuenta / proyecto</button>
+        <div id="fbx-unlock-error" class="auth-error hidden" style="margin-top:8px"></div>
+      </div>
+
+      <!-- Paso 3: formulario Dropbox (primera vez) -->
       <div id="auth-step-dropbox" class="hidden">
         <button id="btn-dropbox-back" class="auth-back-btn" style="margin-bottom:16px">← Volver</button>
         <div class="auth-section-title">Conectar con Dropbox</div>
@@ -87,7 +154,7 @@
         <div id="dbx-error" class="auth-error hidden" style="margin-top:8px"></div>
       </div>
 
-      <!-- Paso 3: desbloqueo (sesión guardada) -->
+      <!-- Paso 4: desbloqueo Dropbox (sesión guardada) -->
       <div id="auth-step-unlock" class="hidden">
         <div class="auth-section-title" id="auth-unlock-title">Desbloquear backup de Dropbox</div>
         <div class="form-group" style="margin-bottom:10px">
@@ -102,6 +169,25 @@
 
     </div><!-- /.auth-card -->
   </div><!-- /#auth-overlay -->
+
+  <!-- Modal instrucciones Firebase -->
+  <div id="fbx-help-overlay" class="auth-overlay hidden" style="z-index:1100">
+    <div class="auth-card" style="max-width:460px">
+      <div class="auth-section-title" style="margin-bottom:14px">Cómo configurar Firebase</div>
+      <ol style="list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:8px;margin-bottom:18px;padding:0">
+        <li style="counter-increment:s;display:flex;gap:10px;font-size:13px;color:var(--text2)"><span style="min-width:20px;height:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:var(--accent);flex-shrink:0;margin-top:1px">1</span><span>Ve a <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent)">console.firebase.google.com</a> y crea un proyecto.</span></li>
+        <li style="counter-increment:s;display:flex;gap:10px;font-size:13px;color:var(--text2)"><span style="min-width:20px;height:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:var(--accent);flex-shrink:0;margin-top:1px">2</span><span>Activa <strong>Authentication</strong> → <strong>Email/Password</strong>.</span></li>
+        <li style="counter-increment:s;display:flex;gap:10px;font-size:13px;color:var(--text2)"><span style="min-width:20px;height:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:var(--accent);flex-shrink:0;margin-top:1px">3</span><span>Activa <strong>Firestore Database</strong> (modo producción).</span></li>
+        <li style="counter-increment:s;display:flex;gap:10px;font-size:13px;color:var(--text2)"><span style="min-width:20px;height:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:var(--accent);flex-shrink:0;margin-top:1px">4</span><span>Copia las <strong>reglas de Firestore</strong> del archivo <code style="background:var(--bg3);padding:1px 5px;border-radius:3px;color:var(--accent)">firebase/firestore.rules</code>.</span></li>
+        <li style="counter-increment:s;display:flex;gap:10px;font-size:13px;color:var(--text2)"><span style="min-width:20px;height:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:var(--accent);flex-shrink:0;margin-top:1px">5</span><span>En <strong>Configuración del proyecto</strong> → <strong>Tus apps</strong> → añade una app web → copia el objeto <code>firebaseConfig</code>.</span></li>
+        <li style="counter-increment:s;display:flex;gap:10px;font-size:13px;color:var(--text2)"><span style="min-width:20px;height:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:var(--accent);flex-shrink:0;margin-top:1px">6</span><span>En Firestore crea la colección <code>whitelist</code> y añade un documento con tu email como ID.</span></li>
+      </ol>
+      <div style="background:var(--accent-dim);border:1px solid rgba(0,229,160,0.2);border-radius:var(--radius);padding:10px 12px;font-size:12px;color:var(--accent);margin-bottom:16px;line-height:1.6">
+        🔐 Tus datos se cifran con AES-256 en tu dispositivo antes de llegar a Firebase. Ni el admin puede leerlos.
+      </div>
+      <button id="btn-fbx-help-close" class="btn-primary full-width">Entendido</button>
+    </div>
+  </div>
 
   <!-- Modal instrucciones Dropbox -->
   <div id="dbx-help-overlay" class="auth-overlay hidden" style="z-index:1100">
@@ -187,6 +273,33 @@
           <svg viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
           <span>Desconectar Dropbox</span>
         </button>
+        <!-- Firebase controls (hidden until logged in) -->
+        <button id="btn-fbx-save" class="nav-btn hidden" title="Guardar backup cifrado en Firebase">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M3.89 15.672L6.255.461A.542.542 0 017.27.288l2.543 4.771zm16.794 3.692l-2.25-14a.54.54 0 00-.919-.295L3.316 19.365l7.856 4.427a1.621 1.621 0 001.588 0zM14.3 7.147l-1.82-3.482a.542.542 0 00-.96 0L3.53 17.984z"/></svg>
+          <span id="fbx-save-label">🔥 Firebase</span>
+        </button>
+        <button id="btn-fbx-pull" class="nav-btn hidden" title="Descargar datos desde Firebase">
+          <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+          <span>Descargar de Firebase</span>
+        </button>
+        <button id="btn-fbx-push" class="nav-btn hidden" title="Subir datos a Firebase">
+          <svg viewBox="0 0 24 24"><path d="M5 15H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-4h-2v4H5v-4zm7-2l-4-4h3V3h2v6h3l-4 4z" transform="rotate(180 12 12)"/></svg>
+          <span>Subir a Firebase</span>
+        </button>
+        <button id="btn-fbx-export-json" class="nav-btn hidden" title="Exportar backup de Firebase a JSON local">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
+          <span>Firebase → JSON</span>
+        </button>
+        <button id="btn-fbx-import-json" class="nav-btn hidden" title="Importar JSON local y subir a Firebase">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 11v3h-2v-3H8l4-4 4 4h-3z"/></svg>
+          <span>JSON → Firebase</span>
+        </button>
+        <input type="file" id="fbx-import-file-input" accept=".json" style="display:none"/>
+        <div id="fbx-user-email" style="font-size:11px;color:var(--text3);padding:4px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+        <button id="btn-fbx-disconnect" class="nav-btn hidden" title="Cerrar sesión de Firebase">
+          <svg viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+          <span>Cerrar sesión Firebase</span>
+        </button>
       </div>
     </nav>
     <div id="sidebar-overlay" class="sidebar-overlay hidden"></div>
@@ -266,6 +379,11 @@
      No bundler, no ES modules — plain global scripts for http.server + GitHub Pages compat.
      ==================================================== -->
 
+<!-- ── Firebase SDK (compat mode — global firebase.* API) ── -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
 <!-- ── Common services (no dependencies) ── -->
 <script src="common/crypto.js"></script>
 <script src="common/storage.js"></script>
@@ -293,6 +411,7 @@
 <script src="router/router.js"></script>
 
 <!-- ── I/O and auth (depend on everything) ── -->
+<script src="firebase/firebase-service.js"></script>
 <script src="data-io/data-io.js"></script>
 <script src="auth/auth.js"></script>
 

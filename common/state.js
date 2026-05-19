@@ -30,6 +30,7 @@ const State = (() => {
       colchonFijo: 0,         // € cuando colchonTipo='fijo'
       escenarioActivo: null,  // _id del escenario activo o null (realidad base)
       activeTagsFilter: [],   // persisted tag filter selection for dashboard
+      storageMode: 'local',   // 'local' | 'firebase' | 'dropbox'
     }
   };
   let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -73,6 +74,7 @@ const State = (() => {
       fechaReferencia: new Date().toISOString().slice(0,10),
       usarInflacion: false,
       escenarioActivo: null,
+      storageMode: 'local',   // 'local' | 'firebase' | 'dropbox'
     };
     for (const [k,v] of Object.entries(cfgDefs)) {
       if (state.config[k] === undefined) state.config[k] = v;
