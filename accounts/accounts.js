@@ -41,7 +41,7 @@ const AccountsModule = (() => {
     const accounts=allAccounts.filter(a => (a.modeloFondo||'cuenta') !== 'pension');
     view.innerHTML=`
       <div class="page-header">
-        <h1 class="page-title">Capital <span>Mobiliario</span></h1>
+        <h1 class="page-title">Cuentas y <span>Ahorro</span></h1>
         <div class="flex gap-8">
           <button class="btn-secondary" id="btn-tramos-ganancias" title="Configurar tramos impuesto ganancias de capital">⚙ Tramos ganancias capital</button>
           <button class="btn-secondary" id="btn-reset-base">↻ Actualizar saldo base</button>
@@ -362,77 +362,89 @@ const AccountsModule = (() => {
     const modeloFondo = acc?.modeloFondo || (acc?.esFondoPension ? 'pension' : 'cuenta');
     _editPlan = [...(acc?.planAportaciones||[])];
 
+    const isEdit = !!id;
+    const escenarios = State.get('escenarios') || [];
     const html=`
       <div class="grid-2">
-        ${UI.input('ac-nombre','Nombre','text',acc?.nombre||'','Ej: Fondo Indexado Vanguard')}
-        ${UI.input('ac-saldo','Saldo actual (€)','number',saldoActual,'5000')}
-      </div>
-      <div class="auth-hint mt-8">Cambiar el <strong>saldo actual</strong> añade automáticamente un registro al histórico con la fecha de hoy.</div>
-      <div class="grid-2 mt-8">
-        ${UI.input('ac-saldo-ini','Saldo inicial (€)','number',acc?.saldoInicial??0,'5000')}
-        ${UI.input('ac-fecha-ini','Fecha saldo inicial','date',acc?.fechaInicialSaldo||new Date().toISOString().slice(0,10))}
-      </div>
-      <div class="auth-hint mt-8">El <strong>saldo inicial</strong> es el punto de arranque del extracto proyectado en el Dashboard.</div>
-      <div class="grid-2 mt-8">
-        ${UI.input('ac-interes','Rentabilidad anual (%)','number',acc?.interes??0,'7')}
-        ${UI.select('ac-periodo','Capitalización',[['diario','Diario'],['semanal','Semanal'],['mensual','Mensual']],acc?.periodoCobro||'mensual')}
-      </div>
-      <div class="form-group mt-8">
-        ${UI.select('ac-modelo','Tipo de cuenta/fondo',[
+        ${UI.input('ac-nombre','Nombre','text',acc?.nombre||'','Ej: Cuenta ING, Fondo Vanguard')}
+        ${UI.select('ac-modelo','Tipo',[
           ['cuenta','Cuenta bancaria'],
-          ['inversion','Fondo de inversión (ganancias de capital)'],
-          ['pension','Plan de pensiones (FIFO + IRPF)'],
-          ['beneficio','Tarjeta beneficio (retribución flexible)'],
+          ['inversion','Fondo de inversión'],
+          ['pension','Plan de pensiones'],
+          ['beneficio','Tarjeta beneficio'],
         ], modeloFondo)}
       </div>
-      <div id="pension-fields" style="${modeloFondo==='pension'?'':'display:none'}">
-        <div class="auth-hint mt-8" style="border-color:var(--yellow)">
-          🔒 <strong>Plan de pensiones:</strong> las aportaciones quedan bloqueadas N meses; al retirar se aplica el % sobre beneficio.
-        </div>
-        <div class="grid-2 mt-8">
-          ${UI.input('ac-bloqueo','Bloqueo (meses)','number',acc?.bloqueoMeses??120,'120')}
-          ${UI.input('ac-impuesto-ret','Impuesto retirada (% beneficio)','number',acc?.impuestoRetirada??24,'24')}
-        </div>
+      <div class="grid-2 mt-8">
+        ${UI.input('ac-saldo','Saldo actual (€)','number',saldoActual,'5000')}
+        ${UI.input('ac-saldo-ini','Saldo inicial (€)','number',acc?.saldoInicial??0,'5000')}
       </div>
-      <div id="inversion-hint" style="${modeloFondo==='inversion'?'':'display:none'}">
-        <div class="auth-hint mt-8" style="border-color:#10b981">
-          📈 <strong>Fondo de inversión:</strong> la tarjeta mostrará plusvalía e impuesto estimado sobre ganancias de capital usando los tramos configurados en Ajustes.
-        </div>
+      <div class="auth-hint mt-8">El <strong>saldo inicial</strong> es el punto de arranque del extracto en el Dashboard. Cambiar el <strong>saldo actual</strong> crea un registro de histórico.</div>
+      <div class="grid-2 mt-8">
+        ${UI.input('ac-interes','Rentabilidad anual (%)','number',acc?.interes??0,'7')}
+        ${UI.input('ac-fecha-ini','Fecha saldo inicial','date',acc?.fechaInicialSaldo||new Date().toISOString().slice(0,10))}
       </div>
-      <div id="beneficio-fields" style="${modeloFondo==='beneficio'?'':'display:none'}">
-        <div class="auth-hint mt-8" style="border-color:var(--accent)">
-          🎫 <strong>Tarjeta beneficio:</strong> se recarga mensualmente desde la nómina. Los gastos (metro, restaurante) se registran como movimientos sobre esta cuenta.
-        </div>
-        <div class="form-group mt-8">
-          ${UI.select('ac-tipo-beneficio','Tipo de beneficio',[
-            ['transporte','Transporte (límite €1.500/año)'],
-            ['restaurante','Restaurante (límite €11/día)'],
-            ['otros','Otros beneficios'],
-          ], acc?.tipoBeneficio||'transporte')}
-        </div>
-      </div>
-      <script>
-        document.getElementById('ac-modelo').onchange = function() {
-          document.getElementById('pension-fields').style.display   = this.value==='pension'   ? '' : 'none';
-          document.getElementById('inversion-hint').style.display   = this.value==='inversion' ? '' : 'none';
-          document.getElementById('beneficio-fields').style.display = this.value==='beneficio' ? '' : 'none';
-        };
-      <\/script>
-      <div class="form-group mt-12">
-        <label class="form-label">Aportaciones programadas</label>
-        <div id="aport-container">${_planAportacionesHtml(_editPlan)}</div>
-      </div>
-      <div class="form-group mt-8"><label class="form-label">Descripción</label><input class="form-input" type="text" id="ac-desc" value="${acc?.descripcion||''}" placeholder="Fondo indexado global..."/></div>
       <div class="form-row mt-8">
         <label class="form-label">Activa</label><label class="toggle"><input type="checkbox" id="ac-activo" ${acc?.activo!==false?'checked':''}/><span class="toggle-slider"></span></label>
-        <label class="form-label" style="margin-left:12px">Simulación</label><label class="toggle"><input type="checkbox" id="ac-sim" ${acc?.simulacion?'checked':''}/><span class="toggle-slider"></span></label>
       </div>
-      ${EscenariosModule.checkboxesHtml(acc?.escenarioIds||[])}
+
+      <details class="form-advanced mt-12" ${isEdit ? 'open' : ''}>
+        <summary class="form-advanced-summary">Opciones</summary>
+        <div class="form-advanced-body">
+          <div class="mt-8">
+            ${UI.select('ac-periodo','Capitalización',[['diario','Diario'],['semanal','Semanal'],['mensual','Mensual']],acc?.periodoCobro||'mensual')}
+          </div>
+          <div id="pension-fields" style="${modeloFondo==='pension'?'':'display:none'}">
+            <div class="auth-hint mt-8" style="border-color:var(--yellow)">
+              🔒 <strong>Plan de pensiones:</strong> las aportaciones quedan bloqueadas N meses; al retirar se aplica el % sobre beneficio.
+            </div>
+            <div class="grid-2 mt-8">
+              ${UI.input('ac-bloqueo','Bloqueo (meses)','number',acc?.bloqueoMeses??120,'120')}
+              ${UI.input('ac-impuesto-ret','Impuesto retirada (% beneficio)','number',acc?.impuestoRetirada??24,'24')}
+            </div>
+          </div>
+          <div id="inversion-hint" style="${modeloFondo==='inversion'?'':'display:none'}">
+            <div class="auth-hint mt-8" style="border-color:#10b981">
+              📈 <strong>Fondo de inversión:</strong> la tarjeta mostrará plusvalía e impuesto estimado sobre ganancias de capital usando los tramos configurados en Ajustes.
+            </div>
+          </div>
+          <div id="beneficio-fields" style="${modeloFondo==='beneficio'?'':'display:none'}">
+            <div class="auth-hint mt-8" style="border-color:var(--accent)">
+              🎫 <strong>Tarjeta beneficio:</strong> se recarga mensualmente desde la nómina. Los gastos (metro, restaurante) se registran como movimientos sobre esta cuenta.
+            </div>
+            <div class="form-group mt-8">
+              ${UI.select('ac-tipo-beneficio','Tipo de beneficio',[
+                ['transporte','Transporte (límite €1.500/año)'],
+                ['restaurante','Restaurante (límite €11/día)'],
+                ['otros','Otros beneficios'],
+              ], acc?.tipoBeneficio||'transporte')}
+            </div>
+          </div>
+          <div class="form-group mt-8">
+            <label class="form-label">Aportaciones programadas</label>
+            <div id="aport-container">${_planAportacionesHtml(_editPlan)}</div>
+          </div>
+          <div class="form-group mt-8"><label class="form-label">Descripción</label><input class="form-input" type="text" id="ac-desc" value="${acc?.descripcion||''}" placeholder="Fondo indexado global..."/></div>
+          <div class="form-row mt-8">
+            <label class="form-label">Simulación</label><label class="toggle"><input type="checkbox" id="ac-sim" ${acc?.simulacion?'checked':''}/><span class="toggle-slider"></span></label>
+          </div>
+          ${escenarios.length > 0 ? EscenariosModule.checkboxesHtml(acc?.escenarioIds||[]) : ''}
+        </div>
+      </details>
+
       <div class="flex gap-8 mt-16" style="justify-content:flex-end">
         <button class="btn-secondary" onclick="UI.closeModal()">Cancelar</button>
         <button class="btn-primary" onclick="AccountsModule.saveAccount('${id||''}')">Guardar</button>
       </div>`;
     UI.openModal(html, id?'Editar cuenta/fondo':'Nueva cuenta / fondo');
+    setTimeout(()=>{
+      const sel = document.getElementById('ac-modelo');
+      if (!sel) return;
+      sel.onchange = function() {
+        document.getElementById('pension-fields').style.display   = this.value==='pension'   ? '' : 'none';
+        document.getElementById('inversion-hint').style.display   = this.value==='inversion' ? '' : 'none';
+        document.getElementById('beneficio-fields').style.display = this.value==='beneficio' ? '' : 'none';
+      };
+    }, 50);
   }
 
   function saveAccount(id) {
