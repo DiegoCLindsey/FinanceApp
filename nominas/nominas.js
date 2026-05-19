@@ -545,7 +545,7 @@ const NominasModule = (() => {
           ${opts}
         </select>
       </div>
-      ${beneficioCuentas.length === 0 ? '<div class="text-sm mt-4" style="color:var(--text3)">Tip: crea una cuenta de tipo "Tarjeta beneficio" en <em>Capital Mobiliario</em> para vincularla aquí (★).</div>' : ''}
+      ${beneficioCuentas.length === 0 ? '<div class="text-sm mt-4" style="color:var(--text3)">Tip: crea una cuenta de tipo "Tarjeta beneficio" en <em>Cuentas y Ahorro</em> para vincularla aquí (★).</div>' : ''}
       <button class="btn-secondary btn-sm mt-6" onclick="NominasModule._addFlexComp()">+ Añadir componente</button>`;
   }
 
