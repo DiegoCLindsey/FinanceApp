@@ -33,6 +33,7 @@ const State = (() => {
       storageMode: 'local',   // 'local' | 'firebase' | 'dropbox'
       autoSave: false,
       autoSaveInterval: 15,
+      analisisCollapsed: false,
     }
   };
   let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -79,6 +80,7 @@ const State = (() => {
       storageMode: 'local',   // 'local' | 'firebase' | 'dropbox'
       autoSave: false,
       autoSaveInterval: 15,
+      analisisCollapsed: false,
     };
     for (const [k,v] of Object.entries(cfgDefs)) {
       if (state.config[k] === undefined) state.config[k] = v;
