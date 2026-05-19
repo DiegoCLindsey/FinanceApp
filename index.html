@@ -256,53 +256,16 @@
         </button></li>
       </ul>
       <div class="sidebar-footer">
-        <button id="btn-export" class="nav-btn" title="Exportar datos a JSON">
-          <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-          <span>Exportar JSON</span>
+        <button id="btn-data-mgmt" class="nav-btn" title="Exportar, importar, guardar en la nube">
+          <svg viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 10H7v-2h7v2zm3-4H7v-2h10v2z"/></svg>
+          <span>Administrar datos</span>
         </button>
-        <button id="btn-import" class="nav-btn" title="Importar datos desde JSON">
-          <svg viewBox="0 0 24 24"><path d="M5 15H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-4h-2v4H5v-4zm7-2l-4-4h3V3h2v6h3l-4 4z"/></svg>
-          <span>Importar JSON</span>
-        </button>
-        <input type="file" id="import-file-input" accept=".json" style="display:none"/>
-        <button id="btn-dbx-save" class="nav-btn hidden" title="Guardar backup cifrado en Dropbox">
-          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 2L0 6l6 4-6 4 6 4 6-4-6-4 6-4L6 2zm12 0l-6 4 6 4-6 4 6 4 6-4-6-4 6-4-6-4zm-6 10.5L6 16l6 4 6-4-6-3.5z"/></svg>
-          <span id="dbx-save-label">☁ Dropbox</span>
-        </button>
-        <button id="btn-dbx-disconnect" class="nav-btn hidden" title="Desconectar Dropbox">
-          <svg viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
-          <span>Desconectar Dropbox</span>
-        </button>
-        <!-- Firebase controls (hidden until logged in) -->
-        <button id="btn-fbx-save" class="nav-btn hidden" title="Guardar backup cifrado en Firebase">
-          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M3.89 15.672L6.255.461A.542.542 0 017.27.288l2.543 4.771zm16.794 3.692l-2.25-14a.54.54 0 00-.919-.295L3.316 19.365l7.856 4.427a1.621 1.621 0 001.588 0zM14.3 7.147l-1.82-3.482a.542.542 0 00-.96 0L3.53 17.984z"/></svg>
-          <span id="fbx-save-label">🔥 Firebase</span>
-        </button>
-        <button id="btn-fbx-pull" class="nav-btn hidden" title="Descargar datos desde Firebase">
-          <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-          <span>Descargar de Firebase</span>
-        </button>
-        <button id="btn-fbx-push" class="nav-btn hidden" title="Subir datos a Firebase">
-          <svg viewBox="0 0 24 24"><path d="M5 15H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-4h-2v4H5v-4zm7-2l-4-4h3V3h2v6h3l-4 4z" transform="rotate(180 12 12)"/></svg>
-          <span>Subir a Firebase</span>
-        </button>
-        <button id="btn-fbx-export-json" class="nav-btn hidden" title="Exportar backup de Firebase a JSON local">
-          <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
-          <span>Firebase → JSON</span>
-        </button>
-        <button id="btn-fbx-import-json" class="nav-btn hidden" title="Importar JSON local y subir a Firebase">
-          <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 11v3h-2v-3H8l4-4 4 4h-3z"/></svg>
-          <span>JSON → Firebase</span>
-        </button>
+        <input type="file" id="import-file-input"     accept=".json" style="display:none"/>
         <input type="file" id="fbx-import-file-input" accept=".json" style="display:none"/>
-        <div id="fbx-user-email" style="font-size:11px;color:var(--text3);padding:4px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-        <button id="btn-fbx-whitelist" class="nav-btn hidden" title="Gestionar accesos (lista blanca)">
+        <div id="fbx-user-email" style="font-size:11px;color:var(--text3);padding:2px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+        <button id="btn-fbx-whitelist" class="nav-btn hidden" title="Gestionar quién puede acceder">
           <svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
           <span>Gestionar accesos</span>
-        </button>
-        <button id="btn-fbx-disconnect" class="nav-btn hidden" title="Cerrar sesión de Firebase">
-          <svg viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
-          <span>Cerrar sesión Firebase</span>
         </button>
       </div>
     </nav>

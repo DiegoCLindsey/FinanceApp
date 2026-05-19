@@ -579,85 +579,25 @@ const AuthModule = (() => {
   async function launch(mode) {
     await State.load();
 
-    // Guardar modo de almacenamiento en config
     const cfg = State.get('config');
-    if (cfg.storageMode !== mode) {
-      cfg.storageMode = mode;
-      State.set('config', cfg);
-    }
+    if (cfg.storageMode !== mode) { cfg.storageMode = mode; State.set('config', cfg); }
 
     document.getElementById('auth-overlay').classList.add('hidden');
     document.getElementById('main-shell').classList.remove('hidden');
     PeriodBar.init(State.get('config'));
 
-    if (mode === 'dropbox' && DropboxService.isConnected()) {
-      document.getElementById('btn-dbx-save').classList.remove('hidden');
-      document.getElementById('btn-dbx-disconnect').classList.remove('hidden');
-    }
-
     if (mode === 'firebase' && FirebaseService.isConnected()) {
-      ['btn-fbx-save','btn-fbx-pull','btn-fbx-push','btn-fbx-export-json',
-       'btn-fbx-import-json','btn-fbx-whitelist','btn-fbx-disconnect'].forEach(id => {
-        document.getElementById(id)?.classList.remove('hidden');
-      });
       const emailEl = document.getElementById('fbx-user-email');
       if (emailEl) emailEl.textContent = FirebaseService.currentUserEmail();
+      if (FirebaseService.isAdmin()) {
+        document.getElementById('btn-fbx-whitelist')?.classList.remove('hidden');
+      }
     }
 
-    // Botón guardar en Dropbox
-    document.getElementById('btn-dbx-save')?.addEventListener('click', async () => {
-      const label = document.getElementById('dbx-save-label');
-      label.textContent = '⏳ Guardando…';
-      try {
-        await DropboxService.uploadBackup();
-        UI.toast('Backup guardado en Dropbox ✓');
-      } catch (err) {
-        UI.toast('Error Dropbox: ' + err.message, 'err');
-      } finally {
-        label.textContent = '☁ Dropbox';
-      }
-    });
-
-    // Botón desconectar Dropbox
-    document.getElementById('btn-dbx-disconnect')?.addEventListener('click', () => {
-      if (!UI.confirm('¿Desconectar Dropbox? El backup en Dropbox no se borrará.')) return;
-      DropboxService.forget();
-      document.getElementById('btn-dbx-save').classList.add('hidden');
-      document.getElementById('btn-dbx-disconnect').classList.add('hidden');
-      UI.toast('Dropbox desconectado');
-    });
-
-    // Botón guardar en Firebase
-    document.getElementById('btn-fbx-save')?.addEventListener('click', async () => {
-      const label = document.getElementById('fbx-save-label');
-      label.textContent = '⏳ Guardando…';
-      try {
-        await FirebaseService.uploadBackup();
-        UI.toast('Backup guardado en Firebase ✓');
-      } catch (err) {
-        UI.toast('Error Firebase: ' + err.message, 'err');
-      } finally {
-        label.textContent = '🔥 Firebase';
-      }
-    });
-
-    // Botón gestionar accesos (whitelist)
     document.getElementById('btn-fbx-whitelist')?.addEventListener('click', _openWhitelistModal);
 
-    // Botón desconectar Firebase
-    document.getElementById('btn-fbx-disconnect')?.addEventListener('click', async () => {
-      if (!UI.confirm('¿Cerrar sesión de Firebase? Los datos en la nube no se borrarán.')) return;
-      await FirebaseService.logout();
-      ['btn-fbx-save','btn-fbx-pull','btn-fbx-push','btn-fbx-export-json',
-       'btn-fbx-import-json','btn-fbx-whitelist','btn-fbx-disconnect'].forEach(id => {
-        document.getElementById(id)?.classList.add('hidden');
-      });
-      const emailEl = document.getElementById('fbx-user-email');
-      if (emailEl) emailEl.textContent = '';
-      UI.toast('Firebase: sesión cerrada');
-    });
-
     DataIO.init();
+    DataIO.initAutoSave();
     Router.init();
     DataIO.showWelcomeIfEmpty();
   }
@@ -680,12 +620,19 @@ const AuthModule = (() => {
         <tr>
           <td style="padding:8px 10px;font-size:13px;color:var(--text)">${e.email}</td>
           <td style="padding:8px 10px;font-size:11px;color:var(--text3)">${e.addedBy || '—'}</td>
-          <td style="padding:8px 4px;text-align:right">
+          <td style="padding:8px 6px;text-align:center">
             ${e.email === me
               ? `<span style="font-size:11px;color:var(--accent)">(tú)</span>`
-              : `<button onclick="AuthModule._wlRemove('${e.email}')"
+              : `<input type="checkbox" title="Admin" ${e.isAdmin ? 'checked' : ''}
+                   onchange="AuthModule._wlSetAdmin('${e.email}', this.checked)">`
+            }
+          </td>
+          <td style="padding:8px 4px;text-align:right">
+            ${e.email !== me
+              ? `<button onclick="AuthModule._wlRemove('${e.email}')"
                    style="background:none;border:none;cursor:pointer;color:var(--red);font-size:18px;line-height:1;padding:2px 6px"
                    title="Revocar acceso">×</button>`
+              : ''
             }
           </td>
         </tr>`).join('');
@@ -698,10 +645,11 @@ const AuthModule = (() => {
               <tr style="border-bottom:1px solid var(--border)">
                 <th style="padding:6px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:500">Email</th>
                 <th style="padding:6px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:500">Añadido por</th>
+                <th style="padding:6px 10px;font-size:11px;color:var(--text3);text-align:center;font-weight:500">Admin</th>
                 <th></th>
               </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="3" style="padding:16px 10px;text-align:center;color:var(--text3);font-size:13px">Sin entradas</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="4" style="padding:16px 10px;text-align:center;color:var(--text3);font-size:13px">Sin entradas</td></tr>`}</tbody>
           </table>
           <div style="display:flex;gap:8px;align-items:flex-end">
             <div style="flex:1">
@@ -754,8 +702,18 @@ const AuthModule = (() => {
       }
     };
 
+    AuthModule._wlSetAdmin = async (email, isAdmin) => {
+      try {
+        await FirebaseService.setUserAdmin(email, isAdmin);
+        UI.toast(isAdmin ? `${email} es ahora admin` : `${email} ya no es admin`);
+      } catch (e) {
+        UI.toast(e.message, 'err');
+        await render();
+      }
+    };
+
     await render();
   }
 
-  return { init, launch, _wlRemove: null };
+  return { init, launch, _wlRemove: null, _wlSetAdmin: null };
 })();
