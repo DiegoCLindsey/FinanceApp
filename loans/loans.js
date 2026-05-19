@@ -121,10 +121,7 @@ const LoansModule = (() => {
           ${completado?'<span class="badge badge-active" style="background:rgba(0,229,160,0.15);color:var(--accent)">✓ Finalizado</span>':''}
           ${loan.simulacion?'<span class="badge badge-sim">SIM</span>':''}
           ${!loan.activo?'<span class="badge badge-inactive">Inactivo</span>':''}
-          ${(loan.escenarioIds||[]).map(id=>`<span class="badge badge-yellow">🔭 ${EscenariosModule.escenarioName(id)}</span>`).join('')}
-          <span class="badge badge-blue">${State.accountName(loan.cuenta||'default')}</span>
-          ${diaPagoLabel?`<span class="badge badge-inactive">📅 ${diaPagoLabel}</span>`:''}
-          <span class="badge ${loan.tipoTasa==='variable'?'badge-orange':'badge-inactive'}">${loan.tipoTasa==='variable'?'Tipo variable':'Tipo fijo'}</span>
+          ${loan.tipoTasa==='variable'?'<span class="badge badge-orange">Variable</span>':''}
         </div>
         <div class="loan-card-meta">
           <span class="loan-tin">${loan.tin}%</span>
@@ -173,6 +170,15 @@ const LoansModule = (() => {
           </div>
         </div>
 
+        ${!tieneAmorts ? `
+        <div class="loan-optim-cta">
+          <div class="loan-optim-cta-text">
+            <strong>¿Quieres pagar menos intereses?</strong>
+            Simula amortizaciones anticipadas y descubre cuánto puedes ahorrar.
+          </div>
+          <button class="btn-primary btn-sm" data-amort-loan="${loan._id}">+ Amortizar</button>
+          <button class="btn-secondary btn-sm" onclick="LoansModule.openOptimizador()">✨ Optimizar</button>
+        </div>` : ''}
         ${tieneAmorts ? `
         <div class="card" style="background:var(--bg3);padding:12px;margin-bottom:12px">
           <div class="card-title" style="margin-bottom:8px;color:var(--accent)">💰 Ahorro por amortizaciones</div>
@@ -267,26 +273,36 @@ const LoansModule = (() => {
 
   function openForm(id=null) {
     const loan = id ? State.get('loans').find(l=>l._id===id) : null;
+    const escenarios = State.get('escenarios') || [];
     const html = `
-      <div class="grid-2">${UI.input('f-nombre','Nombre','text',loan?.nombre||'','Ej: Hipoteca ING')}${UI.input('f-capital','Capital (€)','number',loan?.capital||'','150000')}</div>
-      <div class="grid-3 mt-8">${UI.input('f-tin','TIN (%)','number',loan?.tin||'','2.5')}${UI.input('f-meses','Plazo (meses)','number',loan?.meses||'','360')}${UI.input('f-fecha','Fecha inicio','date',loan?.fechaInicio||new Date().toISOString().slice(0,10))}</div>
-      <div class="grid-2 mt-8">${UI.input('f-com-ap','Com. apertura (%)','number',loan?.comisionApertura||0,'1')}${UI.input('f-com-am','Com. amort. (%)','number',loan?.comisionAmort||0,'0.5')}</div>
-      <div class="grid-2 mt-8">
-        ${UI.diaPagoWidget('loan', loan?.diaPago||'')}
-        ${UI.accountSelect('f-cuenta','Cuenta bancaria',loan?.cuenta||'default')}
-      </div>
-      <div class="mt-8">
-        ${UI.select('f-tipo-tasa','Tipo de interés',[['fijo','Tipo fijo (la cuota no varía con la inflación)'],['variable','Tipo variable (la cuota puede subir con el mercado)']], loan?.tipoTasa||'fijo')}
-      </div>
-      ${EscenariosModule.checkboxesHtml(loan?.escenarioIds||[])}
-      <div class="form-row mt-8">
-        <label class="form-label">Simulación</label>
-        <label class="toggle"><input type="checkbox" id="f-sim" ${loan?.simulacion?'checked':''}/><span class="toggle-slider"></span></label>
-        <label class="form-label" style="margin-left:12px">Activo</label>
-        <label class="toggle"><input type="checkbox" id="f-activo" ${loan?.activo!==false?'checked':''}/><span class="toggle-slider"></span></label>
-        <label class="form-label" style="margin-left:12px">Mostrar fecha fin en dashboard</label>
-        <label class="toggle"><input type="checkbox" id="f-mostrar-fin" ${loan?.mostrarFechaFinEnDashboard!==false?'checked':''}/><span class="toggle-slider"></span></label>
-      </div>
+      <!-- Campos básicos -->
+      <div class="grid-2">${UI.input('f-nombre','Nombre del préstamo','text',loan?.nombre||'','Ej: Hipoteca ING')}${UI.input('f-capital','Importe pendiente (€)','number',loan?.capital||'','150000')}</div>
+      <div class="grid-3 mt-8">${UI.input('f-tin','Tipo de interés TIN (%)','number',loan?.tin||'','2.5')}${UI.input('f-meses','Plazo (meses)','number',loan?.meses||'','360')}${UI.input('f-fecha','Fecha de inicio','date',loan?.fechaInicio||new Date().toISOString().slice(0,10))}</div>
+
+      <!-- Opciones avanzadas -->
+      <details class="form-advanced mt-12" ${id ? 'open' : ''}>
+        <summary class="form-advanced-summary">Opciones</summary>
+        <div class="form-advanced-body">
+          <div class="grid-2 mt-8">
+            ${UI.accountSelect('f-cuenta','Cuenta bancaria',loan?.cuenta||'default')}
+            ${UI.diaPagoWidget('loan', loan?.diaPago||'')}
+          </div>
+          <div class="mt-8">
+            ${UI.select('f-tipo-tasa','Tipo de interés',[['fijo','Tipo fijo — la cuota no varía'],['variable','Tipo variable — la cuota puede cambiar con el mercado']], loan?.tipoTasa||'fijo')}
+          </div>
+          <div class="grid-2 mt-8">${UI.input('f-com-ap','Com. apertura (%)','number',loan?.comisionApertura||0,'1')}${UI.input('f-com-am','Com. amort. anticipada (%)','number',loan?.comisionAmort||0,'0.5')}</div>
+          ${escenarios.length > 0 ? EscenariosModule.checkboxesHtml(loan?.escenarioIds||[]) : ''}
+          <div class="form-row mt-8">
+            <label class="form-label">Activo</label>
+            <label class="toggle"><input type="checkbox" id="f-activo" ${loan?.activo!==false?'checked':''}/><span class="toggle-slider"></span></label>
+            <label class="form-label" style="margin-left:12px">Simulación</label>
+            <label class="toggle"><input type="checkbox" id="f-sim" ${loan?.simulacion?'checked':''}/><span class="toggle-slider"></span></label>
+            <label class="form-label" style="margin-left:12px">Mostrar fin en dashboard</label>
+            <label class="toggle"><input type="checkbox" id="f-mostrar-fin" ${loan?.mostrarFechaFinEnDashboard!==false?'checked':''}/><span class="toggle-slider"></span></label>
+          </div>
+        </div>
+      </details>
+
       <div class="flex gap-8 mt-16" style="justify-content:flex-end">
         <button class="btn-secondary" onclick="UI.closeModal()">Cancelar</button>
         <button class="btn-primary" onclick="LoansModule.saveLoan('${id||''}')">Guardar</button>
