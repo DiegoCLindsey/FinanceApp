@@ -420,11 +420,18 @@ const AuthModule = (() => {
   function _wireFirebaseSetupStep() {
     _err('fbx-setup-error', '');
 
-    // Prerellenar con config guardada si existe
-    const savedCfg = FirebaseService.getConfig();
-    if (savedCfg) {
-      const ta = document.getElementById('fbx-config-json');
-      if (ta) ta.value = JSON.stringify(savedCfg, null, 2);
+    // Si la config viene de secrets (CI), ocultar el textarea — el usuario solo ve email/pass
+    const configRow = document.getElementById('fbx-config-row');
+    if (FirebaseService.hasInjectedConfig()) {
+      configRow?.classList.add('hidden');
+    } else {
+      configRow?.classList.remove('hidden');
+      // Prerellenar con config guardada en localStorage si existe
+      const savedCfg = FirebaseService.getConfig();
+      if (savedCfg && !window.FIREBASE_CONFIG) {
+        const ta = document.getElementById('fbx-config-json');
+        if (ta) ta.value = JSON.stringify(savedCfg, null, 2);
+      }
     }
 
     document.getElementById('btn-firebase-back')?.addEventListener('click', () => {
@@ -462,12 +469,16 @@ const AuthModule = (() => {
       if (!password)   { _err('fbx-setup-error', 'Introduce tu contraseña.'); return; }
       if (!passphrase) { _err('fbx-setup-error', 'Introduce una clave de cifrado para tus datos.'); return; }
 
-      let config;
-      try { config = JSON.parse(configText); } catch {
-        _err('fbx-setup-error', 'El JSON de configuración no es válido.'); return;
+      // Usar config inyectada por CI, o la pegada manualmente en el textarea
+      let config = FirebaseService.getConfig();
+      if (!config) {
+        if (!configText) { _err('fbx-setup-error', 'Pega la configuración de tu proyecto Firebase.'); return; }
+        try { config = JSON.parse(configText); } catch {
+          _err('fbx-setup-error', 'El JSON de configuración no es válido.'); return;
+        }
       }
-      if (!config.apiKey || !config.projectId) {
-        _err('fbx-setup-error', 'Faltan campos obligatorios en la configuración (apiKey, projectId).'); return;
+      if (!config?.apiKey || !config?.projectId) {
+        _err('fbx-setup-error', 'Faltan campos obligatorios (apiKey, projectId).'); return;
       }
 
       if (mode === 'register') {

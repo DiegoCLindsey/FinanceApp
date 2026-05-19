@@ -57,7 +57,40 @@ jobs:
             echo "⚠️  GDRIVE secrets no definidos. Desplegando sin Google Drive."
           fi
 
-      # ── 6. Assemble _site/ (V1 at root + V2 at /v2/) ─────────────────────────
+      # ── 6. Generate Firebase config from secrets ──────────────────────────────
+      - name: Generate Firebase config
+        env:
+          FIREBASE_API_KEY:             ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_AUTH_DOMAIN:         ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+          FIREBASE_PROJECT_ID:          ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_STORAGE_BUCKET:      ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+          FIREBASE_APP_ID:              ${{ secrets.FIREBASE_APP_ID }}
+        run: |
+          if [ -n "$FIREBASE_API_KEY" ] && [ -n "$FIREBASE_PROJECT_ID" ]; then
+            echo "✅ Generando firebase/firebase-config.js desde secrets..."
+            cat > firebase/firebase-config.js << 'JSEOF'
+          window.FIREBASE_CONFIG = {
+            apiKey:            "FIREBASE_API_KEY_VALUE",
+            authDomain:        "FIREBASE_AUTH_DOMAIN_VALUE",
+            projectId:         "FIREBASE_PROJECT_ID_VALUE",
+            storageBucket:     "FIREBASE_STORAGE_BUCKET_VALUE",
+            messagingSenderId: "FIREBASE_MESSAGING_SENDER_ID_VALUE",
+            appId:             "FIREBASE_APP_ID_VALUE",
+          };
+          JSEOF
+            sed -i "s|FIREBASE_API_KEY_VALUE|${FIREBASE_API_KEY}|g"                         firebase/firebase-config.js
+            sed -i "s|FIREBASE_AUTH_DOMAIN_VALUE|${FIREBASE_AUTH_DOMAIN}|g"                 firebase/firebase-config.js
+            sed -i "s|FIREBASE_PROJECT_ID_VALUE|${FIREBASE_PROJECT_ID}|g"                   firebase/firebase-config.js
+            sed -i "s|FIREBASE_STORAGE_BUCKET_VALUE|${FIREBASE_STORAGE_BUCKET}|g"           firebase/firebase-config.js
+            sed -i "s|FIREBASE_MESSAGING_SENDER_ID_VALUE|${FIREBASE_MESSAGING_SENDER_ID}|g" firebase/firebase-config.js
+            sed -i "s|FIREBASE_APP_ID_VALUE|${FIREBASE_APP_ID}|g"                           firebase/firebase-config.js
+            echo "   Proyecto: ${FIREBASE_PROJECT_ID}"
+          else
+            echo "⚠️  FIREBASE secrets no definidos. La config deberá introducirse manualmente en la UI."
+          fi
+
+      # ── 7. Assemble _site/ (V1 at root + V2 at /v2/) ─────────────────────────
       - name: Assemble deploy site
         run: |
           mkdir -p _site/v2

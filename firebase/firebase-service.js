@@ -19,16 +19,28 @@ const FirebaseService = (() => {
   let _passphrase = null;   // solo en memoria, nunca persiste
 
   // ── Gestión de configuración ─────────────────────────────────────────────────
+  // Prioridad: 1) window.FIREBASE_CONFIG (inyectado por CI desde secrets)
+  //            2) localStorage (introducido manualmente por el usuario en la UI)
+
   function isConfigured() {
-    return !!localStorage.getItem(LS_CONFIG);
+    return !!(window.FIREBASE_CONFIG?.apiKey) || !!localStorage.getItem(LS_CONFIG);
   }
 
   function getConfig() {
+    if (window.FIREBASE_CONFIG?.apiKey) return window.FIREBASE_CONFIG;
     try { return JSON.parse(localStorage.getItem(LS_CONFIG)); } catch { return null; }
   }
 
+  // Solo persiste en localStorage si NO hay config inyectada (modo manual)
   function _saveConfig(cfg) {
-    localStorage.setItem(LS_CONFIG, JSON.stringify(cfg));
+    if (!window.FIREBASE_CONFIG?.apiKey) {
+      localStorage.setItem(LS_CONFIG, JSON.stringify(cfg));
+    }
+  }
+
+  // Indica si la config viene de secrets (no hace falta UI)
+  function hasInjectedConfig() {
+    return !!(window.FIREBASE_CONFIG?.apiKey);
   }
 
   function hasSavedSession() {

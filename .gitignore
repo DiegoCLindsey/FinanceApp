@@ -6,3 +6,4 @@ _site/
 *.local
 .env.local
 .env.*.local
+firebase/firebase-config.js
