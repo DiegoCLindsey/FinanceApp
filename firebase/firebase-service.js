@@ -188,6 +188,46 @@ const FirebaseService = (() => {
     return _user;
   }
 
+  // ── Inicio de sesión con Google (OAuth) ──────────────────────────────────────
+  async function loginWithGoogle(config, passphrase) {
+    if (!passphrase || passphrase.length < 4) throw new Error('La clave de cifrado debe tener al menos 4 caracteres.');
+
+    try { _initApp(config); } catch (err) {
+      throw new Error('Configuración de Firebase inválida: ' + err.message);
+    }
+
+    const provider = new firebase.auth.GoogleAuthProvider();
+    let userCredential;
+    try {
+      userCredential = await _auth.signInWithPopup(provider);
+    } catch (err) {
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+        throw new Error('Inicio de sesión cancelado.');
+      }
+      if (err.code === 'auth/popup-blocked') {
+        throw new Error('El navegador bloqueó la ventana emergente. Permite popups para este sitio e inténtalo de nuevo.');
+      }
+      throw new Error('Error al autenticar con Google: ' + err.message);
+    }
+
+    _user = userCredential.user;
+    const email = _user.email;
+
+    try {
+      await _checkWhitelist(email);
+    } catch (err) {
+      await _auth.signOut().catch(() => {});
+      _user = null;
+      throw err;
+    }
+
+    _passphrase = passphrase;
+    _saveConfig(config);
+    localStorage.setItem(LS_EMAIL, email);
+    await _loadAdminStatus(email);
+    return _user;
+  }
+
   // ── Cierre de sesión ─────────────────────────────────────────────────────────
   async function logout() {
     if (_auth) await _auth.signOut().catch(() => {});
@@ -298,7 +338,7 @@ const FirebaseService = (() => {
   return {
     isConfigured, getConfig, hasInjectedConfig, hasSavedSession, savedEmail,
     isConnected, currentUserEmail, isAdmin,
-    login, register, logout, forget,
+    login, register, loginWithGoogle, logout, forget,
     uploadBackup, downloadBackup, setPassphrase,
     listWhitelist, addToWhitelist, removeFromWhitelist, setUserAdmin,
   };

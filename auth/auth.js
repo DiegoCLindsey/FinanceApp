@@ -420,15 +420,16 @@ const AuthModule = (() => {
   function _wireFirebaseSetupStep() {
     _err('fbx-setup-error', '');
 
-    // Si la config viene de secrets (CI), ocultar el textarea — el usuario solo ve email/pass
-    const configRow = document.getElementById('fbx-config-row');
+    // "Usar mi propio Firebase" collapsible: hidden when config is pre-injected from CI
+    const ownProject = document.getElementById('fbx-own-project');
     if (FirebaseService.hasInjectedConfig()) {
-      configRow?.classList.add('hidden');
+      ownProject?.classList.add('hidden');
     } else {
-      configRow?.classList.remove('hidden');
-      // Prerellenar con config guardada en localStorage si existe
+      ownProject?.classList.remove('hidden');
+      if (ownProject) ownProject.open = true; // expand by default so user can paste config
+      // Pre-fill textarea with any saved config
       const savedCfg = FirebaseService.getConfig();
-      if (savedCfg && !window.FIREBASE_CONFIG) {
+      if (savedCfg) {
         const ta = document.getElementById('fbx-config-json');
         if (ta) ta.value = JSON.stringify(savedCfg, null, 2);
       }
@@ -456,30 +457,69 @@ const AuthModule = (() => {
     btnRegister?.addEventListener('click', () => setMode('register'));
     setMode('login');
 
+    // Resolve Firebase config: CI-injected takes priority, then textarea JSON
+    const _resolveConfig = () => {
+      let config = FirebaseService.getConfig();
+      if (config) return { config, err: null };
+      const configText = document.getElementById('fbx-config-json')?.value?.trim();
+      if (!configText) return { config: null, err: 'Pega la configuración de tu proyecto Firebase en la sección "Usar mi propio proyecto Firebase".' };
+      try {
+        config = JSON.parse(configText);
+      } catch {
+        return { config: null, err: 'El JSON de configuración no es válido.' };
+      }
+      if (!config?.apiKey || !config?.projectId) return { config: null, err: 'Faltan campos obligatorios (apiKey, projectId).' };
+      return { config, err: null };
+    };
+
+    // Post-auth: load backup and launch
+    const _afterAuth = async () => {
+      const backup = await FirebaseService.downloadBackup();
+      if (backup) {
+        for (const [k, v] of Object.entries(backup)) {
+          if (v !== undefined) StorageAdapter.set('state_' + k, v);
+        }
+        UI.toast('Datos cargados desde Firebase ✓');
+      } else {
+        UI.toast('Firebase conectado. Sin backup previo.');
+      }
+      await launch('firebase');
+    };
+
+    // Google OAuth flow
+    document.getElementById('btn-firebase-google')?.addEventListener('click', async () => {
+      _err('fbx-setup-error', '');
+      const passphrase = document.getElementById('fbx-passphrase')?.value;
+      if (!passphrase) { _err('fbx-setup-error', 'Introduce una clave de cifrado para tus datos antes de continuar.'); return; }
+
+      const { config, err: cfgErr } = _resolveConfig();
+      if (cfgErr) { _err('fbx-setup-error', cfgErr); return; }
+
+      _setBusy('btn-firebase-google', true, 'Acceder con Google');
+      try {
+        await FirebaseService.loginWithGoogle(config, passphrase);
+        await _afterAuth();
+      } catch (err) {
+        _err('fbx-setup-error', err.message);
+      } finally {
+        _setBusy('btn-firebase-google', false, 'Acceder con Google');
+      }
+    });
+
+    // Email / password flow
     const doConnect = async () => {
       _err('fbx-setup-error', '');
-      const configText = document.getElementById('fbx-config-json')?.value?.trim();
       const email      = document.getElementById('fbx-email')?.value?.trim();
       const password   = document.getElementById('fbx-password')?.value;
       const passphrase = document.getElementById('fbx-passphrase')?.value;
       const passConf   = document.getElementById('fbx-passphrase-confirm')?.value;
 
-      if (!configText) { _err('fbx-setup-error', 'Pega la configuración de tu proyecto Firebase.'); return; }
       if (!email)      { _err('fbx-setup-error', 'Introduce tu email.'); return; }
       if (!password)   { _err('fbx-setup-error', 'Introduce tu contraseña.'); return; }
       if (!passphrase) { _err('fbx-setup-error', 'Introduce una clave de cifrado para tus datos.'); return; }
 
-      // Usar config inyectada por CI, o la pegada manualmente en el textarea
-      let config = FirebaseService.getConfig();
-      if (!config) {
-        if (!configText) { _err('fbx-setup-error', 'Pega la configuración de tu proyecto Firebase.'); return; }
-        try { config = JSON.parse(configText); } catch {
-          _err('fbx-setup-error', 'El JSON de configuración no es válido.'); return;
-        }
-      }
-      if (!config?.apiKey || !config?.projectId) {
-        _err('fbx-setup-error', 'Faltan campos obligatorios (apiKey, projectId).'); return;
-      }
+      const { config, err: cfgErr } = _resolveConfig();
+      if (cfgErr) { _err('fbx-setup-error', cfgErr); return; }
 
       if (mode === 'register') {
         if (passphrase !== passConf) { _err('fbx-setup-error', 'Las claves de cifrado no coinciden.'); return; }
@@ -492,18 +532,7 @@ const AuthModule = (() => {
         } else {
           await FirebaseService.login(config, email, password, passphrase);
         }
-
-        const backup = await FirebaseService.downloadBackup();
-        if (backup) {
-          for (const [k, v] of Object.entries(backup)) {
-            if (v !== undefined) StorageAdapter.set('state_' + k, v);
-          }
-          UI.toast('Datos cargados desde Firebase ✓');
-        } else {
-          UI.toast('Firebase conectado. Sin backup previo.');
-        }
-
-        await launch('firebase');
+        await _afterAuth();
       } catch (err) {
         _err('fbx-setup-error', err.message);
       } finally {
