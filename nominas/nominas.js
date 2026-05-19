@@ -164,22 +164,14 @@ const NominasModule = (() => {
     const n = id ? (State.get('nominas') || []).find(x => x._id === id) : null;
     _editFlexPlan = [...(n?.retribucionFlexible || [])];
     const meses = ['', 'Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const isEdit = !!id;
+    const escenarios = State.get('escenarios') || [];
     const html = `
       <div class="grid-2">
         ${UI.input('nf-nombre', 'Nombre / Empresa', 'text', n?.nombre||'', 'Ej: Empresa S.A.')}
         ${UI.input('nf-bruto', 'Bruto anual (€)', 'number', n?.bruto||'', '30000')}
       </div>
       <div class="grid-2 mt-8">
-        ${UI.input('nf-grupo', 'Grupo (opcional)', 'text', n?.grupoNomina||'', 'Ej: Empresa principal')}
-        <div class="form-group">
-          <label class="form-label">Mes actualización IPC (opcional)</label>
-          <select class="form-select" id="nf-mes-ipc">
-            <option value="">Sin ajuste IPC</option>
-            ${meses.slice(1).map((m,i)=>`<option value="${i+1}" ${(n?.mesActualizacionIPC)===(i+1)?'selected':''}>${m} (${i+1})</option>`).join('')}
-          </select>
-        </div>
-      </div>
-      <div class="grid-3 mt-8">
         <div class="form-group">
           <label class="form-label">Número de pagas</label>
           <select class="form-select" id="nf-npagas">
@@ -187,49 +179,67 @@ const NominasModule = (() => {
             <option value="custom" ${![12,14,16].includes(n?.nPagas||12)?'selected':''}>Personalizado</option>
           </select>
         </div>
-        <div class="form-group" id="nf-custom-pagas-wrap" style="${![12,14,16].includes(n?.nPagas||12)?'':'display:none'}">
-          <label class="form-label">Nº pagas (personalizado)</label>
-          <input class="form-input" type="number" id="nf-npagas-custom" min="1" max="24" value="${n?.nPagas||12}"/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Modo IRPF</label>
-          <select class="form-select" id="nf-irpfmodo">
-            <option value="auto" ${(n?.irpfModo||'auto')==='auto'?'selected':''}>Auto (tramos)</option>
-            <option value="manual" ${n?.irpfModo==='manual'?'selected':''}>Manual (%)</option>
-          </select>
-        </div>
+        ${UI.accountSelect('nf-cuenta', 'Cuenta', n?.cuenta||State.getPrincipalAccountId())}
       </div>
-      <div id="nf-irpfpct-wrap" class="mt-8" style="${n?.irpfModo==='manual'?'':'display:none'}">
-        ${UI.input('nf-irpfpct', 'Retención IRPF (%)', 'number', n?.irpfPct||0, '20')}
-      </div>
-      <div class="grid-2 mt-8">
-        <div class="form-group">
-          <label class="form-label">Representación en predicciones</label>
-          <select class="form-select" id="nf-representacion">
-            <option value="detallado" ${(n?.representacion||'detallado')==='detallado'?'selected':''}>Detallado (bruto + gasto IRPF)</option>
-            <option value="simplificado" ${n?.representacion==='simplificado'?'selected':''}>Simplificado (neto directo)</option>
-          </select>
+      <div id="nf-preview" class="card mt-12" style="background:var(--surface2);padding:12px;font-size:13px"></div>
+
+      <details class="form-advanced mt-12" ${isEdit ? 'open' : ''}>
+        <summary class="form-advanced-summary">Opciones</summary>
+        <div class="form-advanced-body">
+          <div class="grid-2 mt-8">
+            ${UI.input('nf-fecha-ini', 'Fecha inicio', 'date', n?.fechaInicio||new Date().toISOString().slice(0,10))}
+            ${UI.input('nf-fecha-fin', 'Fecha fin (opcional)', 'date', n?.fechaFin||'')}
+          </div>
+          <div class="grid-2 mt-8">
+            ${UI.input('nf-grupo', 'Grupo (opcional)', 'text', n?.grupoNomina||'', 'Ej: Empresa principal')}
+            <div class="form-group">
+              <label class="form-label">Mes actualización IPC (opcional)</label>
+              <select class="form-select" id="nf-mes-ipc">
+                <option value="">Sin ajuste IPC</option>
+                ${meses.slice(1).map((m,i)=>`<option value="${i+1}" ${(n?.mesActualizacionIPC)===(i+1)?'selected':''}>${m} (${i+1})</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div class="grid-2 mt-8">
+            <div class="form-group" id="nf-custom-pagas-wrap" style="${![12,14,16].includes(n?.nPagas||12)?'':'display:none'}">
+              <label class="form-label">Nº pagas (personalizado)</label>
+              <input class="form-input" type="number" id="nf-npagas-custom" min="1" max="24" value="${n?.nPagas||12}"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Modo IRPF</label>
+              <select class="form-select" id="nf-irpfmodo">
+                <option value="auto" ${(n?.irpfModo||'auto')==='auto'?'selected':''}>Auto (tramos)</option>
+                <option value="manual" ${n?.irpfModo==='manual'?'selected':''}>Manual (%)</option>
+              </select>
+            </div>
+          </div>
+          <div id="nf-irpfpct-wrap" class="mt-8" style="${n?.irpfModo==='manual'?'':'display:none'}">
+            ${UI.input('nf-irpfpct', 'Retención IRPF (%)', 'number', n?.irpfPct||0, '20')}
+          </div>
+          <div class="grid-2 mt-8">
+            <div class="form-group">
+              <label class="form-label">Representación en predicciones</label>
+              <select class="form-select" id="nf-representacion">
+                <option value="detallado" ${(n?.representacion||'detallado')==='detallado'?'selected':''}>Detallado (bruto + gasto IRPF)</option>
+                <option value="simplificado" ${n?.representacion==='simplificado'?'selected':''}>Simplificado (neto directo)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Varianza ± % (Monte Carlo)</label>
+              <input class="form-input" type="number" id="nf-varianza" value="${n?.varianza||0}" min="0" max="100" placeholder="0"/>
+            </div>
+          </div>
+          <div class="mt-12" style="border-top:1px solid var(--border);padding-top:12px">
+            <div style="font-weight:600;font-size:13px;margin-bottom:6px">Retribución flexible <span style="font-weight:400;color:var(--text3);font-size:11px">(art. 42 LIRPF — exento IRPF)</span></div>
+            <div class="auth-hint mb-8" style="border-color:var(--accent)">
+              Los importes mensuales reducen la base IRPF. Límites orientativos: <strong>transporte €125/mes</strong> (€1.500/año) · <strong>restaurante €220/mes</strong> (~€11/día × 20 días).
+            </div>
+            <div id="flex-comp-container">${_flexCompHtml(_editFlexPlan)}</div>
+          </div>
+          ${escenarios.length > 0 ? EscenariosModule.checkboxesHtml(n?.escenarioIds||[]) : ''}
         </div>
-        <div class="form-group">
-          <label class="form-label">Varianza ± % (Monte Carlo)</label>
-          <input class="form-input" type="number" id="nf-varianza" value="${n?.varianza||0}" min="0" max="100" placeholder="0"/>
-          <div class="text-sm mt-4" style="color:var(--text3)">Desviación estándar del bruto en MC</div>
-        </div>
-      </div>
-      <div class="mt-16" style="border-top:1px solid var(--border);padding-top:14px">
-        <div style="font-weight:600;font-size:13px;margin-bottom:6px">Retribución flexible <span style="font-weight:400;color:var(--text3);font-size:11px">(art. 42 LIRPF — exento IRPF y SS)</span></div>
-        <div class="auth-hint mb-8" style="border-color:var(--accent)">
-          Los importes mensuales reducen la base IRPF. Límites orientativos: <strong>transporte €125/mes</strong> (€1.500/año) · <strong>restaurante €220/mes</strong> (~€11/día × 20 días).
-        </div>
-        <div id="flex-comp-container">${_flexCompHtml(_editFlexPlan)}</div>
-      </div>
-      <div class="grid-2 mt-16">
-        ${UI.input('nf-fecha-ini', 'Fecha inicio', 'date', n?.fechaInicio||new Date().toISOString().slice(0,10))}
-        ${UI.input('nf-fecha-fin', 'Fecha fin (opcional)', 'date', n?.fechaFin||'')}
-      </div>
-      <div class="mt-8">${UI.accountSelect('nf-cuenta', 'Cuenta', n?.cuenta||State.getPrincipalAccountId())}</div>
-      ${EscenariosModule.checkboxesHtml(n?.escenarioIds||[])}
-      <div id="nf-preview" class="card mt-16" style="background:var(--surface2);padding:12px;font-size:13px"></div>
+      </details>
+
       <div class="flex gap-8 mt-16" style="justify-content:flex-end">
         <button class="btn-secondary" onclick="UI.closeModal()">Cancelar</button>
         <button class="btn-primary" onclick="NominasModule.saveNomina('${id||''}')">Guardar</button>
