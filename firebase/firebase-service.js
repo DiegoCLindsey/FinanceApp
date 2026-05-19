@@ -17,6 +17,7 @@ const FirebaseService = (() => {
   let _db         = null;
   let _user       = null;
   let _passphrase = null;   // solo en memoria, nunca persiste
+  let _isAdmin    = false;
 
   // ── Gestión de configuración ─────────────────────────────────────────────────
   // Prioridad: 1) window.FIREBASE_CONFIG (inyectado por CI desde secrets)
@@ -95,6 +96,15 @@ const FirebaseService = (() => {
     }
   }
 
+  async function _loadAdminStatus(email) {
+    try {
+      const doc = await _db.collection('whitelist').doc(email.trim()).get();
+      _isAdmin = doc.exists && doc.data().isAdmin === true;
+    } catch {
+      _isAdmin = false;
+    }
+  }
+
   // ── Inicio de sesión ─────────────────────────────────────────────────────────
   async function login(config, email, password, passphrase) {
     if (!email || !password)  throw new Error('Email y contraseña son obligatorios.');
@@ -130,6 +140,7 @@ const FirebaseService = (() => {
     _passphrase = passphrase;
     _saveConfig(config);
     localStorage.setItem(LS_EMAIL, email.trim());
+    await _loadAdminStatus(email.trim());
     return _user;
   }
 
@@ -173,6 +184,7 @@ const FirebaseService = (() => {
     _passphrase = passphrase;
     _saveConfig(config);
     localStorage.setItem(LS_EMAIL, email.trim());
+    await _loadAdminStatus(email.trim());
     return _user;
   }
 
@@ -181,6 +193,7 @@ const FirebaseService = (() => {
     if (_auth) await _auth.signOut().catch(() => {});
     _user       = null;
     _passphrase = null;
+    _isAdmin    = false;
     localStorage.removeItem(LS_EMAIL);
   }
 
@@ -193,6 +206,7 @@ const FirebaseService = (() => {
     _db         = null;
     _user       = null;
     _passphrase = null;
+    _isAdmin    = false;
     localStorage.removeItem(LS_CONFIG);
     localStorage.removeItem(LS_EMAIL);
   }
@@ -274,11 +288,18 @@ const FirebaseService = (() => {
     _passphrase = passphrase;
   }
 
+  function isAdmin() { return _isAdmin; }
+
+  async function setUserAdmin(email, adminStatus) {
+    if (!isConnected()) throw new Error('No autenticado en Firebase.');
+    await _db.collection('whitelist').doc(email.trim().toLowerCase()).update({ isAdmin: adminStatus });
+  }
+
   return {
     isConfigured, getConfig, hasInjectedConfig, hasSavedSession, savedEmail,
-    isConnected, currentUserEmail,
+    isConnected, currentUserEmail, isAdmin,
     login, register, logout, forget,
     uploadBackup, downloadBackup, setPassphrase,
-    listWhitelist, addToWhitelist, removeFromWhitelist,
+    listWhitelist, addToWhitelist, removeFromWhitelist, setUserAdmin,
   };
 })();

@@ -53,3 +53,22 @@
 /* ---- Config textarea ---- */
 .auth-textarea { padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font-mono); font-size: 11px; outline: none; transition: border-color 0.15s; width: 100%; resize: vertical; min-height: 90px; line-height: 1.5; }
 .auth-textarea:focus { border-color: var(--accent); }
+
+/* ---- Modal de datos (Administrar datos) ---- */
+.dm-modal { min-width: 320px; display: flex; flex-direction: column; gap: 16px; }
+.dm-section { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+.dm-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.dm-badge { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 4px; }
+.dm-badge--local    { background: var(--bg2); color: var(--text2); border: 1px solid var(--border2); }
+.dm-badge--firebase { background: rgba(255,109,0,0.15); color: #FF6D00; }
+.dm-badge--dropbox  { background: rgba(0,97,255,0.15); color: #0061FF; }
+.dm-section-email { font-size: 11px; color: var(--text3); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+.dm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+.dm-grid--single { grid-template-columns: 1fr; }
+.dm-btn { font-size: 12px; padding: 8px 10px; width: 100%; text-align: center; }
+.dm-autosave { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dm-autosave label { font-size: 12px; color: var(--text2); display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.dm-autosave-interval { width: 48px; text-align: center; padding: 4px 6px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 12px; font-family: var(--font-mono); }
+.dm-autosave-interval:disabled { opacity: 0.4; }
+.dm-logout-row { margin-top: 8px; }
+.dm-no-cloud { font-size: 12px; color: var(--text3); text-align: center; padding: 4px 0; }

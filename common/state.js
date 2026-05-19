@@ -31,6 +31,8 @@ const State = (() => {
       escenarioActivo: null,  // _id del escenario activo o null (realidad base)
       activeTagsFilter: [],   // persisted tag filter selection for dashboard
       storageMode: 'local',   // 'local' | 'firebase' | 'dropbox'
+      autoSave: false,
+      autoSaveInterval: 15,
     }
   };
   let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -75,6 +77,8 @@ const State = (() => {
       usarInflacion: false,
       escenarioActivo: null,
       storageMode: 'local',   // 'local' | 'firebase' | 'dropbox'
+      autoSave: false,
+      autoSaveInterval: 15,
     };
     for (const [k,v] of Object.entries(cfgDefs)) {
       if (state.config[k] === undefined) state.config[k] = v;
