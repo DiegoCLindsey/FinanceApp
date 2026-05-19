@@ -210,8 +210,8 @@ const FinanceMath = (() => {
       const { tabla } = resumenPrestamo(loan);
       for (const row of tabla) {
         if (row.fecha>=dateStart && row.fecha<=dateEnd) {
-          if (!row.esAmortizacion) events.push({ fecha:row.fecha, concepto:`Cuota ${loan.nombre}`, cuantia:-row.cuota, tipo:'gasto', tags:['prestamo'], cuenta:loan.cuenta||'default', sourceId:loan._id, sourceType:'loan', simulacion:loan.simulacion||false });
-          else events.push({ fecha:row.fecha, concepto:`Amort. ${loan.nombre}`, cuantia:-(row.amortizacion+row.comisionAmort), tipo:'gasto', tags:['amortizacion'], cuenta:loan.cuenta||'default', sourceId:loan._id, sourceType:'loan-amort', simulacion:row.simulacion||false });
+          if (!row.esAmortizacion) events.push({ fecha:row.fecha, concepto:`Cuota ${loan.nombre}`, cuantia:-row.cuota, tipo:'gasto', tags:['prestamo', ...(loan.tags||[])], cuenta:loan.cuenta||'default', sourceId:loan._id, sourceType:'loan', simulacion:loan.simulacion||false });
+          else events.push({ fecha:row.fecha, concepto:`Amort. ${loan.nombre}`, cuantia:-(row.amortizacion+row.comisionAmort), tipo:'gasto', tags:['amortizacion', ...(loan.tags||[])], cuenta:loan.cuenta||'default', sourceId:loan._id, sourceType:'loan-amort', simulacion:row.simulacion||false });
         }
       }
     }
