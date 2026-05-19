@@ -133,12 +133,27 @@ const EscenariosModule = (() => {
         <button class="btn-secondary btn-sm" onclick="EscenariosModule.desactivar()">Volver a base</button>
       </div>` : ''}
 
+      ${escenarios.length === 0 ? `
+      <div class="card mb-14" style="padding:20px 24px">
+        <div style="font-weight:600;font-size:14px;margin-bottom:8px">¿Qué son los escenarios?</div>
+        <div class="text-sm" style="color:var(--text2);line-height:1.7;margin-bottom:12px">
+          Los escenarios te permiten simular <strong>situaciones hipotéticas</strong> sin alterar tu plan base:
+          ¿qué pasaría si amortizas agresivamente la hipoteca? ¿Si cambias de trabajo y subes el sueldo?
+          ¿Si añades una nueva inversión?<br><br>
+          <strong>Cómo funciona:</strong>
+          <ol style="margin:8px 0 0 16px;padding:0">
+            <li>Crea un escenario con un nombre descriptivo.</li>
+            <li>En Préstamos, Gastos, Cuentas o Nóminas, asigna los elementos que pertenecen a ese escenario.</li>
+            <li>Activa el escenario para ver cómo cambia la proyección en el Dashboard.</li>
+          </ol>
+        </div>
+        <button class="btn-primary btn-sm" id="btn-new-esc-hero">+ Crear mi primer escenario</button>
+      </div>` : ''}
+
       <div id="esc-list">
         ${escenarios.length === 0
-          ? `<div class="card" style="text-align:center;padding:48px;color:var(--text3)">
-               <div style="font-size:32px;margin-bottom:12px">🔭</div>
-               <div style="font-size:16px;font-weight:600;margin-bottom:8px">Sin escenarios todavía</div>
-               <div style="font-size:13px;max-width:400px;margin:0 auto">Crea un escenario y asígnale elementos desde Préstamos, Movimientos, Cuentas o Amortizaciones.</div>
+          ? `<div class="card" style="text-align:center;padding:32px;color:var(--text3)">
+               <div style="font-size:13px">Una vez creado, asigna préstamos, gastos o cuentas al escenario desde sus respectivas secciones usando el selector de "Escenarios" en el formulario.</div>
              </div>`
           : escenarios.map(e => renderCard(e, activo)).join('')}
       </div>
@@ -154,6 +169,7 @@ const EscenariosModule = (() => {
       </div>` : ''}`;
 
     document.getElementById('btn-new-esc').onclick = () => openForm();
+    document.getElementById('btn-new-esc-hero')?.addEventListener('click', () => openForm());
 
     if (escenarios.length > 0) {
       setTimeout(() => renderChart(escenarios), 50);
