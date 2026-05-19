@@ -2,6 +2,53 @@
 const RentasModule = (() => {
   let _tab = 'mobiliario';
 
+  // ── Resumen fiscal consolidado ───────────────────────────────────────────────
+  function _resumenFiscal() {
+    const config   = State.get('config');
+    const accounts = State.get('accounts') || [];
+    const nominas  = (State.get('nominas') || []).filter(n => n.activo);
+    const tramos   = config.tramos_irpf || [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]];
+    const tramosGanancia = config.tramosGananciasCapital || [[0,19],[6000,21],[50000,23],[200000,27],[300000,28]];
+
+    const totalBruto = nominas.reduce((s, n) => s + (n.bruto || 0), 0);
+    const totalIRPF  = nominas.reduce((s, n) => {
+      if (n.irpfModo === 'manual') return s + (n.bruto || 0) * ((n.irpfPct || 0) / 100);
+      return s + FinanceMath.calcIRPF(n.bruto || 0, tramos);
+    }, 0);
+
+    const fondos = accounts.filter(a => (a.modeloFondo||'cuenta') === 'inversion');
+    let totalPlusvalia = 0, totalImpuestoInv = 0;
+    for (const f of fondos) {
+      const inv = FinanceMath.calcFondoInversion(f, tramosGanancia);
+      if (inv) { totalPlusvalia += inv.plusvalia; totalImpuestoInv += inv.impuesto; }
+    }
+
+    const hasData = totalBruto > 0 || fondos.length > 0;
+    if (!hasData) return '';
+
+    return `
+    <div class="exec-summary mb-14">
+      ${totalBruto > 0 ? `
+      <div class="exec-item">
+        <div class="exec-item-label">IRPF trabajo</div>
+        <div class="exec-item-val neg">${FinanceMath.eur(totalIRPF)}/año</div>
+      </div>
+      <div class="exec-item">
+        <div class="exec-item-label">Neto trabajo</div>
+        <div class="exec-item-val pos">${FinanceMath.eur((totalBruto * 12) - totalIRPF * 12)}/año</div>
+      </div>` : ''}
+      ${fondos.length > 0 ? `
+      <div class="exec-item">
+        <div class="exec-item-label">Plusvalía latente</div>
+        <div class="exec-item-val ${totalPlusvalia >= 0 ? 'pos' : 'neg'}">${FinanceMath.eur(totalPlusvalia)}</div>
+      </div>
+      <div class="exec-item">
+        <div class="exec-item-label">Imp. potencial (inversión)</div>
+        <div class="exec-item-val neg">${FinanceMath.eur(totalImpuestoInv)}</div>
+      </div>` : ''}
+    </div>`;
+  }
+
   // ── Entry point ──────────────────────────────────────────────────────────────
   function render() {
     const view = document.getElementById('view-rentas');
@@ -10,10 +57,11 @@ const RentasModule = (() => {
       <div class="page-header">
         <h1 class="page-title">Fiscalidad</h1>
       </div>
+      ${_resumenFiscal()}
       <div style="display:flex;gap:0;margin-bottom:24px;border-bottom:1px solid var(--border)">
-        ${_tabBtn('mobiliario', '📈 Capital Mobiliario')}
-        ${_tabBtn('trabajo',    '💼 Rendimientos del Trabajo')}
-        ${_tabBtn('inmobiliario','🏠 Capital Inmobiliario')}
+        ${_tabBtn('mobiliario', 'Capital Mobiliario')}
+        ${_tabBtn('trabajo',    'Rendimientos del Trabajo')}
+        ${_tabBtn('inmobiliario','Capital Inmobiliario')}
       </div>
       <div id="rentas-tab-content">${_renderTab()}</div>
     `;
@@ -83,7 +131,7 @@ const RentasModule = (() => {
         <div style="font-size:36px;margin-bottom:12px">📈</div>
         <div style="font-size:15px;font-weight:600;margin-bottom:8px">Sin fondos de inversión</div>
         <div class="text-sm" style="color:var(--text2);max-width:380px;margin:0 auto">
-          Ve a <strong>Cuentas e Inversiones</strong> y crea una cuenta de tipo "Fondo de inversión" para ver su análisis fiscal aquí.
+          Ve a <strong>Cuentas y Ahorro</strong> y crea una cuenta de tipo "Fondo de inversión" para ver su análisis fiscal aquí.
         </div>
       </div>`;
     }
@@ -191,7 +239,7 @@ const RentasModule = (() => {
         <div style="margin-bottom:4px;font-size:12px;font-weight:600;color:var(--text2)">Tramos ganancias patrimoniales (base del ahorro)</div>
         ${_tramosTable(tramos)}
         <div class="text-sm mt-8" style="color:var(--text3)">
-          Configura los tramos en <strong>Cuentas e Inversiones → ⚙ Tramos ganancias capital</strong>.
+          Configura los tramos en <strong>Cuentas y Ahorro → ⚙ Tramos ganancias capital</strong>.
         </div>
       </div>
     `;
@@ -252,7 +300,7 @@ const RentasModule = (() => {
     const inicioAnyo = `${hoy.getFullYear()}-01-01`;
 
     const planesCards = planes.length === 0
-      ? `<div class="text-sm" style="color:var(--text3);padding:12px 0">Sin planes de pensiones. Crea una cuenta de tipo "Plan de pensiones" en <strong>Cuentas e Inversiones</strong>.</div>`
+      ? `<div class="text-sm" style="color:var(--text3);padding:12px 0">Sin planes de pensiones. Crea una cuenta de tipo "Plan de pensiones" en <strong>Cuentas y Ahorro</strong>.</div>`
       : planes.map(p => {
           const pension = FinanceMath.calcFondosPension(p);
           if (!pension) return '';
