@@ -135,6 +135,8 @@ const FirebaseService = (() => {
 
   // ── Registro de nueva cuenta ─────────────────────────────────────────────────
   // Solo funciona si el email ya está en la lista blanca (el admin lo añade antes).
+  // La verificación ocurre DESPUÉS de crear la cuenta Auth, cuando ya hay token
+  // para leer Firestore. Si no está en la lista, se borra la cuenta recién creada.
   async function register(config, email, password, passphrase) {
     if (!email || !password)  throw new Error('Email y contraseña son obligatorios.');
     if (password.length < 6)  throw new Error('La contraseña debe tener al menos 6 caracteres.');
@@ -142,21 +144,6 @@ const FirebaseService = (() => {
 
     try { _initApp(config); } catch (err) {
       throw new Error('Configuración de Firebase inválida: ' + err.message);
-    }
-
-    // Verificar lista blanca ANTES de crear la cuenta (solo lectura de whitelist)
-    // Nota: el documento whitelist/{email} debe existir (creado manualmente por admin)
-    try {
-      const snap = await _db.collection('whitelist').doc(email.trim()).get();
-      if (!snap.exists) {
-        throw new Error('Tu dirección de correo no está autorizada. Solicita acceso al administrador.');
-      }
-    } catch (err) {
-      if (err.message.includes('autorizada')) throw err;
-      if (err.code === 'permission-denied') {
-        throw new Error('Tu dirección de correo no está autorizada. Solicita acceso al administrador.');
-      }
-      // Si no podemos leer sin autenticación, lo verificaremos después del registro
     }
 
     let userCredential;
@@ -173,7 +160,7 @@ const FirebaseService = (() => {
 
     _user = userCredential.user;
 
-    // Verificar lista blanca post-registro (con el token ya disponible)
+    // Verificar lista blanca con el token ya disponible
     try {
       await _checkWhitelist(email.trim());
     } catch (err) {
