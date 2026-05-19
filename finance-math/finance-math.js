@@ -1686,9 +1686,55 @@ const FinanceMath = (() => {
     return rows;
   }
 
+  // ── Prestación por desempleo (SEPE) ─────────────────────────────────────────
+  // diasCotizados: días cotizados en los últimos 6 años (máx relevante: 2160)
+  // salarioBrutoAnual: bruto anual de la nómina (€) — usado para base reguladora
+  // hijos: número de hijos a cargo (afecta a topes IPREM)
+  function calcPrestacionParo({ diasCotizados, salarioBrutoAnual, hijos = 0 }) {
+    const IPREM_MES = 603.34; // IPREM 2025 (mensual, referencia 14 pagas)
+
+    // Tabla oficial: días cotizados → días de prestación
+    const TABLA = [
+      [360,  539,  120],
+      [540,  719,  180],
+      [720,  899,  240],
+      [900,  1079, 300],
+      [1080, 1259, 360],
+      [1260, 1439, 420],
+      [1440, 1619, 480],
+      [1620, 1799, 540],
+      [1800, Infinity, 720],
+    ];
+
+    if (diasCotizados < 360) return { elegible: false, diasCotizados, minDias: 360 };
+
+    const row = TABLA.find(([min, max]) => diasCotizados >= min && diasCotizados <= max);
+    const diasPrestacion = row ? row[2] : 720;
+    const mesesPrestacion = Math.round(diasPrestacion / 30);
+
+    // Base reguladora: promedio de cotización base en últimos 6 meses (≈ bruto mensual)
+    const baseReguladora = (salarioBrutoAnual || 0) / 12;
+
+    // Topes IPREM por hijos a cargo
+    const minMes = hijos > 0 ? IPREM_MES * 1.07 : IPREM_MES * 0.80;
+    const maxMes = hijos >= 2 ? IPREM_MES * 2.25 : (hijos === 1 ? IPREM_MES * 2.00 : IPREM_MES * 1.75);
+    const clamp  = v => Math.max(minMes, Math.min(maxMes, v));
+
+    const cuota70 = clamp(baseReguladora * 0.70); // primeros 180 días
+    const cuota50 = clamp(baseReguladora * 0.50); // resto
+
+    const dias70  = Math.min(diasPrestacion, 180);
+    const dias50  = Math.max(0, diasPrestacion - 180);
+    const meses70 = Math.ceil(dias70 / 30);
+    const meses50 = Math.ceil(dias50 / 30);
+    const importeTotal = cuota70 * meses70 + cuota50 * meses50;
+
+    return { elegible: true, diasCotizados, diasPrestacion, mesesPrestacion, baseReguladora, cuota70, cuota50, dias70, dias50, meses70, meses50, minMes, maxMes, importeTotal, IPREM_MES };
+  }
+
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct, calcPrestacionParo };
 })();
 
