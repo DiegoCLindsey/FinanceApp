@@ -98,7 +98,46 @@ const NominasModule = (() => {
       <div class="auth-hint mb-12" style="border-color:var(--yellow)">
         💼 El rescate tributa como <strong>rendimiento del trabajo</strong> (tramos IRPF generales). Asocia un plan a un grupo para que use el tipo marginal real del grupo.
       </div>
-      <div id="pensiones-list">${_renderPensionesSection(tramos, nominas)}</div>`;
+      <div id="pensiones-list">${_renderPensionesSection(tramos, nominas)}</div>
+
+      <!-- Simulador prestación por desempleo -->
+      <div class="page-header" style="margin-top:24px">
+        <h2 class="page-title" style="font-size:1.1rem">Simulador de <span>Prestación por Desempleo</span></h2>
+      </div>
+      <div class="auth-hint mb-12" style="border-color:var(--red)">
+        🧮 Calcula qué prestación te correspondería si perdieras tu empleo. Basado en la normativa SEPE vigente (Ley 3/2012 y RD 625/1985). Cifras orientativas — consulta siempre con el SEPE.
+      </div>
+      <div class="card" style="padding:20px" id="paro-simulator">
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">Nómina de referencia</label>
+            <select class="form-input" id="paro-nomina">
+              <option value="">— Manual —</option>
+              ${nominas.filter(n=>n.activo).map(n=>`<option value="${n._id}">${n.nombre}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fecha de despido</label>
+            <input type="date" class="form-input" id="paro-fecha" value="${new Date().toISOString().slice(0,10)}"/>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">Días cotizados (últimos 6 años)</label>
+            <input type="number" class="form-input" id="paro-dias" min="0" max="2160" placeholder="360"/>
+            <div style="font-size:11px;color:var(--text3);margin-top:4px">Mínimo 360 días para ser elegible. Máx. relevante: 1800.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Hijos a cargo</label>
+            <input type="number" class="form-input" id="paro-hijos" min="0" max="10" value="0" placeholder="0"/>
+            <div style="font-size:11px;color:var(--text3);margin-top:4px">Afecta a los topes mínimo y máximo de la prestación.</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-primary" id="btn-paro-calcular">Calcular prestación</button>
+        </div>
+        <div id="paro-resultado" style="margin-top:16px"></div>
+      </div>`;
 
     document.getElementById('btn-new-nomina').onclick  = () => openForm();
     document.getElementById('btn-edit-tramos').onclick = () => openTramosForm();
@@ -112,6 +151,137 @@ const NominasModule = (() => {
       const be = view.querySelector(`[data-edit-nom="${n._id}"]`); if (be) be.onclick = () => openForm(n._id);
       const bd = view.querySelector(`[data-del-nom="${n._id}"]`);  if (bd) bd.onclick = () => deleteNomina(n._id);
       const tog = view.querySelector(`[data-tog-nom="${n._id}"]`); if (tog) tog.onchange = e => { State.updateItem('nominas', n._id, {activo: e.target.checked}); render(); };
+    });
+
+    // Simulador de prestación por desempleo
+    const nominaSel = document.getElementById('paro-nomina');
+    const diasEl    = document.getElementById('paro-dias');
+
+    // Prefill días cotizados when a nómina is selected
+    nominaSel?.addEventListener('change', () => {
+      const n = nominas.find(x => x._id === nominaSel.value);
+      if (n && n.fechaInicio) {
+        const inicio = new Date(n.fechaInicio);
+        const hoy    = new Date();
+        const dias   = Math.max(0, Math.min(2160, Math.floor((hoy - inicio) / 86400000)));
+        diasEl.value = dias;
+      }
+    });
+
+    document.getElementById('btn-paro-calcular')?.addEventListener('click', () => {
+      const nomId      = nominaSel?.value;
+      const nomSel     = nominas.find(n => n._id === nomId);
+      const fechaDes   = document.getElementById('paro-fecha')?.value || new Date().toISOString().slice(0,10);
+      const dias       = parseInt(diasEl?.value) || 0;
+      const hijos      = parseInt(document.getElementById('paro-hijos')?.value) || 0;
+      const bruto      = nomSel ? (nomSel.bruto || 0) : 0;
+      const resDiv     = document.getElementById('paro-resultado');
+
+      const res = FinanceMath.calcPrestacionParo({ diasCotizados: dias, salarioBrutoAnual: bruto, hijos });
+
+      if (!res.elegible) {
+        resDiv.innerHTML = `<div class="auth-hint" style="border-color:var(--red);color:var(--red)">
+          <strong>No elegible.</strong> Necesitas al menos 360 días cotizados en los últimos 6 años.
+          Te faltan <strong>${res.minDias - dias} días</strong> (aprox. ${Math.ceil((res.minDias - dias)/30)} meses).
+        </div>`;
+        return;
+      }
+
+      const fechaIni = new Date(fechaDes);
+      const fechaFin = new Date(fechaIni);
+      fechaFin.setDate(fechaFin.getDate() + res.diasPrestacion);
+      const fmtDate  = d => d.toISOString().slice(0,10);
+      const fase2    = res.dias50 > 0;
+
+      resDiv.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px">
+          <div class="stat-card" style="padding:12px">
+            <div class="stat-label">Duración</div>
+            <div class="stat-value" style="font-size:1.3rem">${res.mesesPrestacion} meses</div>
+            <div style="font-size:11px;color:var(--text3)">${res.diasPrestacion} días</div>
+          </div>
+          <div class="stat-card" style="padding:12px">
+            <div class="stat-label">Período</div>
+            <div class="stat-value" style="font-size:1rem">${fmtDate(fechaIni)}</div>
+            <div style="font-size:11px;color:var(--text3)">hasta ${fmtDate(fechaFin)}</div>
+          </div>
+          <div class="stat-card" style="padding:12px">
+            <div class="stat-label">Base reguladora</div>
+            <div class="stat-value" style="font-size:1.3rem">${FinanceMath.eur(res.baseReguladora)}/mes</div>
+            <div style="font-size:11px;color:var(--text3)">≈ salario bruto mensual</div>
+          </div>
+          <div class="stat-card" style="padding:12px">
+            <div class="stat-label">Importe total estimado</div>
+            <div class="stat-value" style="font-size:1.3rem">${FinanceMath.eur(res.importeTotal)}</div>
+            <div style="font-size:11px;color:var(--text3)">bruto (sujeto a IRPF)</div>
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px">
+          <thead>
+            <tr style="background:var(--bg3)">
+              <th style="padding:8px 10px;text-align:left;color:var(--text2);font-weight:600">Fase</th>
+              <th style="padding:8px 10px;text-align:left;color:var(--text2);font-weight:600">Duración</th>
+              <th style="padding:8px 10px;text-align:right;color:var(--text2);font-weight:600">% Base</th>
+              <th style="padding:8px 10px;text-align:right;color:var(--text2);font-weight:600">Importe/mes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:8px 10px">Primeros ${res.meses70} meses</td>
+              <td style="padding:8px 10px;color:var(--text2)">${res.dias70} días</td>
+              <td style="padding:8px 10px;text-align:right">70%</td>
+              <td style="padding:8px 10px;text-align:right;font-weight:600;color:var(--green)">${FinanceMath.eur(res.cuota70)}</td>
+            </tr>
+            ${fase2 ? `<tr>
+              <td style="padding:8px 10px">Meses ${res.meses70+1}–${res.mesesPrestacion}</td>
+              <td style="padding:8px 10px;color:var(--text2)">${res.dias50} días</td>
+              <td style="padding:8px 10px;text-align:right">50%</td>
+              <td style="padding:8px 10px;text-align:right;font-weight:600;color:var(--yellow)">${FinanceMath.eur(res.cuota50)}</td>
+            </tr>` : ''}
+          </tbody>
+        </table>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+          Topes aplicados: mín. ${FinanceMath.eur(res.minMes)}/mes · máx. ${FinanceMath.eur(res.maxMes)}/mes (IPREM 2025: ${FinanceMath.eur(res.IPREM_MES)})
+        </div>
+        ${nomSel ? `<button class="btn-secondary" id="btn-paro-aplicar" style="font-size:12px">
+          Aplicar simulación al dashboard (detener nómina + añadir prestación)
+        </button>` : ''}
+        <div id="paro-aplicar-msg" style="margin-top:8px"></div>
+      `;
+
+      if (nomSel) {
+        document.getElementById('btn-paro-aplicar')?.addEventListener('click', () => {
+          const msgEl = document.getElementById('paro-aplicar-msg');
+          // 1. Set fechaFin on the nomina
+          State.updateItem('nominas', nomSel._id, { fechaFin: fechaDes });
+          // 2. Add income entry for phase 1 (70%)
+          const fase1fin = new Date(fechaIni);
+          fase1fin.setDate(fase1fin.getDate() + res.dias70);
+          State.addItem('expenses', {
+            concepto: `Prestación por desempleo (70%) — ${nomSel.nombre}`,
+            tipo: 'ingreso', cuantia: Math.round(res.cuota70), frecuencia: 1, tipoFrecuencia: 'mensual',
+            fechaInicio: fmtDate(fechaIni), fechaFin: fmtDate(fase1fin),
+            diaPago: '', cuenta: nomSel.cuenta || 'default', activo: true,
+            basico: false, varianza: 0, inflacion: 0, sujetoIRPF: true, tags: ['paro', 'simulacion'],
+          });
+          // 3. Add income entry for phase 2 (50%) if applicable
+          if (res.dias50 > 0) {
+            State.addItem('expenses', {
+              concepto: `Prestación por desempleo (50%) — ${nomSel.nombre}`,
+              tipo: 'ingreso', cuantia: Math.round(res.cuota50), frecuencia: 1, tipoFrecuencia: 'mensual',
+              fechaInicio: fmtDate(fase1fin), fechaFin: fmtDate(fechaFin),
+              diaPago: '', cuenta: nomSel.cuenta || 'default', activo: true,
+              basico: false, varianza: 0, inflacion: 0, sujetoIRPF: true, tags: ['paro', 'simulacion'],
+            });
+          }
+          msgEl.innerHTML = `<div class="auth-hint" style="border-color:var(--green);color:var(--green)">
+            ✓ Simulación aplicada. La nómina <strong>${nomSel.nombre}</strong> se detiene el ${fechaDes}
+            y se añaden ${res.dias50 > 0 ? 'dos ingresos de prestación' : 'un ingreso de prestación'} al dashboard.<br>
+            <span style="font-size:11px;opacity:0.8">Para revertir, restaura la nómina y elimina los gastos con tag "simulacion".</span>
+          </div>`;
+          document.getElementById('btn-paro-aplicar').disabled = true;
+        });
+      }
     });
   }
 
