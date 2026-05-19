@@ -96,7 +96,7 @@ const State = (() => {
     state.expenses = (state.expenses || []).map(e => _migrEscIds({ basico: false, varianza: 0, inflacion: 0, historialPrecios: [], ...e }));
     // Migrate: ensure loans have new fields
     state.loans = (state.loans || []).map(l => {
-      const lm = _migrEscIds({ tipoTasa: 'fijo', mostrarFechaFinEnDashboard: true, ...l });
+      const lm = _migrEscIds({ tipoTasa: 'fijo', mostrarFechaFinEnDashboard: true, basico: true, tags: [], ...l });
       lm.amortizaciones = (l.amortizaciones||[]).map(a => _migrEscIds(a));
       return lm;
     });

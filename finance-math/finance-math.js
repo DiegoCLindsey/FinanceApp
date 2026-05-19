@@ -521,7 +521,10 @@ const FinanceMath = (() => {
   function calcColchon(expenses, config, loans) {
     if (config.colchonTipo === 'fijo' && config.colchonFijo > 0) return config.colchonFijo;
     const totalMes = calcGastoBasicoMensual(expenses);
-    return totalMes * (config.colchonMeses||6);
+    const cuotasBasicas = (loans||[])
+      .filter(l => l.basico && l.activo && !l.simulacion)
+      .reduce((s, l) => s + cuotaMensual(l.capital, l.tin, l.meses), 0);
+    return (totalMes + cuotasBasicas) * (config.colchonMeses||6);
   }
 
   // Saldo real actual: último histórico si existe, sino saldoInicial

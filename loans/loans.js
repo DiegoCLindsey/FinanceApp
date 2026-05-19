@@ -122,6 +122,8 @@ const LoansModule = (() => {
           ${loan.simulacion?'<span class="badge badge-sim">SIM</span>':''}
           ${!loan.activo?'<span class="badge badge-inactive">Inactivo</span>':''}
           ${loan.tipoTasa==='variable'?'<span class="badge badge-orange">Variable</span>':''}
+          ${loan.basico!==false?'<span class="badge badge-orange" title="Cuota incluida en el colchón económico">⚑ básico</span>':''}
+          ${(loan.tags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}
         </div>
         <div class="loan-card-meta">
           <span class="loan-tin">${loan.tin}%</span>
@@ -291,6 +293,15 @@ const LoansModule = (() => {
             ${UI.select('f-tipo-tasa','Tipo de interés',[['fijo','Tipo fijo — la cuota no varía'],['variable','Tipo variable — la cuota puede cambiar con el mercado']], loan?.tipoTasa||'fijo')}
           </div>
           <div class="grid-2 mt-8">${UI.input('f-com-ap','Com. apertura (%)','number',loan?.comisionApertura||0,'1')}${UI.input('f-com-am','Com. amort. anticipada (%)','number',loan?.comisionAmort||0,'0.5')}</div>
+          <div class="form-group mt-8">
+            <label class="form-label">Etiquetas (separadas por coma)</label>
+            <input class="form-input" type="text" id="f-tags" value="${(loan?.tags||[]).join(', ')}" placeholder="hipoteca, vivienda"/>
+          </div>
+          <div class="form-row mt-8">
+            <label class="form-label">Gasto básico</label>
+            <label class="toggle"><input type="checkbox" id="f-basico" ${loan?.basico!==false?'checked':''}/><span class="toggle-slider"></span></label>
+            <span class="text-sm" style="margin-left:6px">Incluir la cuota en el cálculo del colchón económico</span>
+          </div>
           ${escenarios.length > 0 ? EscenariosModule.checkboxesHtml(loan?.escenarioIds||[]) : ''}
           <div class="form-row mt-8">
             <label class="form-label">Activo</label>
@@ -326,6 +337,8 @@ const LoansModule = (() => {
       mostrarFechaFinEnDashboard:document.getElementById('f-mostrar-fin').checked,
       tipoTasa:                  document.getElementById('f-tipo-tasa').value,
       escenarioIds:              EscenariosModule.readCheckedEscenarios(),
+      basico:                    document.getElementById('f-basico').checked,
+      tags:                      (document.getElementById('f-tags')?.value||'').split(',').map(t=>t.trim()).filter(Boolean),
     };
     if (!loan.nombre||isNaN(loan.capital)||isNaN(loan.tin)||isNaN(loan.meses)) {
       UI.toast('Completa los campos obligatorios','err'); return;
