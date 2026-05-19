@@ -41,6 +41,12 @@ const DashboardModule = (() => {
     render();
   }
 
+  function toggleAnalisis() {
+    const cfg = State.get('config');
+    State.set('config', {...cfg, analisisCollapsed: !cfg.analisisCollapsed});
+    render();
+  }
+
   function render() {
     destroyCharts();
     const view=document.getElementById('view-dashboard');
@@ -223,6 +229,49 @@ const DashboardModule = (() => {
           <button class="btn-secondary btn-sm" onclick="EscenariosModule.desactivar();Router.navigate('dashboard')">✕ Salir</button>
         </div>`;
       })() : ''}
+
+      <!-- Hero KPIs -->
+      <div class="dash-hero mb-14">
+        <div class="dash-hero-item">
+          <div class="dash-hero-label">Saldo actual</div>
+          <div class="dash-hero-val ${saldoHoy>=0?'pos':'neg'}">${FinanceMath.eur(saldoHoy)}</div>
+          <div class="dash-hero-sub">${new Date().toISOString().slice(0,10)}</div>
+        </div>
+        <div class="dash-hero-item">
+          <div class="dash-hero-label">Ingresos este mes</div>
+          <div class="dash-hero-val pos">${FinanceMath.eur(ingresosMesActual)}</div>
+          <div class="dash-hero-sub">${mesActualLabel}</div>
+        </div>
+        <div class="dash-hero-item">
+          <div class="dash-hero-label">Gastos este mes</div>
+          <div class="dash-hero-val ${gastosTosMesActual>0?'neg':''}">${FinanceMath.eur(gastosTosMesActual)}</div>
+          <div class="dash-hero-sub">cuotas + básicos + otros</div>
+        </div>
+        ${(()=>{
+          const ahorro = ingresosMesActual - gastosTosMesActual;
+          return `<div class="dash-hero-item">
+            <div class="dash-hero-label">Ahorro est. mes</div>
+            <div class="dash-hero-val ${ahorro>=0?'pos':'neg'}">${ahorro>=0?'+':''}${FinanceMath.eur(ahorro)}</div>
+            <div class="dash-hero-sub">${mesActualLabel}</div>
+          </div>`;
+        })()}
+      </div>
+
+      ${(()=>{
+        const hoyD = new Date().toISOString().slice(0,10);
+        const en7D  = new Date(Date.now()+7*86400000).toISOString().slice(0,10);
+        const prox  = extracto.filter(e=>e.fecha>=hoyD&&e.fecha<=en7D&&e.tipo==='gasto'&&e.sourceType!=='transfer-out').slice(0,6);
+        if (!prox.length) return '';
+        return `<div class="card mb-14" style="padding:12px 16px">
+          <div class="card-title mb-10">📅 Próximos 7 días</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${prox.map(e=>`<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px">
+              <div><span style="color:var(--text3);font-size:11px;margin-right:8px;font-family:var(--font-mono)">${e.fecha.slice(5)}</span>${e.concepto}</div>
+              <span style="font-family:var(--font-mono);color:var(--red)">${FinanceMath.eur(e.cuantia)}</span>
+            </div>`).join('')}
+          </div>
+        </div>`;
+      })()}
 
       <!-- Config (colapsable) -->
       <div class="card" style="margin-bottom:14px">
@@ -543,6 +592,21 @@ const DashboardModule = (() => {
         <div class="chart-wrap-lg"><canvas id="chart-saldo"></canvas></div>
       </div>
 
+      <!-- ── Análisis avanzado (colapsable) ─────────────────────────────────── -->
+      <div class="card mb-14" style="padding:12px 16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="DashboardModule.toggleAnalisis()">
+          <span class="card-title" style="margin:0">Análisis avanzado</span>
+          <button class="btn-secondary btn-sm" style="pointer-events:none">${config.analisisCollapsed?'▸ Mostrar':'▾ Ocultar'}</button>
+        </div>
+      </div>
+      ${config.analisisCollapsed ? '' : `
+
+      <!-- Score gauge -->
+      <div class="card mb-14">
+        <div class="card-title mb-12">Puntuación de salud financiera</div>
+        ${renderScoreGauge(score)}
+      </div>
+
       <!-- Charts row 2 -->
       <div class="grid-2 mb-14">
         <div class="card">
@@ -680,7 +744,10 @@ const DashboardModule = (() => {
             <span class="num ${Math.abs(r.pct)<10?'pos':Math.abs(r.pct)<25?'':'neg'}">${r.pct>=0?'+':''}${r.pct.toFixed(1)}%</span>
           </div>`).join('')}
         </div>`;
-      })()}`;
+      })()}
+
+      `}
+`;
 
     // Pass computed metrics to chart functions
     const _metricasGraficos = { loans, expenses, config, numMeses, extracto };
@@ -1179,5 +1246,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, applyConfig, applyPreset, setColchonTipo, setVentana, toggleTag, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleScoreDetail, toggleCriticos, toggleConfig };
+  return { render, applyConfig, applyPreset, setColchonTipo, setVentana, toggleTag, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleScoreDetail, toggleCriticos, toggleConfig, toggleAnalisis };
 })();
