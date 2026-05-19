@@ -19,11 +19,25 @@ const InflacionModule = (() => {
 
     view.innerHTML = `
       <div class="page-header">
-        <h1 class="page-title">📈 <span>Inflación</span></h1>
+        <h1 class="page-title">Estimaciones de <span>Inflación</span></h1>
         <div class="page-actions">
           <button class="btn-primary" id="btn-new-periodo">+ Añadir período</button>
         </div>
       </div>
+
+      ${!activo && periodos.length === 0 ? `
+      <div class="card mb-14" style="padding:16px 20px;border-color:var(--border2)">
+        <div style="font-weight:600;font-size:14px;margin-bottom:6px">Módulo de inflación — configuración opcional</div>
+        <div class="text-sm" style="color:var(--text2);line-height:1.6;margin-bottom:10px">
+          Si activas este módulo podrás registrar la tasa de inflación estimada para cada año.
+          Las proyecciones de gastos, ingresos y préstamos mostrarán el coste ajustado en <strong>euros de hoy</strong>,
+          para que veas el impacto real de la inflación en tu poder adquisitivo.<br><br>
+          <strong>¿Cuándo activarlo?</strong> Cuando quieras comparar el coste real de un préstamo a largo plazo
+          o proyectar cómo evoluciona tu ahorro descontando la pérdida de poder adquisitivo.
+          Para un uso básico de la app, puedes ignorar este módulo.
+        </div>
+        <div class="text-sm" style="color:var(--text3)">Activa la opción de abajo y añade las tasas anuales para empezar.</div>
+      </div>` : ''}
 
       <!-- Toggle global -->
       <div class="card mb-14" style="padding:16px 20px">
