@@ -58,6 +58,12 @@ jobs:
           fi
 
       # ── 6. Generate Firebase config from secrets ──────────────────────────────
+      # El archivo generado (firebase/firebase-config.js) está en .gitignore y
+      # NUNCA se commitea. Solo existe durante el build y en el artefacto desplegado.
+      #
+      # IMPORTANTE: para que Firebase Auth funcione desde GitHub Pages debes añadir
+      # el dominio en Firebase Console → Authentication → Settings → Dominios autorizados:
+      #   <usuario>.github.io   (o tu dominio personalizado)
       - name: Generate Firebase config
         env:
           FIREBASE_API_KEY:             ${{ secrets.FIREBASE_API_KEY }}
@@ -96,6 +102,7 @@ jobs:
           mkdir -p _site/v2
 
           # V1: copy everything except tooling dirs
+          # Nota: firebase/firebase-config.js (generado en paso 6) SÍ se incluye
           rsync -av \
             --exclude='.git' \
             --exclude='node_modules' \
@@ -109,10 +116,17 @@ jobs:
           # V2: copy build output (use -a + trailing dot to avoid glob issues)
           cp -a dist/. _site/v2/
 
+          # Verify Firebase config was included (warns if secrets not set)
+          if [ -f _site/firebase/firebase-config.js ]; then
+            echo "✅ firebase-config.js incluido en el despliegue"
+          else
+            echo "⚠️  firebase-config.js NO incluido (secrets no definidos)"
+          fi
+
           echo "=== _site/v2/ contents ==="
           ls -la _site/v2/
 
-      # ── 7. Upload & deploy ────────────────────────────────────────────────────
+      # ── 8. Upload & deploy ────────────────────────────────────────────────────
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5
 
