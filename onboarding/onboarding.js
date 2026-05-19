@@ -2,11 +2,16 @@
 const OnboardingModule = (() => {
   let step = 0;
   const STEPS = [
-    { title:'Bienvenido a FinanceApp', sub:'Esta guía rápida te ayudará a configurar tu primera proyección financiera. Puedes saltarla en cualquier momento.', fields: null },
-    { title:'Tu cuenta principal', sub:'Define el saldo inicial de tu cuenta Default. Este es el punto de partida de todas las proyecciones.', fields: 'step-account' },
-    { title:'Tus ingresos', sub:'Añade tu salario u otros ingresos recurrentes. Podrás añadir más después.', fields: 'step-income' },
-    { title:'Tus gastos fijos', sub:'Añade tus gastos mensuales más importantes (alquiler, hipoteca, suministros...).', fields: 'step-expense' },
-    { title:'Colchón económico', sub:'¿Cuántos meses de gastos básicos quieres mantener como reserva?', fields: 'step-colchon' },
+    {
+      title: 'Bienvenido a FinanceApp',
+      sub: 'En 4 pasos configuramos tu primera proyección financiera. Solo necesitas tu saldo actual, un ingreso y un gasto para empezar.',
+      hint: '¿Qué obtendrás? Un dashboard con tu saldo proyectado, gastos del mes y horizonte financiero personalizado.',
+      fields: null
+    },
+    { title:'Tu cuenta principal', sub:'¿Cuánto tienes ahora mismo en tu cuenta principal? Este valor es el punto de partida de todas las proyecciones.', fields: 'step-account' },
+    { title:'Tus ingresos', sub:'Añade tu ingreso mensual principal (p. ej. tu nómina neta). Podrás añadir más fuentes de ingreso después.', fields: 'step-income' },
+    { title:'Tus gastos fijos', sub:'¿Cuál es tu gasto más importante cada mes? Empieza por el más grande (alquiler, hipoteca...). Añadirás el resto después.', fields: 'step-expense' },
+    { title:'Colchón de seguridad', sub:'El colchón es la reserva que quieres mantener siempre disponible. Lo habitual son 3-6 meses de gastos básicos.', fields: 'step-colchon' },
   ];
 
   function show() {
@@ -39,11 +44,11 @@ const OnboardingModule = (() => {
       <div class="wizard-step-indicator">${dots}</div>
       <div class="wizard-title">${s.title}</div>
       <div class="wizard-sub">${s.sub}</div>
+      ${s.hint ? `<div class="auth-hint" style="margin-top:10px;font-size:12px">${s.hint}</div>` : ''}
       ${fields}
       <div class="wizard-actions">
-        <button class="btn-secondary" onclick="OnboardingModule.skip()">Saltar guía</button>
-        ${step>0?`<button class="btn-secondary" onclick="OnboardingModule.prev()">Anterior</button>`:''}
-        <button class="btn-primary" onclick="OnboardingModule.next()">${step===STEPS.length-1?'Finalizar':'Siguiente →'}</button>
+        ${step===0 ? `<button class="btn-secondary" onclick="OnboardingModule.skip()">Configurar después</button>` : `<button class="btn-secondary" onclick="OnboardingModule.prev()">← Anterior</button>`}
+        <button class="btn-primary" onclick="OnboardingModule.next()">${step===STEPS.length-1?'¡Listo, al Dashboard!':'Siguiente →'}</button>
       </div>
     </div>`;
   }
