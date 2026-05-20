@@ -1441,7 +1441,9 @@ const FinanceMath = (() => {
     }
 
     // ── Helper: máximo amortizable en el mes respetando todos los márgenes activos
-    // Genera el extracto una vez, trackea saldo per-account y evalúa cada margen.
+    // Genera el extracto una vez. Para márgenes sobre TODAS las cuentas usa saldoAcum
+    // directamente (evita divergencia por eventos con cuenta='default'). Para márgenes
+    // sobre cuentas específicas usa tracking per-account.
     function calcMaxAmortMes(ini, fin) {
       const loansActualizados = loans.map(l => ({
         ...l,
@@ -1450,39 +1452,54 @@ const FinanceMath = (() => {
       const cfg = { ...config, dashboardStart: hoyStr, dashboardEnd: fin };
       const ext = generarExtracto(loansActualizados, expenses, accounts, cfg, null, nominas);
 
-      const running = {};
-      for (const acc of activeAccs) running[acc._id] = saldoRealCuenta(acc);
-      const snaps = ext.map(ev => {
-        if (ev.cuenta && running[ev.cuenta] !== undefined) running[ev.cuenta] += ev.cuantia;
-        return { fecha: ev.fecha, saldos: { ...running } };
-      });
+      const saldoBase = activeAccs.reduce((s, a) => s + saldoRealCuenta(a), 0);
 
-      function minSaldoGrupo(ids) {
-        const saldoFn = s => ids.reduce((sum, id) => sum + (s.saldos[id] || 0), 0);
-        const baseVal = ids.reduce((sum, id) => {
-          const acc = activeAccs.find(a => a._id === id);
-          return sum + (acc ? saldoRealCuenta(acc) : 0);
-        }, 0);
-        const antes = snaps.filter(s => s.fecha < ini);
-        const en    = snaps.filter(s => s.fecha >= ini && s.fecha <= fin);
-        const saldoIni = antes.length > 0 ? saldoFn(antes[antes.length - 1]) : baseVal;
-        return Math.min(saldoIni, ...en.map(saldoFn));
+      // Min saldo total (all accounts) — authoritative, uses saldoAcum from extracto
+      function minSaldoTotal() {
+        const antes = ext.filter(e => e.fecha < ini);
+        const en    = ext.filter(e => e.fecha >= ini && e.fecha <= fin);
+        const ini0  = antes.length > 0 ? antes[antes.length - 1].saldoAcum : saldoBase;
+        return Math.min(ini0, ...en.map(e => e.saldoAcum));
+      }
+
+      // Per-account tracking — only built if a specific-accounts margin exists
+      let snaps = null;
+      function getSnaps() {
+        if (snaps) return snaps;
+        const running = {};
+        for (const acc of activeAccs) running[acc._id] = saldoRealCuenta(acc);
+        snaps = ext.map(ev => {
+          if (ev.cuenta && running[ev.cuenta] !== undefined) running[ev.cuenta] += ev.cuantia;
+          return { fecha: ev.fecha, saldos: { ...running } };
+        });
+        return snaps;
+      }
+
+      function minSaldoPartial(ids) {
+        const s = getSnaps();
+        const fn  = snap => ids.reduce((sum, id) => sum + (snap.saldos[id] || 0), 0);
+        const base = ids.reduce((sum, id) => { const a = activeAccs.find(x => x._id === id); return sum + (a ? saldoRealCuenta(a) : 0); }, 0);
+        const antes = s.filter(x => x.fecha < ini);
+        const en    = s.filter(x => x.fecha >= ini && x.fecha <= fin);
+        const ini0  = antes.length > 0 ? fn(antes[antes.length - 1]) : base;
+        return Math.min(ini0, ...en.map(fn));
       }
 
       let maxAmort = Infinity;
       for (const mg of margenesActivos) {
         const target = calcMargenEnFecha(mg, expenses, config, loans, fin);
         if (target <= 0) continue;
-        const relevantIds = (mg.cuentas && mg.cuentas.length > 0)
-          ? mg.cuentas.filter(id => allActiveIds.includes(id))
-          : allActiveIds;
-        if (relevantIds.length === 0) continue;
-        maxAmort = Math.min(maxAmort, minSaldoGrupo(relevantIds) - target);
+        const isAll = !mg.cuentas || mg.cuentas.length === 0;
+        const sMin  = isAll
+          ? minSaldoTotal()
+          : minSaldoPartial(mg.cuentas.filter(id => allActiveIds.includes(id)));
+        maxAmort = Math.min(maxAmort, sMin - target);
       }
 
       if (!isFinite(maxAmort)) {
-        // No margins configured → use source accounts saldo
-        maxAmort = minSaldoGrupo(sourceAccIds);
+        // Sin márgenes: limitar por saldo de cuentas de origen
+        const srcIsAll = sourceAccIds.length === allActiveIds.length;
+        maxAmort = srcIsAll ? minSaldoTotal() : minSaldoPartial(sourceAccIds);
       }
       return maxAmort;
     }
