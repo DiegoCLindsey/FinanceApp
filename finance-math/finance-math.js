@@ -1549,8 +1549,8 @@ const FinanceMath = (() => {
           loanId: loan._id, loanNombre: loan.nombre, tin: loan.tin,
           capitalAntes: capActual, cantidadAmort: cantidad, comision,
           capitalDespues: Math.max(0, capActual - cantidad),
-          saldoMin, excedente,
-          saldoDespuesMes: saldoMin - totalAmortizadoEsteMes,
+          saldoMin: excedente + SAFETY_BUFFER, excedente,
+          saldoDespuesMes: excedente + SAFETY_BUFFER - totalAmortizadoEsteMes,
           tipoAmort,
         });
 
