@@ -189,9 +189,7 @@ const FirebaseService = (() => {
   }
 
   // ── Inicio de sesión con Google (OAuth) ──────────────────────────────────────
-  async function loginWithGoogle(config, passphrase) {
-    if (!passphrase || passphrase.length < 4) throw new Error('La clave de cifrado debe tener al menos 4 caracteres.');
-
+  async function loginWithGoogle(config) {
     try { _initApp(config); } catch (err) {
       throw new Error('Configuración de Firebase inválida: ' + err.message);
     }
@@ -221,7 +219,6 @@ const FirebaseService = (() => {
       throw err;
     }
 
-    _passphrase = passphrase;
     _saveConfig(config);
     localStorage.setItem(LS_EMAIL, email);
     await _loadAdminStatus(email);

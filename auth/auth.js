@@ -438,14 +438,12 @@ const AuthModule = (() => {
   function _wireFirebaseSetupStep() {
     _err('fbx-setup-error', '');
 
-    // "Usar mi propio Firebase" collapsible: hidden when config is pre-injected from CI
+    // "Usar mi propio Firebase": solo visible cuando no hay config inyectada desde CI
     const ownProject = document.getElementById('fbx-own-project');
     if (FirebaseService.hasInjectedConfig()) {
       ownProject?.classList.add('hidden');
     } else {
       ownProject?.classList.remove('hidden');
-      if (ownProject) ownProject.open = true; // expand by default so user can paste config
-      // Pre-fill textarea with any saved config
       const savedCfg = FirebaseService.getConfig();
       if (savedCfg) {
         const ta = document.getElementById('fbx-config-json');
@@ -457,132 +455,100 @@ const AuthModule = (() => {
       _showStep('auth-step-select');
     });
 
-    // Toggle login / registro
-    const btnLogin    = document.getElementById('fbx-mode-login');
-    const btnRegister = document.getElementById('fbx-mode-register');
-    const passConfirm = document.getElementById('fbx-passphrase-confirm-row');
-    let mode = 'login';
-
-    const setMode = (m) => {
-      mode = m;
-      btnLogin?.classList.toggle('active', m === 'login');
-      btnRegister?.classList.toggle('active', m === 'register');
-      passConfirm?.classList.toggle('hidden', m !== 'register');
-      document.getElementById('btn-firebase-connect').textContent =
-        m === 'register' ? 'Registrar y continuar' : 'Entrar';
-    };
-    btnLogin?.addEventListener('click',    () => setMode('login'));
-    btnRegister?.addEventListener('click', () => setMode('register'));
-    setMode('login');
-
     // Resolve Firebase config: CI-injected takes priority, then textarea JSON
     const _resolveConfig = () => {
       let config = FirebaseService.getConfig();
       if (config) return { config, err: null };
       const configText = document.getElementById('fbx-config-json')?.value?.trim();
-      if (!configText) return { config: null, err: 'Pega la configuración de tu proyecto Firebase en la sección "Usar mi propio proyecto Firebase".' };
-      try {
-        config = JSON.parse(configText);
-      } catch {
+      if (!configText) return { config: null, err: 'Pega la configuración de tu proyecto Firebase en "Usar mi propio proyecto Firebase".' };
+      try { config = JSON.parse(configText); } catch {
         return { config: null, err: 'El JSON de configuración no es válido.' };
       }
       if (!config?.apiKey || !config?.projectId) return { config: null, err: 'Faltan campos obligatorios (apiKey, projectId).' };
       return { config, err: null };
     };
 
-    // Post-auth: load backup or offer migration, then launch
+    // Post-auth (called once passphrase is set)
     const _afterAuth = async () => {
       await _offerMigration(FirebaseService, 'Firebase');
       await launch('firebase');
     };
 
-    // Google OAuth flow
+    // ── Fase 2: passphrase ────────────────────────────────────────────────────
+    const _showPassphrasePhase = (email) => {
+      document.getElementById('fbx-phase-login')?.classList.add('hidden');
+      const phase2 = document.getElementById('fbx-phase-passphrase');
+      phase2?.classList.remove('hidden');
+      const emailEl = document.getElementById('fbx-connected-email');
+      if (emailEl) emailEl.textContent = email;
+      setTimeout(() => document.getElementById('fbx-passphrase')?.focus(), 50);
+    };
+
+    const _doPassphrase = async () => {
+      _err('fbx-passphrase-error', '');
+      const passphrase = document.getElementById('fbx-passphrase')?.value;
+      if (!passphrase || passphrase.length < 4) {
+        _err('fbx-passphrase-error', 'La clave debe tener al menos 4 caracteres.');
+        return;
+      }
+      _setBusy('btn-fbx-passphrase-ok', true, 'Continuar');
+      try {
+        FirebaseService.setPassphrase(passphrase);
+        await _afterAuth();
+      } catch (err) {
+        _err('fbx-passphrase-error', err.message);
+      } finally {
+        _setBusy('btn-fbx-passphrase-ok', false, 'Continuar');
+      }
+    };
+
+    document.getElementById('btn-fbx-passphrase-ok')?.addEventListener('click', _doPassphrase);
+    document.getElementById('fbx-passphrase')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') _doPassphrase();
+    });
+
+    // ── Fase 1: Google OAuth ──────────────────────────────────────────────────
     document.getElementById('btn-firebase-google')?.addEventListener('click', async () => {
       _err('fbx-setup-error', '');
-      const passphrase = document.getElementById('fbx-passphrase')?.value;
-      if (!passphrase) { _err('fbx-setup-error', 'Introduce una clave de cifrado para tus datos antes de continuar.'); return; }
-
       const { config, err: cfgErr } = _resolveConfig();
       if (cfgErr) { _err('fbx-setup-error', cfgErr); return; }
 
       _setBusy('btn-firebase-google', true, 'Acceder con Google');
       try {
-        await FirebaseService.loginWithGoogle(config, passphrase);
-        await _afterAuth();
+        const user = await FirebaseService.loginWithGoogle(config);
+        _showPassphrasePhase(user.email);
       } catch (err) {
         _err('fbx-setup-error', err.message);
-      } finally {
         _setBusy('btn-firebase-google', false, 'Acceder con Google');
       }
     });
-
-    // Email / password flow
-    const doConnect = async () => {
-      _err('fbx-setup-error', '');
-      const email      = document.getElementById('fbx-email')?.value?.trim();
-      const password   = document.getElementById('fbx-password')?.value;
-      const passphrase = document.getElementById('fbx-passphrase')?.value;
-      const passConf   = document.getElementById('fbx-passphrase-confirm')?.value;
-
-      if (!email)      { _err('fbx-setup-error', 'Introduce tu email.'); return; }
-      if (!password)   { _err('fbx-setup-error', 'Introduce tu contraseña.'); return; }
-      if (!passphrase) { _err('fbx-setup-error', 'Introduce una clave de cifrado para tus datos.'); return; }
-
-      const { config, err: cfgErr } = _resolveConfig();
-      if (cfgErr) { _err('fbx-setup-error', cfgErr); return; }
-
-      if (mode === 'register') {
-        if (passphrase !== passConf) { _err('fbx-setup-error', 'Las claves de cifrado no coinciden.'); return; }
-      }
-
-      _setBusy('btn-firebase-connect', true, mode === 'register' ? 'Registrar y continuar' : 'Entrar');
-      try {
-        if (mode === 'register') {
-          await FirebaseService.register(config, email, password, passphrase);
-        } else {
-          await FirebaseService.login(config, email, password, passphrase);
-        }
-        await _afterAuth();
-      } catch (err) {
-        _err('fbx-setup-error', err.message);
-      } finally {
-        _setBusy('btn-firebase-connect', true, mode === 'register' ? 'Registrar y continuar' : 'Entrar');
-        _setBusy('btn-firebase-connect', false, mode === 'register' ? 'Registrar y continuar' : 'Entrar');
-      }
-    };
-
-    document.getElementById('btn-firebase-connect')?.addEventListener('click', doConnect);
-    document.getElementById('fbx-passphrase')?.addEventListener('keydown', e => {
-      if (e.key === 'Enter') doConnect();
-    });
-
-    setTimeout(() => document.getElementById('fbx-email')?.focus(), 50);
   }
 
   // ── Paso: desbloqueo de sesión Firebase guardada ─────────────────────────────
   function _wireFirebaseUnlockStep() {
     _err('fbx-unlock-error', '');
 
-    // Prerellenar email
-    const emailEl = document.getElementById('fbx-unlock-email');
-    if (emailEl) emailEl.value = FirebaseService.savedEmail();
+    const savedEmail = document.getElementById('fbx-unlock-saved-email');
+    if (savedEmail) savedEmail.textContent = FirebaseService.savedEmail() || '';
+
+    // Fase 2: passphrase
+    const _showUnlockPassphrase = (email) => {
+      document.getElementById('fbx-unlock-phase-login')?.classList.add('hidden');
+      const phase2 = document.getElementById('fbx-unlock-phase-passphrase');
+      phase2?.classList.remove('hidden');
+      const emailEl = document.getElementById('fbx-unlock-connected-email');
+      if (emailEl) emailEl.textContent = email;
+      setTimeout(() => document.getElementById('fbx-unlock-passphrase')?.focus(), 50);
+    };
 
     const doUnlock = async () => {
-      _err('fbx-unlock-error', '');
-      const email      = document.getElementById('fbx-unlock-email')?.value?.trim();
-      const password   = document.getElementById('fbx-unlock-password')?.value;
+      _err('fbx-unlock-passphrase-error', '');
       const passphrase = document.getElementById('fbx-unlock-passphrase')?.value;
+      if (!passphrase) { _err('fbx-unlock-passphrase-error', 'Introduce tu clave de cifrado.'); return; }
 
-      if (!password)   { _err('fbx-unlock-error', 'Introduce tu contraseña de Firebase.'); return; }
-      if (!passphrase) { _err('fbx-unlock-error', 'Introduce tu clave de cifrado.'); return; }
-
-      _setBusy('btn-firebase-unlock', true, 'Entrar');
+      _setBusy('btn-firebase-unlock', true, 'Continuar');
       try {
-        const config = FirebaseService.getConfig();
-        if (!config) throw new Error('Configuración de Firebase no encontrada. Usa "Cambiar cuenta".');
-
-        await FirebaseService.login(config, email, password, passphrase);
-
+        FirebaseService.setPassphrase(passphrase);
         const backup = await FirebaseService.downloadBackup();
         if (backup) {
           for (const [k, v] of Object.entries(backup)) {
@@ -590,12 +556,11 @@ const AuthModule = (() => {
           }
           UI.toast('Datos sincronizados desde Firebase ✓');
         }
-
         await launch('firebase');
       } catch (err) {
-        _err('fbx-unlock-error', err.message);
+        _err('fbx-unlock-passphrase-error', err.message);
       } finally {
-        _setBusy('btn-firebase-unlock', false, 'Entrar');
+        _setBusy('btn-firebase-unlock', false, 'Continuar');
       }
     };
 
@@ -604,13 +569,29 @@ const AuthModule = (() => {
       if (e.key === 'Enter') doUnlock();
     });
 
+    // Fase 1: Google OAuth
+    document.getElementById('btn-firebase-google-unlock')?.addEventListener('click', async () => {
+      _err('fbx-unlock-error', '');
+      const config = FirebaseService.getConfig();
+      if (!config) {
+        _err('fbx-unlock-error', 'Configuración de Firebase no encontrada. Usa "Cambiar cuenta".');
+        return;
+      }
+      _setBusy('btn-firebase-google-unlock', true, 'Continuar con Google');
+      try {
+        const user = await FirebaseService.loginWithGoogle(config);
+        _showUnlockPassphrase(user.email);
+      } catch (err) {
+        _err('fbx-unlock-error', err.message);
+        _setBusy('btn-firebase-google-unlock', false, 'Continuar con Google');
+      }
+    });
+
     document.getElementById('btn-firebase-forget')?.addEventListener('click', async () => {
       await FirebaseService.forget();
       _showStep('auth-step-firebase-setup');
       _wireFirebaseSetupStep();
     });
-
-    setTimeout(() => document.getElementById('fbx-unlock-password')?.focus(), 50);
   }
 
   // ── Launch: arrancar la app ────────────────────────────────────────────────────
