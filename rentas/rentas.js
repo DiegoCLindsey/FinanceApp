@@ -110,9 +110,12 @@ const RentasModule = (() => {
 
     // Rendimientos del trabajo
     const brutoTotal   = nominas.reduce((s, n) => s + (n.bruto || 0), 0);
-    const cotizSS      = brutoTotal * 0.0635; // 4.70% CC + 1.55% desempleo + 0.10% FP
-    const gastosArt19  = Math.min(2000, brutoTotal); // Art. 19.2 — otros gastos deducibles
-    const RNT          = Math.max(0, brutoTotal - cotizSS - gastosArt19);
+    // Retribución flexible (art. 42 LIRPF): exenta de IRPF, no forma parte de la base imponible
+    const flexTotal    = nominas.reduce((s, n) => s + (n.retribucionFlexible || []).reduce((ss, c) => ss + (c.importe || 0) * 12, 0), 0);
+    const brutoIRPF    = Math.max(0, brutoTotal - flexTotal); // base sujeta a IRPF
+    const cotizSS      = brutoTotal * 0.0635; // 4.70% CC + 1.55% desempleo + 0.10% FP (sobre bruto completo)
+    const gastosArt19  = Math.min(2000, brutoIRPF); // Art. 19.2 — otros gastos deducibles
+    const RNT          = Math.max(0, brutoIRPF - cotizSS - gastosArt19);
     // Reducción Art. 20 LIRPF 2025
     let reducArt20 = 0;
     if (RNT <= 15876)      reducArt20 = 7302;
@@ -149,15 +152,17 @@ const RentasModule = (() => {
 
     // Retenciones
     const retNomina = nominas.reduce((s, n) => {
+      const nFlexAnual = (n.retribucionFlexible || []).reduce((ss, c) => ss + (c.importe || 0) * 12, 0);
+      const nBrutoIRPF = Math.max(0, (n.bruto || 0) - nFlexAnual);
       if (n.irpfModo === 'manual') return s + (n.bruto || 0) * ((n.irpfPct || 0) / 100);
-      return s + FinanceMath.calcIRPF(n.bruto || 0, tramos);
+      return s + FinanceMath.calcIRPF(nBrutoIRPF, tramos);
     }, 0);
     const totalRet = retNomina + retCapital;
 
     // Resultado
     const resultado = cuotaIntegra - totalRet;
 
-    return { brutoTotal, cotizSS, gastosArt19, RNT, reducArt20, aportPP, limPP, deducPP, RNTred,
+    return { brutoTotal, flexTotal, brutoIRPF, cotizSS, gastosArt19, RNT, reducArt20, aportPP, limPP, deducPP, RNTred,
              otrosIngresos, capInmobiliario, capMobiliario, gananciasFondos, otrasCorto,
              baseGeneral, baseAhorro, cuotaGen, cuotaAho, cuotaIntegra,
              retNomina, retCapital, totalRet, resultado };
@@ -201,6 +206,8 @@ const RentasModule = (() => {
       <table style="width:100%;border-collapse:collapse">
         ${_rentaSection('RENDIMIENTOS DEL TRABAJO')}
         ${_rentaRow('Ingresos íntegros del trabajo', r.brutoTotal, 'var(--text)', true)}
+        ${r.flexTotal > 0 ? _rentaRow('− Retribución flexible exenta (Art. 42 LIRPF)', -r.flexTotal, 'var(--green)', true) : ''}
+        ${r.flexTotal > 0 ? _rentaRow('= Ingresos sujetos a IRPF', r.brutoIRPF, 'var(--text)', false) : ''}
         ${_rentaRow('− Cotizaciones SS (≈6.35%)', -r.cotizSS, 'var(--red)', true)}
         ${_rentaRow('− Gastos deducibles (Art. 19.2 LIRPF)', -r.gastosArt19, 'var(--red)', true)}
         ${_rentaRow('= Rendimiento neto trabajo', r.RNT, 'var(--text)', false)}
