@@ -1373,19 +1373,28 @@ const FinanceMath = (() => {
     fechaPrimeraAmort = null,
     loanIds = null,
     nominas = [],
+    sourceAccountIds = [],
   } = {}) {
 
     const hoy       = new Date();
     const hoyStr    = hoy.toISOString().slice(0, 10);
-    const colchon   = calcColchonEnFecha(expenses, config, loans, hoyStr);
     const horizonte = Math.min(120, Math.max(1, mesesHorizonte));
+
+    const activeAccs  = accounts.filter(a => a.activo);
+    const allActiveIds = activeAccs.map(a => a._id);
+    // Source account IDs: accounts from which surplus is evaluated; default = all active
+    const sourceAccIds = sourceAccountIds.length > 0
+      ? sourceAccountIds.filter(id => allActiveIds.includes(id))
+      : allActiveIds;
 
     const loansActivos = loans
       .filter(l => l.activo && !l.simulacion && (!loanIds || loanIds.includes(l._id)))
       .sort((a, b) => b.tin - a.tin);
 
+    const margenesActivos = (config.margenesSeguridad || []).filter(m => m.activo !== false);
+
     if (loansActivos.length === 0) {
-      return { plan: [], colchon, totalAmortizado: 0, totalComisiones: 0, totalAhorroIntereses: 0, resumenPorLoan: [] };
+      return { plan: [], margenesAplicados: margenesActivos.length, totalAmortizado: 0, totalComisiones: 0, totalAhorroIntereses: 0, resumenPorLoan: [] };
     }
 
     // Amortizaciones del plan por préstamo (se acumulan durante la simulación)
@@ -1431,19 +1440,51 @@ const FinanceMath = (() => {
       return Math.max(0, loanActual.capital - yaAmort);
     }
 
-    // ── Helper: saldo mínimo del mes con el estado actual del plan ─────────────
-    function saldoMinDelMes(ini, fin) {
+    // ── Helper: máximo amortizable en el mes respetando todos los márgenes activos
+    // Genera el extracto una vez, trackea saldo per-account y evalúa cada margen.
+    function calcMaxAmortMes(ini, fin) {
       const loansActualizados = loans.map(l => ({
         ...l,
         amortizaciones: [...(l.amortizaciones || []), ...(amortsPorLoan[l._id] || [])]
       }));
-      const cfg      = { ...config, dashboardStart: hoyStr, dashboardEnd: fin };
-      const extracto = generarExtracto(loansActualizados, expenses, accounts, cfg, null, nominas);
-      const saldoBase = accounts.filter(a => a.activo).reduce((s, a) => s + saldoRealCuenta(a), 0);
-      const antsMes   = extracto.filter(e => e.fecha < ini);
-      const saldoIni  = antsMes.length > 0 ? antsMes[antsMes.length - 1].saldoAcum : saldoBase;
-      const enMes     = extracto.filter(e => e.fecha >= ini && e.fecha <= fin);
-      return Math.min(saldoIni, ...enMes.map(e => e.saldoAcum));
+      const cfg = { ...config, dashboardStart: hoyStr, dashboardEnd: fin };
+      const ext = generarExtracto(loansActualizados, expenses, accounts, cfg, null, nominas);
+
+      const running = {};
+      for (const acc of activeAccs) running[acc._id] = saldoRealCuenta(acc);
+      const snaps = ext.map(ev => {
+        if (ev.cuenta && running[ev.cuenta] !== undefined) running[ev.cuenta] += ev.cuantia;
+        return { fecha: ev.fecha, saldos: { ...running } };
+      });
+
+      function minSaldoGrupo(ids) {
+        const saldoFn = s => ids.reduce((sum, id) => sum + (s.saldos[id] || 0), 0);
+        const baseVal = ids.reduce((sum, id) => {
+          const acc = activeAccs.find(a => a._id === id);
+          return sum + (acc ? saldoRealCuenta(acc) : 0);
+        }, 0);
+        const antes = snaps.filter(s => s.fecha < ini);
+        const en    = snaps.filter(s => s.fecha >= ini && s.fecha <= fin);
+        const saldoIni = antes.length > 0 ? saldoFn(antes[antes.length - 1]) : baseVal;
+        return Math.min(saldoIni, ...en.map(saldoFn));
+      }
+
+      let maxAmort = Infinity;
+      for (const mg of margenesActivos) {
+        const target = calcMargenEnFecha(mg, expenses, config, loans, fin);
+        if (target <= 0) continue;
+        const relevantIds = (mg.cuentas && mg.cuentas.length > 0)
+          ? mg.cuentas.filter(id => allActiveIds.includes(id))
+          : allActiveIds;
+        if (relevantIds.length === 0) continue;
+        maxAmort = Math.min(maxAmort, minSaldoGrupo(relevantIds) - target);
+      }
+
+      if (!isFinite(maxAmort)) {
+        // No margins configured → use source accounts saldo
+        maxAmort = minSaldoGrupo(sourceAccIds);
+      }
+      return maxAmort;
     }
 
     // ── Bucle principal ─────────────────────────────────────────────────────────
@@ -1467,10 +1508,7 @@ const FinanceMath = (() => {
 
       if (dia15 < hoyStr) continue;
 
-      const colchonMes = calcColchonEnFecha(expenses, config, loans, fin);
-
-      const saldoMin  = saldoMinDelMes(ini, fin);
-      const excedente = saldoMin - colchonMes - SAFETY_BUFFER;
+      const excedente = calcMaxAmortMes(ini, fin) - SAFETY_BUFFER;
       if (excedente < minAmortizable) continue;
 
       // Snapshot para rollback si el mes siguiente queda por debajo del colchón
@@ -1555,7 +1593,7 @@ const FinanceMath = (() => {
 
     const totalAhorroIntereses = resumenPorLoan.reduce((s, r) => s + r.ahorroIntereses, 0);
 
-    return { plan, colchon, totalAmortizado, totalComisiones, totalAhorroIntereses, resumenPorLoan };
+    return { plan, margenesAplicados: margenesActivos.length, totalAmortizado, totalComisiones, totalAhorroIntereses, resumenPorLoan };
   }
   // ── Comparador de frecuencias de amortización ────────────────────────────────
   // Corre optimizarAmortizaciones para cada frecuencia candidata y calcula el
@@ -1564,11 +1602,12 @@ const FinanceMath = (() => {
     horizonte      = 60,
     minAmortizable = 500,
     tipoAmort      = 'plazo',
-    fechaObjetivo  = null,   // ISO string, si null usa fin del horizonte
+    fechaObjetivo  = null,
     frecuencias    = [1, 2, 3, 6, 12],
     fechaPrimeraAmort = null,
     loanIds        = null,
     nominas        = [],
+    sourceAccountIds = [],
   } = {}) {
 
     // Fecha objetivo para medir el saldo
@@ -1606,6 +1645,7 @@ const FinanceMath = (() => {
         fechaPrimeraAmort,
         loanIds,
         nominas,
+        sourceAccountIds,
       });
 
       // Reconstruir amortsPorLoan desde el plan para calcular saldo

@@ -415,11 +415,28 @@ const LoansModule = (() => {
         <span class="badge badge-yellow" style="font-size:11px">${l.tin}% TIN</span>
       </label>`).join('');
 
+    const allAccounts = State.get('accounts').filter(a => a.activo && !a.simulacion);
+    const accountCheckboxes = allAccounts.map(a => `
+      <label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;background:var(--bg2)">
+        <input type="checkbox" class="opt-acc-check" value="${a._id}" checked style="accent-color:var(--accent)"/>
+        <span style="font-size:13px;flex:1">${a.nombre}</span>
+        <span class="text-sm" style="color:var(--text3)">${FinanceMath.eur(FinanceMath.saldoRealCuenta(a))}</span>
+      </label>`).join('');
+
+    const margenesActivos = (config.margenesSeguridad||[]).filter(m => m.activo !== false);
+    const margenesHint = margenesActivos.length > 0
+      ? `Respetará ${margenesActivos.length} margen${margenesActivos.length>1?'es':''} de seguridad activo${margenesActivos.length>1?'s':''}: ${margenesActivos.map(m=>m.nombre).join(', ')}.`
+      : `<span style="color:var(--yellow)">Sin márgenes de seguridad configurados. Define umbrales en <strong>Márgenes de seguridad</strong> para proteger tus cuentas.</span>`;
+
     const html = `
       <div class="auth-hint mb-12">
-        El optimizador calcula cuándo y cuánto amortizar usando el excedente mensual
-        por encima del colchón económico (${FinanceMath.eur(FinanceMath.calcColchonEnFecha(State.get('expenses'), config, loans, new Date().toISOString().slice(0,10)))}).
-        Las amortizaciones se aplican primero al préstamo con mayor interés.
+        El optimizador calcula cuándo y cuánto amortizar usando el excedente mensual respetando los márgenes de seguridad activos.
+        Las amortizaciones se aplican primero al préstamo con mayor interés. ${margenesHint}
+      </div>
+
+      <div class="card-title mb-6">Cuentas de origen</div>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px">
+        ${accountCheckboxes || '<span class="text-sm" style="color:var(--text3)">Sin cuentas activas</span>'}
       </div>
 
       <div class="card-title mb-6">Préstamos a amortizar</div>
@@ -456,9 +473,15 @@ const LoansModule = (() => {
 
   function _getSelectedLoanIds() {
     const checks = [...document.querySelectorAll('.opt-loan-check')];
-    if (checks.length === 0) return null; // modal cerrado o sin checkboxes → sin filtro
+    if (checks.length === 0) return null;
     const selected = checks.filter(c => c.checked).map(c => c.value);
-    return selected.length === checks.length ? null : selected; // null = todos
+    return selected.length === checks.length ? null : selected;
+  }
+
+  function _getSelectedAccountIds() {
+    const checks = [...document.querySelectorAll('.opt-acc-check')];
+    if (checks.length === 0) return [];
+    return checks.filter(c => c.checked).map(c => c.value);
   }
 
   function runComparador() {
@@ -490,9 +513,10 @@ const LoansModule = (() => {
 
     // Defer para que el modal de "cargando" se pinte antes del cálculo síncrono
     setTimeout(() => {
+      const sourceAccountIds = _getSelectedAccountIds();
       const comparativa = FinanceMath.compararFrecuencias(loans, expenses, accounts, config, {
         horizonte, minAmortizable: minAmort, tipoAmort, fechaObjetivo: fechaObj,
-        frecuencias: [1, 2, 3, 6, 12], fechaPrimeraAmort, loanIds, nominas,
+        frecuencias: [1, 2, 3, 6, 12], fechaPrimeraAmort, loanIds, nominas, sourceAccountIds,
       });
 
       if (comparativa.resultados.length === 0) {
@@ -644,9 +668,10 @@ const LoansModule = (() => {
     const config   = State.get('config');
     const nominas  = State.get('nominas') || [];
 
+    const sourceAccountIds = _getSelectedAccountIds();
     const resultado = FinanceMath.optimizarAmortizaciones(loans, expenses, accounts, config, {
       frecuencia, mesesHorizonte: horizonte, minAmortizable: minAmort, tipoAmort,
-      fechaPrimeraAmort, loanIds, nominas,
+      fechaPrimeraAmort, loanIds, nominas, sourceAccountIds,
     });
 
     if (resultado.plan.length === 0) {
@@ -654,11 +679,10 @@ const LoansModule = (() => {
         <div style="text-align:center;padding:20px">
           <div style="font-size:32px;margin-bottom:12px">🔍</div>
           <div class="card-title">Sin excedente disponible</div>
-          <div class="text-sm mt-8">Con el colchón configurado de <strong>${FinanceMath.eur(resultado.colchon)}</strong>,
-          no hay excedente suficiente en los próximos ${horizonte} meses para generar amortizaciones
-          por encima del mínimo de ${FinanceMath.eur(minAmort)}.</div>
+          <div class="text-sm mt-8">No hay excedente suficiente respetando los ${resultado.margenesAplicados} márgenes de seguridad activos
+          en los próximos ${horizonte} meses para generar amortizaciones por encima del mínimo de ${FinanceMath.eur(minAmort)}.</div>
           <div class="text-sm mt-8" style="color:var(--text3)">
-            Prueba a reducir el colchón económico, el mínimo de amortización, o ampliar el horizonte.
+            Prueba a revisar los márgenes de seguridad, reducir el mínimo de amortización, o ampliar el horizonte.
           </div>
           <div class="flex gap-8 mt-16" style="justify-content:center">
             <button class="btn-secondary" onclick="LoansModule.openOptimizador()">← Cambiar parámetros</button>
@@ -716,7 +740,7 @@ const LoansModule = (() => {
         <div class="stat-card"><div class="stat-label">Total amortizado</div><div class="stat-value neg">${FinanceMath.eur(resultado.totalAmortizado)}</div></div>
         <div class="stat-card"><div class="stat-label">Ahorro en intereses</div><div class="stat-value pos">${FinanceMath.eur(resultado.totalAhorroIntereses)}</div></div>
         <div class="stat-card"><div class="stat-label">Comisiones estimadas</div><div class="stat-value neg">${FinanceMath.eur(resultado.totalComisiones)}</div></div>
-        <div class="stat-card"><div class="stat-label">Colchón respetado</div><div class="stat-value">${FinanceMath.eur(resultado.colchon)}</div></div>
+        <div class="stat-card"><div class="stat-label">Márgenes verificados</div><div class="stat-value">${resultado.margenesAplicados}</div></div>
       </div>
 
       <!-- Resumen por préstamo -->
