@@ -647,15 +647,18 @@ const FinanceMath = (() => {
       const bruto = brutoAjustado(nom, fechaStr);
       if (nom.irpfModo === 'manual') return bruto * ((nom.irpfPct || 0) / 100);
       const flexAnual = (nom.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
-      const baseIRPF = Math.max(0, bruto - flexAnual);
+      const imponible = calcBaseImponibleTrabajo(bruto, flexAnual);
       const tramosYear = tramosIRPFParaAño(parseInt(fechaStr.slice(0, 4)));
       const g = nom.grupoNomina || '';
-      if (!g) return calcIRPF(baseIRPF, tramosYear);
-      // Group stacking: position determined by full bruto, but tax calculated on flex-reduced base
-      const baseAcum = grupos[g]
+      if (!g) return calcIRPF(imponible, tramosYear);
+      // Group stacking on net taxable bases (SS + Art.19.2 + Art.20 applied per nómina)
+      const imponibleAcum = grupos[g]
         .filter(n => n.activo && n._id !== nom._id && (n.bruto || 0) > (nom.bruto || 0))
-        .reduce((s, n) => s + brutoAjustado(n, fechaStr), 0);
-      return calcIRPF(baseAcum + baseIRPF, tramosYear) - calcIRPF(baseAcum, tramosYear);
+        .reduce((s, n) => {
+          const nFlex = (n.retribucionFlexible || []).reduce((ss, c) => ss + (c.importe || 0) * 12, 0);
+          return s + calcBaseImponibleTrabajo(brutoAjustado(n, fechaStr), nFlex);
+        }, 0);
+      return calcIRPF(imponibleAcum + imponible, tramosYear) - calcIRPF(imponibleAcum, tramosYear);
     }
 
     for (const nom of nominas) {
@@ -991,6 +994,16 @@ const FinanceMath = (() => {
   }
 
   // ── IRPF ────────────────────────────────────────────────────────────────────
+  // Base imponible de rendimientos del trabajo tras aplicar SS, Art.19.2 y Art.20 LIRPF
+  function calcBaseImponibleTrabajo(bruto, flexAnual) {
+    const baseIRPF    = Math.max(0, bruto - (flexAnual || 0));
+    const cotizSS     = bruto * 0.0635;
+    const gastosArt19 = Math.min(2000, baseIRPF);
+    const RNT         = Math.max(0, baseIRPF - cotizSS - gastosArt19);
+    const reducArt20  = RNT <= 15876 ? 7302 : (RNT <= 21622 ? Math.max(0, 7302 - 1.75 * (RNT - 15876)) : 0);
+    return Math.max(0, RNT - reducArt20);
+  }
+
   function calcIRPF(baseImponible, tramos) {
     // tramos: [[min, tipo%], ...] ordenados por min ascendente
     const sorted = [...tramos].sort((a,b)=>a[0]-b[0]);
@@ -1737,6 +1750,6 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct, calcPrestacionParo };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct, calcPrestacionParo };
 })();
 

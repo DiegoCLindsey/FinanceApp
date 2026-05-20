@@ -24,10 +24,15 @@ const NominasModule = (() => {
     function irpfMarginal(nom, grupoNoms) {
       const bruto = nom.bruto || 0;
       if (nom.irpfModo === 'manual') return bruto * ((nom.irpfPct || 0) / 100);
-      const baseAcum = (grupoNoms || [])
+      const flexAnual = (nom.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
+      const imponible = FinanceMath.calcBaseImponibleTrabajo(bruto, flexAnual);
+      const imponibleAcum = (grupoNoms || [])
         .filter(n => n._id !== nom._id && (n.bruto || 0) > bruto)
-        .reduce((s, n) => s + (n.bruto || 0), 0);
-      return FinanceMath.calcIRPF(baseAcum + bruto, tramos) - FinanceMath.calcIRPF(baseAcum, tramos);
+        .reduce((s, n) => {
+          const nFlex = (n.retribucionFlexible || []).reduce((ss, c) => ss + (c.importe || 0) * 12, 0);
+          return s + FinanceMath.calcBaseImponibleTrabajo(n.bruto || 0, nFlex);
+        }, 0);
+      return FinanceMath.calcIRPF(imponibleAcum + imponible, tramos) - FinanceMath.calcIRPF(imponibleAcum, tramos);
     }
 
     // Render a group block with summary header + individual rows
@@ -38,10 +43,11 @@ const NominasModule = (() => {
         const sorted = [...noms].sort((a, b) => (b.bruto || 0) - (a.bruto || 0));
         let base = 0, total = 0;
         for (const n of sorted) {
-          if (n.irpfModo === 'manual') { total += (n.bruto || 0) * ((n.irpfPct || 0) / 100); base += (n.bruto || 0); continue; }
-          const b = n.bruto || 0;
-          total += FinanceMath.calcIRPF(base + b, tramos) - FinanceMath.calcIRPF(base, tramos);
-          base  += b;
+          const nFlex = (n.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
+          const imponible = FinanceMath.calcBaseImponibleTrabajo(n.bruto || 0, nFlex);
+          if (n.irpfModo === 'manual') { total += (n.bruto || 0) * ((n.irpfPct || 0) / 100); base += imponible; continue; }
+          total += FinanceMath.calcIRPF(base + imponible, tramos) - FinanceMath.calcIRPF(base, tramos);
+          base  += imponible;
         }
         return total;
       })();
@@ -291,15 +297,20 @@ const NominasModule = (() => {
   function renderRow(n, tramos, grupoNoms) {
     const brutoAnual = n.bruto || 0;
     const nPagas = n.nPagas || 12;
+    const flexAnualRow = (n.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
     const irpfAnual = (() => {
       if (n.irpfModo === 'manual') return brutoAnual * ((n.irpfPct || 0) / 100);
+      const imponible = FinanceMath.calcBaseImponibleTrabajo(brutoAnual, flexAnualRow);
       if (grupoNoms) {
-        const baseAcum = grupoNoms
+        const imponibleAcum = grupoNoms
           .filter(m => m._id !== n._id && (m.bruto || 0) > brutoAnual)
-          .reduce((s, m) => s + (m.bruto || 0), 0);
-        return FinanceMath.calcIRPF(baseAcum + brutoAnual, tramos) - FinanceMath.calcIRPF(baseAcum, tramos);
+          .reduce((s, m) => {
+            const mFlex = (m.retribucionFlexible || []).reduce((ss, c) => ss + (c.importe || 0) * 12, 0);
+            return s + FinanceMath.calcBaseImponibleTrabajo(m.bruto || 0, mFlex);
+          }, 0);
+        return FinanceMath.calcIRPF(imponibleAcum + imponible, tramos) - FinanceMath.calcIRPF(imponibleAcum, tramos);
       }
-      return FinanceMath.calcIRPF(brutoAnual, tramos);
+      return FinanceMath.calcIRPF(imponible, tramos);
     })();
     const irpfPct = brutoAnual > 0 ? (irpfAnual / brutoAnual * 100) : 0;
     const modoBadge = n.representacion === 'simplificado'
@@ -311,7 +322,6 @@ const NominasModule = (() => {
     const varianzaBadge = n.varianza > 0
       ? `<span class="badge" style="background:rgba(100,200,255,0.1);color:var(--accent)">±${n.varianza}% MC</span>`
       : '';
-    const flexAnualRow = (n.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
     const flexBadge = flexAnualRow > 0
       ? `<span class="badge" style="background:rgba(99,214,160,0.12);color:#63d6a0" title="Retribución flexible exenta IRPF">RF ${FinanceMath.eur(flexAnualRow)}/año</span>`
       : '';
@@ -432,7 +442,7 @@ const NominasModule = (() => {
         const baseIRPF  = Math.max(0, bruto - flexAnual);
         const irpfAnual = irpfModo === 'manual'
           ? bruto * ((parseFloat(document.getElementById('nf-irpfpct')?.value)||0) / 100)
-          : FinanceMath.calcIRPF(baseIRPF, tramos);
+          : FinanceMath.calcIRPF(FinanceMath.calcBaseImponibleTrabajo(bruto, flexAnual), tramos);
         const netoDinerario = baseIRPF - irpfAnual;
         const brutoCashPorPaga = baseIRPF / nPagas;
         const irpfPorPaga      = irpfAnual / nPagas;

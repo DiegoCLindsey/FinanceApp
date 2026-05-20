@@ -150,12 +150,11 @@ const RentasModule = (() => {
     const cuotaAho    = FinanceMath.calcIRPF(baseAhorro, tramosA);
     const cuotaIntegra = cuotaGen + cuotaAho;
 
-    // Retenciones
+    // Retenciones — consistentes con irpfAnualNomina (SS + Art.19.2 + Art.20 por nómina)
     const retNomina = nominas.reduce((s, n) => {
       const nFlexAnual = (n.retribucionFlexible || []).reduce((ss, c) => ss + (c.importe || 0) * 12, 0);
-      const nBrutoIRPF = Math.max(0, (n.bruto || 0) - nFlexAnual);
       if (n.irpfModo === 'manual') return s + (n.bruto || 0) * ((n.irpfPct || 0) / 100);
-      return s + FinanceMath.calcIRPF(nBrutoIRPF, tramos);
+      return s + FinanceMath.calcIRPF(FinanceMath.calcBaseImponibleTrabajo(n.bruto || 0, nFlexAnual), tramos);
     }, 0);
     const totalRet = retNomina + retCapital;
 
