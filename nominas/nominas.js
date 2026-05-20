@@ -24,15 +24,23 @@ const NominasModule = (() => {
     function irpfMarginal(nom, grupoNoms) {
       const bruto = nom.bruto || 0;
       if (nom.irpfModo === 'manual') return bruto * ((nom.irpfPct || 0) / 100);
-      const flexAnual = (nom.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
-      const imponible = FinanceMath.calcBaseImponibleTrabajo(bruto, flexAnual);
-      const imponibleAcum = (grupoNoms || [])
+      const all = grupoNoms || [nom];
+      // Deductions (SS, Art.19.2, Art.20) applied at group level, distributed proportionally
+      const totalBruto     = all.reduce((s, n) => s + (n.bruto || 0), 0);
+      const totalFlex      = all.reduce((s, n) => s + (n.retribucionFlexible || []).reduce((ss, c) => ss + (c.importe || 0) * 12, 0), 0);
+      const totalBaseIRPF  = Math.max(0, totalBruto - totalFlex);
+      const groupImponible = FinanceMath.calcBaseImponibleTrabajo(totalBruto, totalFlex);
+      const nomFlex        = (nom.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
+      const nomBase        = Math.max(0, bruto - nomFlex);
+      const nomImponible   = totalBaseIRPF > 0 ? groupImponible * (nomBase / totalBaseIRPF) : 0;
+      const imponibleAcum  = all
         .filter(n => n._id !== nom._id && (n.bruto || 0) > bruto)
         .reduce((s, n) => {
           const nFlex = (n.retribucionFlexible || []).reduce((ss, c) => ss + (c.importe || 0) * 12, 0);
-          return s + FinanceMath.calcBaseImponibleTrabajo(n.bruto || 0, nFlex);
+          const nBase = Math.max(0, (n.bruto || 0) - nFlex);
+          return s + (totalBaseIRPF > 0 ? groupImponible * (nBase / totalBaseIRPF) : 0);
         }, 0);
-      return FinanceMath.calcIRPF(imponibleAcum + imponible, tramos) - FinanceMath.calcIRPF(imponibleAcum, tramos);
+      return FinanceMath.calcIRPF(imponibleAcum + nomImponible, tramos) - FinanceMath.calcIRPF(imponibleAcum, tramos);
     }
 
     // Render a group block with summary header + individual rows
@@ -40,14 +48,19 @@ const NominasModule = (() => {
       const totalBruto = noms.reduce((s, n) => s + (n.bruto || 0), 0);
       // IRPF total using group stacking
       const irpfTotal = (() => {
+        const totalBruto     = noms.reduce((s, n) => s + (n.bruto || 0), 0);
+        const totalFlex      = noms.reduce((s, n) => s + (n.retribucionFlexible || []).reduce((ss, c) => ss + (c.importe || 0) * 12, 0), 0);
+        const totalBaseIRPF  = Math.max(0, totalBruto - totalFlex);
+        const groupImponible = FinanceMath.calcBaseImponibleTrabajo(totalBruto, totalFlex);
         const sorted = [...noms].sort((a, b) => (b.bruto || 0) - (a.bruto || 0));
         let base = 0, total = 0;
         for (const n of sorted) {
+          if (n.irpfModo === 'manual') { total += (n.bruto || 0) * ((n.irpfPct || 0) / 100); continue; }
           const nFlex = (n.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
-          const imponible = FinanceMath.calcBaseImponibleTrabajo(n.bruto || 0, nFlex);
-          if (n.irpfModo === 'manual') { total += (n.bruto || 0) * ((n.irpfPct || 0) / 100); base += imponible; continue; }
-          total += FinanceMath.calcIRPF(base + imponible, tramos) - FinanceMath.calcIRPF(base, tramos);
-          base  += imponible;
+          const nBase = Math.max(0, (n.bruto || 0) - nFlex);
+          const nImponible = totalBaseIRPF > 0 ? groupImponible * (nBase / totalBaseIRPF) : 0;
+          total += FinanceMath.calcIRPF(base + nImponible, tramos) - FinanceMath.calcIRPF(base, tramos);
+          base  += nImponible;
         }
         return total;
       })();
@@ -300,17 +313,24 @@ const NominasModule = (() => {
     const flexAnualRow = (n.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
     const irpfAnual = (() => {
       if (n.irpfModo === 'manual') return brutoAnual * ((n.irpfPct || 0) / 100);
-      const imponible = FinanceMath.calcBaseImponibleTrabajo(brutoAnual, flexAnualRow);
       if (grupoNoms) {
-        const imponibleAcum = grupoNoms
+        // Group: deductions at group level, distributed proportionally to preserve marginal rates
+        const totalBruto     = grupoNoms.reduce((s, m) => s + (m.bruto || 0), 0);
+        const totalFlex      = grupoNoms.reduce((s, m) => s + (m.retribucionFlexible || []).reduce((ss, c) => ss + (c.importe || 0) * 12, 0), 0);
+        const totalBaseIRPF  = Math.max(0, totalBruto - totalFlex);
+        const groupImponible = FinanceMath.calcBaseImponibleTrabajo(totalBruto, totalFlex);
+        const nomBase        = Math.max(0, brutoAnual - flexAnualRow);
+        const nomImponible   = totalBaseIRPF > 0 ? groupImponible * (nomBase / totalBaseIRPF) : 0;
+        const imponibleAcum  = grupoNoms
           .filter(m => m._id !== n._id && (m.bruto || 0) > brutoAnual)
           .reduce((s, m) => {
             const mFlex = (m.retribucionFlexible || []).reduce((ss, c) => ss + (c.importe || 0) * 12, 0);
-            return s + FinanceMath.calcBaseImponibleTrabajo(m.bruto || 0, mFlex);
+            const mBase = Math.max(0, (m.bruto || 0) - mFlex);
+            return s + (totalBaseIRPF > 0 ? groupImponible * (mBase / totalBaseIRPF) : 0);
           }, 0);
-        return FinanceMath.calcIRPF(imponibleAcum + imponible, tramos) - FinanceMath.calcIRPF(imponibleAcum, tramos);
+        return FinanceMath.calcIRPF(imponibleAcum + nomImponible, tramos) - FinanceMath.calcIRPF(imponibleAcum, tramos);
       }
-      return FinanceMath.calcIRPF(imponible, tramos);
+      return FinanceMath.calcIRPF(FinanceMath.calcBaseImponibleTrabajo(brutoAnual, flexAnualRow), tramos);
     })();
     const irpfPct = brutoAnual > 0 ? (irpfAnual / brutoAnual * 100) : 0;
     const modoBadge = n.representacion === 'simplificado'

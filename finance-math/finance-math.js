@@ -647,18 +647,25 @@ const FinanceMath = (() => {
       const bruto = brutoAjustado(nom, fechaStr);
       if (nom.irpfModo === 'manual') return bruto * ((nom.irpfPct || 0) / 100);
       const flexAnual = (nom.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
-      const imponible = calcBaseImponibleTrabajo(bruto, flexAnual);
       const tramosYear = tramosIRPFParaAño(parseInt(fechaStr.slice(0, 4)));
       const g = nom.grupoNomina || '';
-      if (!g) return calcIRPF(imponible, tramosYear);
-      // Group stacking on net taxable bases (SS + Art.19.2 + Art.20 applied per nómina)
-      const imponibleAcum = grupos[g]
-        .filter(n => n.activo && n._id !== nom._id && (n.bruto || 0) > (nom.bruto || 0))
+      if (!g) return calcIRPF(calcBaseImponibleTrabajo(bruto, flexAnual), tramosYear);
+      // Group: deductions applied at group level, distributed proportionally to preserve marginal rates
+      const groupNoms      = grupos[g].filter(n => n.activo);
+      const totalBruto     = groupNoms.reduce((s, n) => s + brutoAjustado(n, fechaStr), 0);
+      const totalFlex      = groupNoms.reduce((s, n) => s + (n.retribucionFlexible || []).reduce((ss, c) => ss + (c.importe || 0) * 12, 0), 0);
+      const totalBaseIRPF  = Math.max(0, totalBruto - totalFlex);
+      const groupImponible = calcBaseImponibleTrabajo(totalBruto, totalFlex);
+      const nomBase        = Math.max(0, bruto - flexAnual);
+      const nomImponible   = totalBaseIRPF > 0 ? groupImponible * (nomBase / totalBaseIRPF) : 0;
+      const imponibleAcum  = groupNoms
+        .filter(n => n._id !== nom._id && (n.bruto || 0) > (nom.bruto || 0))
         .reduce((s, n) => {
           const nFlex = (n.retribucionFlexible || []).reduce((ss, c) => ss + (c.importe || 0) * 12, 0);
-          return s + calcBaseImponibleTrabajo(brutoAjustado(n, fechaStr), nFlex);
+          const nBase = Math.max(0, brutoAjustado(n, fechaStr) - nFlex);
+          return s + (totalBaseIRPF > 0 ? groupImponible * (nBase / totalBaseIRPF) : 0);
         }, 0);
-      return calcIRPF(imponibleAcum + imponible, tramosYear) - calcIRPF(imponibleAcum, tramosYear);
+      return calcIRPF(imponibleAcum + nomImponible, tramosYear) - calcIRPF(imponibleAcum, tramosYear);
     }
 
     for (const nom of nominas) {
