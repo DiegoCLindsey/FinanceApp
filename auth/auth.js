@@ -438,7 +438,9 @@ const AuthModule = (() => {
   function _wireFirebaseSetupStep() {
     _err('fbx-setup-error', '');
 
-    // "Usar mi propio Firebase": solo visible cuando no hay config inyectada desde CI
+    // "Usar mi propio Firebase": oculto cuando hay config inyectada desde CI.
+    // Sin config inyectada: si hay config guardada en localStorage, se usa en silencio (colapsado);
+    // si no hay ninguna config, expandir automáticamente para que el usuario sepa qué hacer.
     const ownProject = document.getElementById('fbx-own-project');
     if (FirebaseService.hasInjectedConfig()) {
       ownProject?.classList.add('hidden');
@@ -448,6 +450,11 @@ const AuthModule = (() => {
       if (savedCfg) {
         const ta = document.getElementById('fbx-config-json');
         if (ta) ta.value = JSON.stringify(savedCfg, null, 2);
+        // Config guardada → se usará automáticamente, no hace falta expandir
+      } else {
+        // Sin ninguna config: expandir para que el usuario la pegue antes de continuar
+        if (ownProject) ownProject.open = true;
+        _err('fbx-setup-error', 'Introduce la configuración de tu proyecto Firebase para continuar.');
       }
     }
 
