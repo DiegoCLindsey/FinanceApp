@@ -1,6 +1,7 @@
 // Depends on: State, FinanceMath, UI, EscenariosModule
 const RentasModule = (() => {
-  let _tab = 'mobiliario';
+  let _tab = 'declaracion';
+  let _rentaExtras = {}; // manual overrides for declaración
 
   // ── Resumen fiscal consolidado ───────────────────────────────────────────────
   function _resumenFiscal() {
@@ -58,9 +59,10 @@ const RentasModule = (() => {
         <h1 class="page-title">Fiscalidad</h1>
       </div>
       ${_resumenFiscal()}
-      <div style="display:flex;gap:0;margin-bottom:24px;border-bottom:1px solid var(--border)">
-        ${_tabBtn('mobiliario', 'Capital Mobiliario')}
-        ${_tabBtn('trabajo',    'Rendimientos del Trabajo')}
+      <div style="display:flex;gap:0;margin-bottom:24px;border-bottom:1px solid var(--border);overflow-x:auto">
+        ${_tabBtn('declaracion', 'Declaración Renta')}
+        ${_tabBtn('mobiliario',  'Capital Mobiliario')}
+        ${_tabBtn('trabajo',     'Rendimientos del Trabajo')}
         ${_tabBtn('inmobiliario','Capital Inmobiliario')}
       </div>
       <div id="rentas-tab-content">${_renderTab()}</div>
@@ -90,9 +92,220 @@ const RentasModule = (() => {
   }
 
   function _renderTab() {
+    if (_tab === 'declaracion')  return _declaracionRenta();
     if (_tab === 'mobiliario')   return _capitalMobiliario();
     if (_tab === 'trabajo')      return _rendimientosTrabajo();
     return _capitalInmobiliario();
+  }
+
+  // ── Declaración de la Renta ──────────────────────────────────────────────────
+  function _calcRenta() {
+    const config  = State.get('config');
+    const nominas = (State.get('nominas') || []).filter(n => n.activo && !n.simulacion);
+    const accounts = State.get('accounts') || [];
+    const expenses = (State.get('expenses') || []).filter(e => e.activo && !e.simulacion);
+    const tramos  = FinanceMath.tramosIRPFParaAño(new Date().getFullYear());
+    const tramosA = FinanceMath.tramosGananciasParaAño(new Date().getFullYear());
+    const ex      = _rentaExtras;
+
+    // Rendimientos del trabajo
+    const brutoTotal   = nominas.reduce((s, n) => s + (n.bruto || 0), 0);
+    const cotizSS      = brutoTotal * 0.0635; // 4.70% CC + 1.55% desempleo + 0.10% FP
+    const gastosArt19  = Math.min(2000, brutoTotal); // Art. 19.2 — otros gastos deducibles
+    const RNT          = Math.max(0, brutoTotal - cotizSS - gastosArt19);
+    // Reducción Art. 20 LIRPF 2025
+    let reducArt20 = 0;
+    if (RNT <= 15876)      reducArt20 = 7302;
+    else if (RNT <= 21622) reducArt20 = Math.max(0, 7302 - 1.75 * (RNT - 15876));
+    // Aportaciones PP deducibles
+    const año = new Date().getFullYear();
+    const aportPP = accounts
+      .filter(a => a.modeloFondo === 'pension' || a.esFondoPension)
+      .reduce((s, a) => s + (a.aportaciones || [])
+        .filter(ap => (ap.fecha || '').startsWith(String(año)))
+        .reduce((ss, ap) => ss + (ap.cantidad || 0), 0), 0);
+    const limPP     = Math.min(8000, RNT * 0.30);
+    const deducPP   = Math.min(aportPP, limPP);
+    const RNTred    = Math.max(0, RNT - reducArt20 - deducPP);
+
+    // Otros ingresos sujetos a IRPF (prestaciones, etc.) — annualized from monthly
+    const otrosIngresos = expenses
+      .filter(e => e.sujetoIRPF && e.tipo === 'ingreso')
+      .reduce((s, e) => s + (e.cuantia || 0) * (e.frecuencia || 1) * (e.tipoFrecuencia === 'mensual' ? 12 : 1), 0);
+
+    // Extras manuales
+    const capInmobiliario   = parseFloat(ex.capInmobiliario) || 0;
+    const capMobiliario     = parseFloat(ex.capMobiliario) || 0;
+    const gananciasFondos   = parseFloat(ex.gananciasFondos) || 0;
+    const otrasCorto        = parseFloat(ex.otrasCorto) || 0;
+    const retCapital        = parseFloat(ex.retCapital) || 0;
+
+    // Bases
+    const baseGeneral = Math.max(0, RNTred + otrosIngresos + capInmobiliario + otrasCorto);
+    const baseAhorro  = Math.max(0, capMobiliario + gananciasFondos);
+    const cuotaGen    = FinanceMath.calcIRPF(baseGeneral, tramos);
+    const cuotaAho    = FinanceMath.calcIRPF(baseAhorro, tramosA);
+    const cuotaIntegra = cuotaGen + cuotaAho;
+
+    // Retenciones
+    const retNomina = nominas.reduce((s, n) => {
+      if (n.irpfModo === 'manual') return s + (n.bruto || 0) * ((n.irpfPct || 0) / 100);
+      return s + FinanceMath.calcIRPF(n.bruto || 0, tramos);
+    }, 0);
+    const totalRet = retNomina + retCapital;
+
+    // Resultado
+    const resultado = cuotaIntegra - totalRet;
+
+    return { brutoTotal, cotizSS, gastosArt19, RNT, reducArt20, aportPP, limPP, deducPP, RNTred,
+             otrosIngresos, capInmobiliario, capMobiliario, gananciasFondos, otrasCorto,
+             baseGeneral, baseAhorro, cuotaGen, cuotaAho, cuotaIntegra,
+             retNomina, retCapital, totalRet, resultado };
+  }
+
+  function _recalcRenta() {
+    _rentaExtras = {
+      capInmobiliario: document.getElementById('rex-inmobiliario')?.value || '0',
+      capMobiliario:   document.getElementById('rex-mobiliario')?.value   || '0',
+      gananciasFondos: document.getElementById('rex-ganancias')?.value    || '0',
+      otrasCorto:      document.getElementById('rex-otras')?.value        || '0',
+      retCapital:      document.getElementById('rex-ret-cap')?.value      || '0',
+    };
+    const el = document.getElementById('renta-cuadro');
+    if (el) el.innerHTML = _rentaCuadro(_calcRenta());
+  }
+
+  function _rentaRow(label, value, color, indent) {
+    const eur = FinanceMath.eur;
+    const style = `padding:5px ${indent ? '20px' : '10px'} 5px 10px;font-size:12px;`;
+    const valStyle = `text-align:right;font-weight:600;color:${color || 'var(--text)'};font-size:12px;padding:5px 10px;`;
+    return `<tr><td style="${style}color:var(--text2)">${label}</td><td style="${valStyle}">${eur(value)}</td></tr>`;
+  }
+
+  function _rentaSection(label) {
+    return `<tr><td colspan="2" style="padding:12px 10px 4px;font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.5px;border-top:1px solid var(--border)">${label}</td></tr>`;
+  }
+
+  function _rentaCuadro(r) {
+    const eur = FinanceMath.eur;
+    const hasOtros = r.otrosIngresos > 0;
+    const ahorroRows = (r.capMobiliario !== 0 || r.gananciasFondos !== 0) ? `
+      ${_rentaRow('Capital mobiliario (dividendos, intereses)', r.capMobiliario, 'var(--text)', true)}
+      ${_rentaRow('Ganancias patrimoniales (fondos/acciones)', r.gananciasFondos, r.gananciasFondos >= 0 ? 'var(--text)' : 'var(--green)', true)}
+    ` : `<tr><td colspan="2" style="padding:5px 10px;font-size:12px;color:var(--text3);font-style:italic">Sin datos — introduce importes en el formulario</td></tr>`;
+
+    const resultColor = r.resultado > 0 ? 'var(--red)' : 'var(--green)';
+    const resultLabel = r.resultado > 0 ? '🔴 A PAGAR' : '🟢 A DEVOLVER';
+
+    return `
+      <table style="width:100%;border-collapse:collapse">
+        ${_rentaSection('RENDIMIENTOS DEL TRABAJO')}
+        ${_rentaRow('Ingresos íntegros del trabajo', r.brutoTotal, 'var(--text)', true)}
+        ${_rentaRow('− Cotizaciones SS (≈6.35%)', -r.cotizSS, 'var(--red)', true)}
+        ${_rentaRow('− Gastos deducibles (Art. 19.2 LIRPF)', -r.gastosArt19, 'var(--red)', true)}
+        ${_rentaRow('= Rendimiento neto trabajo', r.RNT, 'var(--text)', false)}
+        ${_rentaRow('− Reducción Art. 20 LIRPF', -r.reducArt20, 'var(--green)', true)}
+        ${r.deducPP > 0 ? _rentaRow(`− Aportaciones planes de pensiones (${eur(r.aportPP)}, límite ${eur(r.limPP)})`, -r.deducPP, 'var(--green)', true) : ''}
+        ${hasOtros ? _rentaRow('+ Otros ingresos sujetos a IRPF', r.otrosIngresos, 'var(--text)', true) : ''}
+        ${r.capInmobiliario !== 0 ? _rentaRow('+ Capital inmobiliario neto', r.capInmobiliario, r.capInmobiliario >= 0 ? 'var(--text)' : 'var(--green)', true) : ''}
+        ${r.otrasCorto !== 0 ? _rentaRow('± Otras ganancias corto plazo', r.otrasCorto, 'var(--text)', true) : ''}
+        <tr style="background:var(--bg3)"><td style="padding:7px 10px;font-weight:700;font-size:12px">BASE IMPONIBLE GENERAL</td>
+          <td style="text-align:right;font-weight:700;font-size:14px;padding:7px 10px">${eur(r.baseGeneral)}</td></tr>
+        <tr><td style="padding:4px 10px 10px;font-size:11px;color:var(--text3)">→ Cuota IRPF base general</td>
+          <td style="text-align:right;padding:4px 10px 10px;font-size:11px;color:var(--red)">${eur(r.cuotaGen)}</td></tr>
+
+        ${_rentaSection('BASE DEL AHORRO')}
+        ${ahorroRows}
+        <tr style="background:var(--bg3)"><td style="padding:7px 10px;font-weight:700;font-size:12px">BASE IMPONIBLE DEL AHORRO</td>
+          <td style="text-align:right;font-weight:700;font-size:14px;padding:7px 10px">${eur(r.baseAhorro)}</td></tr>
+        <tr><td style="padding:4px 10px 10px;font-size:11px;color:var(--text3)">→ Cuota base ahorro (ganancias capital)</td>
+          <td style="text-align:right;padding:4px 10px 10px;font-size:11px;color:var(--red)">${eur(r.cuotaAho)}</td></tr>
+
+        ${_rentaSection('RESULTADO')}
+        ${_rentaRow('Cuota íntegra total', r.cuotaIntegra, 'var(--red)', false)}
+        ${_rentaRow('− Retenciones en nómina', -r.retNomina, 'var(--green)', true)}
+        ${r.retCapital !== 0 ? _rentaRow('− Retenciones capital mobiliario', -r.retCapital, 'var(--green)', true) : ''}
+        <tr style="border-top:2px solid var(--border)">
+          <td style="padding:10px;font-weight:700;font-size:14px">${resultLabel}</td>
+          <td style="text-align:right;font-weight:700;font-size:18px;padding:10px;color:${resultColor}">${eur(Math.abs(r.resultado))}</td>
+        </tr>
+      </table>
+    `;
+  }
+
+  function _declaracionRenta() {
+    const nominas = (State.get('nominas') || []).filter(n => n.activo && !n.simulacion);
+    const res = _calcRenta();
+    const añoActual = new Date().getFullYear();
+
+    const noNominas = nominas.length === 0 ? `
+      <div class="auth-hint mb-12" style="border-color:var(--yellow)">
+        ⚠️ No tienes nóminas configuradas. Ve a <strong>Nóminas</strong> para añadir tus ingresos del trabajo.
+      </div>` : '';
+
+    return `
+      <div class="auth-hint mb-12" style="border-color:var(--accent)">
+        📋 Estimación orientativa de tu declaración de la renta <strong>${añoActual}</strong> basada en los datos de la app.
+        Los rendimientos del trabajo se detectan automáticamente. Introduce manualmente los datos que la app no tiene.
+        <strong>No sustituye el asesoramiento fiscal profesional.</strong>
+      </div>
+      ${noNominas}
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+
+        <!-- Columna izquierda: datos manuales -->
+        <div>
+          <div class="card" style="padding:16px;margin-bottom:12px">
+            <div class="card-title mb-12">Datos adicionales</div>
+            <div class="text-sm mb-8" style="color:var(--text2)">
+              Introduce los importes anuales que la app no calcula automáticamente.
+            </div>
+            <div class="form-group">
+              <label class="form-label">Capital inmobiliario neto (alquileres − gastos)</label>
+              <input type="number" id="rex-inmobiliario" class="form-input" value="${_rentaExtras.capInmobiliario || 0}"
+                     placeholder="0" oninput="RentasModule._recalcRenta()"/>
+            </div>
+            <div class="form-group mt-8">
+              <label class="form-label">Capital mobiliario (dividendos, intereses)</label>
+              <input type="number" id="rex-mobiliario" class="form-input" value="${_rentaExtras.capMobiliario || 0}"
+                     placeholder="0" oninput="RentasModule._recalcRenta()"/>
+            </div>
+            <div class="form-group mt-8">
+              <label class="form-label">Ganancias / pérdidas patrimoniales (fondos, acciones)</label>
+              <input type="number" id="rex-ganancias" class="form-input" value="${_rentaExtras.gananciasFondos || 0}"
+                     placeholder="0" oninput="RentasModule._recalcRenta()"/>
+              <div style="font-size:11px;color:var(--text3);margin-top:4px">Positivo = ganancia · Negativo = pérdida compensable</div>
+            </div>
+            <div class="form-group mt-8">
+              <label class="form-label">Otras ganancias corto plazo (menos de 1 año)</label>
+              <input type="number" id="rex-otras" class="form-input" value="${_rentaExtras.otrasCorto || 0}"
+                     placeholder="0" oninput="RentasModule._recalcRenta()"/>
+            </div>
+            <div class="form-group mt-8">
+              <label class="form-label">Retenciones capital ya aplicadas</label>
+              <input type="number" id="rex-ret-cap" class="form-input" value="${_rentaExtras.retCapital || 0}"
+                     placeholder="0" oninput="RentasModule._recalcRenta()"/>
+              <div style="font-size:11px;color:var(--text3);margin-top:4px">Retenciones del 19% sobre dividendos, intereses y fondos ya retenidas en origen</div>
+            </div>
+          </div>
+          <div class="card" style="padding:16px;font-size:12px;color:var(--text3);line-height:1.6">
+            <strong style="color:var(--text2)">Autodetectado de la app:</strong><br>
+            ${nominas.map(n => `• ${n.nombre}: ${FinanceMath.eur(n.bruto || 0)} bruto/año`).join('<br>') || '— Sin nóminas —'}
+            ${(State.get('accounts')||[]).filter(a=>a.modeloFondo==='pension'||a.esFondoPension).length > 0
+              ? `<br><br><strong style="color:var(--text2)">Planes de pensiones:</strong><br>${
+                  (State.get('accounts')||[]).filter(a=>a.modeloFondo==='pension'||a.esFondoPension)
+                  .map(a=>`• ${a.nombre}`).join('<br>')
+                }` : ''}
+          </div>
+        </div>
+
+        <!-- Columna derecha: cuadro de declaración -->
+        <div class="card" style="padding:16px">
+          <div class="card-title mb-12">Borrador — Ejercicio ${añoActual}</div>
+          <div id="renta-cuadro">${_rentaCuadro(res)}</div>
+        </div>
+      </div>
+    `;
   }
 
   // ── Tabla de tramos ──────────────────────────────────────────────────────────
@@ -420,5 +633,5 @@ const RentasModule = (() => {
     `;
   }
 
-  return { render, setTab };
+  return { render, setTab, _recalcRenta };
 })();
