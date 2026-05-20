@@ -510,8 +510,8 @@ const DashboardModule = (() => {
         </div>`;
       })() : ''}
 
-      <!-- KPI financieros: donut distribución + rendimiento -->
-      <div class="grid-2 mb-14" style="gap:14px">
+      <!-- KPI financieros: donut distribución + rendimiento + desglose otros -->
+      <div class="grid-2 mb-14" style="gap:14px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
 
         <!-- Donut distribución de ingresos (media mensual del periodo) -->
         <div class="card">
@@ -554,6 +554,15 @@ const DashboardModule = (() => {
               </div>
             </div>`;
           })()}
+        </div>
+
+        <!-- Donut desglose "Otros gastos" por categoría/tag -->
+        <div class="card">
+          <div class="card-title mb-8">Desglose otros gastos</div>
+          <div id="dash-otros-donut-wrap" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+            <div style="position:relative;width:140px;height:140px;flex-shrink:0"><canvas id="chart-otros-donut"></canvas></div>
+            <div id="dash-otros-legend" style="flex:1;min-width:120px;display:flex;flex-direction:column;gap:6px;font-size:12px"></div>
+          </div>
         </div>
 
         <div class="card">
@@ -752,12 +761,24 @@ const DashboardModule = (() => {
     // Pass computed metrics to chart functions
     const _metricasGraficos = { loans, expenses, config, numMeses, extracto };
     const _donutMetrics = { gastosBasicosMediaMes, gastosMediaMes, cuotasMediaMes, ingresosMediaMes, amortizacionesMediaMes };
+    // Breakdown "otros gastos" por tag (media mensual del periodo)
+    const _otrosTagMap = {};
+    evSinTransf.filter(e => e.tipo === 'gasto' && e.sourceType === 'expense').forEach(e => {
+      const ex = expenses.find(ex => ex._id === e.sourceId);
+      if (!ex || ex.basico) return;
+      const cat = (ex.tags && ex.tags.length > 0) ? ex.tags[0] : (ex.concepto || 'Sin categoría');
+      _otrosTagMap[cat] = (_otrosTagMap[cat] || 0) + Math.abs(e.cuantia);
+    });
+    const _otrosTagData = Object.entries(_otrosTagMap)
+      .map(([label, total]) => ({ label, value: total / numMeses }))
+      .sort((a, b) => b.value - a.value);
     setTimeout(()=>{
       renderChartSaldo(extracto);
       renderChartVelas(extracto);
       renderChartTags(extracto, activeTags);
       renderChartBreakdown(_metricasGraficos);
       renderChartExpenseDonut(_donutMetrics);
+      renderChartOtrosDonut(_otrosTagData);
     }, 60);
   }
 
@@ -1205,6 +1226,57 @@ const DashboardModule = (() => {
         }
       }
     });
+  }
+
+  // Paleta de colores para el desglose de otros gastos
+  const _OTROS_PALETTE = ['#ff4d6d','#f97316','#eab308','#22d3ee','#a78bfa','#34d399','#fb7185','#60a5fa','#c084fc','#4ade80'];
+
+  function renderChartOtrosDonut(tagData) {
+    const ctx = document.getElementById('chart-otros-donut'); if (!ctx) return;
+    const legend = document.getElementById('dash-otros-legend');
+
+    if (!tagData.length) {
+      if (legend) legend.innerHTML = `<span style="color:var(--text3);font-size:11px">Sin gastos no básicos en el periodo</span>`;
+      return;
+    }
+
+    // Agrupar en "Otros" si hay más de 8 categorías
+    let segments = tagData.slice(0, 8);
+    if (tagData.length > 8) {
+      const resto = tagData.slice(8).reduce((s, x) => s + x.value, 0);
+      segments = [...segments, { label: 'Otros', value: resto }];
+    }
+    const total = segments.reduce((s, x) => s + x.value, 0);
+    segments = segments.map((s, i) => ({ ...s, color: _OTROS_PALETTE[i % _OTROS_PALETTE.length] }));
+
+    if (charts['chart-otros-donut']) { try { charts['chart-otros-donut'].destroy(); } catch {} }
+    charts['chart-otros-donut'] = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: segments.map(s => s.label),
+        datasets: [{ data: segments.map(s => s.value), backgroundColor: segments.map(s => s.color), borderWidth: 0, hoverOffset: 4 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '68%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor:'#13161e', borderColor:'#252a38', borderWidth:1,
+            titleColor:'#8b92a8', bodyColor:'#e8eaf2',
+            callbacks: { label: c => ` ${c.label}: ${FinanceMath.eur(c.parsed)} (${(c.parsed/(total||1)*100).toFixed(1)}%)` }
+          }
+        }
+      }
+    });
+
+    if (legend) legend.innerHTML = segments.map(s => `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span style="display:flex;align-items:center;gap:5px">
+          <span style="width:10px;height:10px;border-radius:2px;background:${s.color};display:inline-block;flex-shrink:0"></span>
+          <span style="color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px" title="${s.label}">${s.label}</span>
+        </span>
+        <span style="font-family:var(--font-mono);white-space:nowrap">${FinanceMath.eur(s.value)}<span style="color:var(--text3);margin-left:4px">${(s.value/total*100).toFixed(1)}%</span></span>
+      </div>`).join('');
   }
 
   function toggleConfig() {
