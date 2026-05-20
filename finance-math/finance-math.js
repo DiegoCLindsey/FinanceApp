@@ -1485,7 +1485,11 @@ const FinanceMath = (() => {
         return Math.min(ini0, ...en.map(fn));
       }
 
-      let maxAmort = Infinity;
+      // Always bound by source accounts first — they are the ones being debited
+      const srcIsAll = sourceAccIds.length === allActiveIds.length;
+      let maxAmort = srcIsAll ? minSaldoTotal() : minSaldoPartial(sourceAccIds);
+
+      // Further constrain by each active margin
       for (const mg of margenesActivos) {
         const target = calcMargenEnFecha(mg, expenses, config, loans, fin);
         if (target <= 0) continue;
@@ -1496,11 +1500,6 @@ const FinanceMath = (() => {
         maxAmort = Math.min(maxAmort, sMin - target);
       }
 
-      if (!isFinite(maxAmort)) {
-        // Sin márgenes: limitar por saldo de cuentas de origen
-        const srcIsAll = sourceAccIds.length === allActiveIds.length;
-        maxAmort = srcIsAll ? minSaldoTotal() : minSaldoPartial(sourceAccIds);
-      }
       return maxAmort;
     }
 

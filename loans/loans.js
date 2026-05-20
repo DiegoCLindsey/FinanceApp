@@ -410,7 +410,7 @@ const LoansModule = (() => {
 
     const loanCheckboxes = loans.map(l => `
       <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;background:var(--bg2)">
-        <input type="checkbox" class="opt-loan-check" value="${l._id}" checked style="accent-color:var(--accent)"/>
+        <input type="checkbox" class="opt-loan-check" value="${l._id}" ${l.tin >= 5 ? 'checked' : ''} style="accent-color:var(--accent)"/>
         <span style="font-size:13px;flex:1">${l.nombre}</span>
         <span class="badge badge-yellow" style="font-size:11px">${l.tin}% TIN</span>
       </label>`).join('');
