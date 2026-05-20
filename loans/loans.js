@@ -416,10 +416,11 @@ const LoansModule = (() => {
       </label>`).join('');
 
     const allAccounts = State.get('accounts').filter(a => a.activo && !a.simulacion);
+    const principalId = allAccounts.find(a => a.esCuentaPrincipal)?._id || allAccounts[0]?._id;
     const accountCheckboxes = allAccounts.map(a => `
       <label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;background:var(--bg2)">
-        <input type="checkbox" class="opt-acc-check" value="${a._id}" checked style="accent-color:var(--accent)"/>
-        <span style="font-size:13px;flex:1">${a.nombre}</span>
+        <input type="checkbox" class="opt-acc-check" value="${a._id}" ${a._id === principalId ? 'checked' : ''} style="accent-color:var(--accent)"/>
+        <span style="font-size:13px;flex:1">${a.nombre}${a._id === principalId ? ' <span class="badge badge-blue" style="font-size:10px">principal</span>' : ''}</span>
         <span class="text-sm" style="color:var(--text3)">${FinanceMath.eur(FinanceMath.saldoRealCuenta(a))}</span>
       </label>`).join('');
 

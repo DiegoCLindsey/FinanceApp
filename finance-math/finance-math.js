@@ -1561,8 +1561,7 @@ const FinanceMath = (() => {
       // de este mes. Si lo hace, se deshacen todas las amortizaciones del mes.
       if (plan.length > planLenAntes) {
         const next = mesInfo(i + 1);
-        const saldoMinSiguiente = saldoMinDelMes(next.ini, next.fin);
-        if (saldoMinSiguiente < colchon) {
+        if (calcMaxAmortMes(next.ini, next.fin) < SAFETY_BUFFER) {
           plan.length = planLenAntes;
           for (const l of loansActivos) amortsPorLoan[l._id] = amortSnap[l._id];
         }
