@@ -645,8 +645,10 @@ const FinanceMath = (() => {
     // of each component × 12 is subtracted from bruto before applying brackets.
     function irpfAnualNomina(nom, fechaStr) {
       const bruto = brutoAjustado(nom, fechaStr);
-      if (nom.irpfModo === 'manual') return bruto * ((nom.irpfPct || 0) / 100);
       const flexAnual = (nom.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
+      const baseIRPF = Math.max(0, bruto - flexAnual);
+      // Manual: % applies to cash base (bruto − flex), not full bruto
+      if (nom.irpfModo === 'manual') return baseIRPF * ((nom.irpfPct || 0) / 100);
       const tramosYear = tramosIRPFParaAño(parseInt(fechaStr.slice(0, 4)));
       const g = nom.grupoNomina || '';
       if (!g) return calcIRPF(calcBaseImponibleTrabajo(bruto, flexAnual), tramosYear);
@@ -685,14 +687,19 @@ const FinanceMath = (() => {
         // Cash portion = bruto minus flex components (benefit in kind, non-cash)
         const flexAnual    = (nom.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
         const brutoCash    = Math.max(0, bruto - flexAnual);
+        // SS employee contribution applied to cash base (flex benefits are SS-exempt under art.42)
+        const ssPct        = (nom.ssPct ?? 6.35) / 100;
+        const ssAnual      = brutoCash * ssPct;
         const brutoCashPorPaga = brutoCash / nPagas;
         const irpfPorPaga  = irpf / nPagas;
+        const ssPorPaga    = ssAnual / nPagas;
         const ingresoPorPaga = nom.representacion === 'simplificado'
-          ? (brutoCashPorPaga - irpfPorPaga)
+          ? (brutoCashPorPaga - ssPorPaga - irpfPorPaga)
           : brutoCashPorPaga;
         events.push({ fecha, concepto: nom.nombre, cuantia: ingresoPorPaga, tipo: 'ingreso', cuenta, tags: nom.tags||[], sourceId: nom._id, sourceType: 'nomina' });
-        if (nom.representacion === 'detallado' && irpfPorPaga > 0) {
-          events.push({ fecha, concepto: `IRPF ${nom.nombre}`, cuantia: irpfPorPaga, tipo: 'gasto', cuenta, tags: ['irpf','fiscal'], sourceId: nom._id+'_irpf', sourceType: 'nomina' });
+        if (nom.representacion === 'detallado') {
+          if (ssPorPaga > 0) events.push({ fecha, concepto: `SS ${nom.nombre}`, cuantia: ssPorPaga, tipo: 'gasto', cuenta, tags: ['seguridad-social','fiscal'], sourceId: nom._id+'_ss', sourceType: 'nomina' });
+          if (irpfPorPaga > 0) events.push({ fecha, concepto: `IRPF ${nom.nombre}`, cuantia: irpfPorPaga, tipo: 'gasto', cuenta, tags: ['irpf','fiscal'], sourceId: nom._id+'_irpf', sourceType: 'nomina' });
         }
         // Flex recharges: monthly credit to each benefit card account
         for (const comp of (nom.retribucionFlexible || [])) {

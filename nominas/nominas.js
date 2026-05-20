@@ -311,8 +311,9 @@ const NominasModule = (() => {
     const brutoAnual = n.bruto || 0;
     const nPagas = n.nPagas || 12;
     const flexAnualRow = (n.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
+    const baseIRPFRow  = Math.max(0, brutoAnual - flexAnualRow);
     const irpfAnual = (() => {
-      if (n.irpfModo === 'manual') return brutoAnual * ((n.irpfPct || 0) / 100);
+      if (n.irpfModo === 'manual') return baseIRPFRow * ((n.irpfPct || 0) / 100);
       if (grupoNoms) {
         // Group: deductions at group level, distributed proportionally to preserve marginal rates
         const totalBruto     = grupoNoms.reduce((s, m) => s + (m.bruto || 0), 0);
@@ -332,7 +333,10 @@ const NominasModule = (() => {
       }
       return FinanceMath.calcIRPF(FinanceMath.calcBaseImponibleTrabajo(brutoAnual, flexAnualRow), tramos);
     })();
-    const irpfPct = brutoAnual > 0 ? (irpfAnual / brutoAnual * 100) : 0;
+    const ssPct    = n.ssPct ?? 6.35;
+    const ssAnual  = baseIRPFRow * (ssPct / 100);
+    const netoPorPaga = (baseIRPFRow - ssAnual - irpfAnual) / nPagas;
+    const irpfPct = baseIRPFRow > 0 ? (irpfAnual / baseIRPFRow * 100) : 0;
     const modoBadge = n.representacion === 'simplificado'
       ? `<span class="badge badge-orange">Simplificado</span>`
       : `<span class="badge badge-purple">Detallado</span>`;
@@ -343,14 +347,17 @@ const NominasModule = (() => {
       ? `<span class="badge" style="background:rgba(100,200,255,0.1);color:var(--accent)">±${n.varianza}% MC</span>`
       : '';
     const flexBadge = flexAnualRow > 0
-      ? `<span class="badge" style="background:rgba(99,214,160,0.12);color:#63d6a0" title="Retribución flexible exenta IRPF">RF ${FinanceMath.eur(flexAnualRow)}/año</span>`
+      ? `<span class="badge" style="background:rgba(99,214,160,0.12);color:#63d6a0" title="Retribución flexible exenta IRPF y SS">RF ${FinanceMath.eur(flexAnualRow)}/año</span>`
+      : '';
+    const ssBadge = Math.abs(ssPct - 6.35) > 0.01
+      ? `<span class="badge" style="background:rgba(255,200,80,0.12);color:var(--yellow)" title="Cotización SS empleado personalizada">SS ${ssPct.toFixed(2)}%</span>`
       : '';
     return `<div class="exp-table-row">
       <div>
         <div style="font-weight:500">${n.nombre || '—'}</div>
-        <div class="flex gap-4 mt-4 flex-wrap">${ipcBadge}${varianzaBadge}${flexBadge}</div>
+        <div class="flex gap-4 mt-4 flex-wrap">${ipcBadge}${varianzaBadge}${flexBadge}${ssBadge}</div>
       </div>
-      <div class="num">${FinanceMath.eur(brutoAnual)}${flexAnualRow > 0 ? `<div class="text-sm" style="color:var(--accent)">Diner. ${FinanceMath.eur(brutoAnual-flexAnualRow)}</div>` : `<div class="text-sm" style="color:var(--text2)">${FinanceMath.eur(brutoAnual/nPagas)}/paga</div>`}</div>
+      <div class="num">${FinanceMath.eur(brutoAnual)}${flexAnualRow > 0 ? `<div class="text-sm" style="color:var(--accent)">Diner. ${FinanceMath.eur(baseIRPFRow)}</div>` : ''}<div class="text-sm" style="color:var(--text2)">${FinanceMath.eur(netoPorPaga)}/paga neto</div></div>
       <div class="text-sm">${nPagas} pagas</div>
       <div class="text-sm ${grupoNoms && n.irpfModo !== 'manual' ? 'neg' : ''}">${n.irpfModo === 'manual' ? n.irpfPct+'% (manual)' : irpfPct.toFixed(1)+'% (auto)'}${grupoNoms && n.irpfModo !== 'manual' ? ' <span title="Tipo marginal del grupo" style="font-size:10px;color:var(--text3)">marginal</span>' : ''}</div>
       <div>${modoBadge}</div>
@@ -419,13 +426,18 @@ const NominasModule = (() => {
           <div id="nf-irpfpct-wrap" class="mt-8" style="${n?.irpfModo==='manual'?'':'display:none'}">
             ${UI.input('nf-irpfpct', 'Retención IRPF (%)', 'number', n?.irpfPct||0, '20')}
           </div>
-          <div class="grid-2 mt-8">
+          <div class="grid-3 mt-8">
             <div class="form-group">
               <label class="form-label">Representación en predicciones</label>
               <select class="form-select" id="nf-representacion">
-                <option value="detallado" ${(n?.representacion||'detallado')==='detallado'?'selected':''}>Detallado (bruto + gasto IRPF)</option>
+                <option value="detallado" ${(n?.representacion||'detallado')==='detallado'?'selected':''}>Detallado (bruto + gastos SS/IRPF)</option>
                 <option value="simplificado" ${n?.representacion==='simplificado'?'selected':''}>Simplificado (neto directo)</option>
               </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Cotización SS empleado (%)</label>
+              <input class="form-input" type="number" id="nf-sspct" value="${(n?.ssPct ?? 6.35).toFixed(2)}" min="0" max="50" step="0.01" placeholder="6.35"/>
+              <div class="text-sm mt-4" style="color:var(--text3)">CC 4,70 + Desempleo 1,55 + FP 0,10 + MEI 0,13</div>
             </div>
             <div class="form-group">
               <label class="form-label">Varianza ± % (Monte Carlo)</label>
@@ -433,7 +445,7 @@ const NominasModule = (() => {
             </div>
           </div>
           <div class="mt-12" style="border-top:1px solid var(--border);padding-top:12px">
-            <div style="font-weight:600;font-size:13px;margin-bottom:6px">Retribución flexible <span style="font-weight:400;color:var(--text3);font-size:11px">(art. 42 LIRPF — exento IRPF)</span></div>
+            <div style="font-weight:600;font-size:13px;margin-bottom:6px">Retribución flexible <span style="font-weight:400;color:var(--text3);font-size:11px">(art. 42 LIRPF — exento IRPF y SS)</span></div>
             <div class="auth-hint mb-8" style="border-color:var(--accent)">
               Los importes mensuales reducen la base IRPF. Límites orientativos: <strong>transporte €125/mes</strong> (€1.500/año) · <strong>restaurante €220/mes</strong> (~€11/día × 20 días).
             </div>
@@ -460,13 +472,17 @@ const NominasModule = (() => {
         const tramos = config.tramos_irpf || [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]];
         const flexAnual = _editFlexPlan.reduce((s, c) => s + (c.importe || 0) * 12, 0);
         const baseIRPF  = Math.max(0, bruto - flexAnual);
+        const ssPct     = parseFloat(document.getElementById('nf-sspct')?.value) || 6.35;
+        const ssAnual   = baseIRPF * (ssPct / 100);
+        // Manual: % applies to flex-reduced base (same base used for SS)
         const irpfAnual = irpfModo === 'manual'
-          ? bruto * ((parseFloat(document.getElementById('nf-irpfpct')?.value)||0) / 100)
+          ? baseIRPF * ((parseFloat(document.getElementById('nf-irpfpct')?.value)||0) / 100)
           : FinanceMath.calcIRPF(FinanceMath.calcBaseImponibleTrabajo(bruto, flexAnual), tramos);
-        const netoDinerario = baseIRPF - irpfAnual;
+        const netoDinerario    = baseIRPF - ssAnual - irpfAnual;
         const brutoCashPorPaga = baseIRPF / nPagas;
+        const ssPorPaga        = ssAnual / nPagas;
         const irpfPorPaga      = irpfAnual / nPagas;
-        const netoPorPaga      = brutoCashPorPaga - irpfPorPaga;
+        const netoPorPaga      = brutoCashPorPaga - ssPorPaga - irpfPorPaga;
         const repr  = document.getElementById('nf-representacion')?.value;
         const grupo = document.getElementById('nf-grupo')?.value.trim();
         const otrasEnGrupo = grupo ? (State.get('nominas') || []).filter(m => m.grupoNomina === grupo && m._id !== (id||'')) : [];
@@ -474,22 +490,23 @@ const NominasModule = (() => {
           ? `<div style="margin-top:6px;color:var(--yellow);font-size:11px">⚡ En el grupo "${grupo}" con ${otrasEnGrupo.map(m=>m.nombre).join(', ')} — IRPF calculado al tipo marginal.</div>`
           : '';
         const flexHtml = flexAnual > 0 ? `
-            <span style="color:var(--text2)">Retrib. flexible:</span><span style="color:var(--accent)">-${FinanceMath.eur(flexAnual)}/año (exento IRPF)</span>
-            <span style="color:var(--text2)">Base IRPF:</span><span>${FinanceMath.eur(baseIRPF)}</span>` : '';
+            <span style="color:var(--text2)">Retrib. flexible:</span><span style="color:var(--accent)">-${FinanceMath.eur(flexAnual)}/año (exento IRPF y SS)</span>
+            <span style="color:var(--text2)">Base dineraria:</span><span>${FinanceMath.eur(baseIRPF)}</span>` : '';
         const box = document.getElementById('nf-preview');
         if (box) box.innerHTML = `
           <strong>Vista previa</strong>
           <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:4px">
             <span style="color:var(--text2)">Bruto total:</span><span>${FinanceMath.eur(bruto)}</span>
             ${flexHtml}
-            <span style="color:var(--text2)">IRPF anual:</span><span class="neg">${FinanceMath.eur(irpfAnual)} (${baseIRPF>0?(irpfAnual/baseIRPF*100).toFixed(1):0}%)</span>
+            <span style="color:var(--text2)">SS empleado:</span><span class="neg">-${FinanceMath.eur(ssAnual)} (${ssPct.toFixed(2)}%)</span>
+            <span style="color:var(--text2)">IRPF anual:</span><span class="neg">-${FinanceMath.eur(irpfAnual)} (${baseIRPF>0?(irpfAnual/baseIRPF*100).toFixed(1):0}%)</span>
             <span style="color:var(--text2)">Neto dinerario:</span><span class="pos">${FinanceMath.eur(netoDinerario)}</span>
             ${flexAnual > 0 ? `<span style="color:var(--text2)">+ Beneficios especie:</span><span style="color:var(--accent)">${FinanceMath.eur(flexAnual)}</span>` : ''}
-            <span style="color:var(--text2)">Neto/paga (dinerario):</span><span>${FinanceMath.eur(netoPorPaga)}</span>
-            <span style="color:var(--text2)">En predicciones:</span><span>${repr==='simplificado' ? `ingreso ${FinanceMath.eur(netoPorPaga)}/paga` : `ingreso ${FinanceMath.eur(brutoCashPorPaga)} + gasto IRPF ${FinanceMath.eur(irpfPorPaga)}`}${flexAnual > 0 ? ` + recargas flex` : ''}</span>
+            <span style="color:var(--text2)">Neto/paga:</span><span style="font-weight:600">${FinanceMath.eur(netoPorPaga)}</span>
+            <span style="color:var(--text2)">En predicciones:</span><span style="font-size:11px">${repr==='simplificado' ? `ingreso ${FinanceMath.eur(netoPorPaga)}/paga` : `ingreso ${FinanceMath.eur(brutoCashPorPaga)} − SS ${FinanceMath.eur(ssPorPaga)} − IRPF ${FinanceMath.eur(irpfPorPaga)}`}${flexAnual > 0 ? ` + recargas flex` : ''}</span>
           </div>${grupoHint}`;
       };
-      ['nf-bruto','nf-irpfpct','nf-npagas-custom','nf-grupo'].forEach(id => document.getElementById(id)?.addEventListener('input', updatePreview));
+      ['nf-bruto','nf-irpfpct','nf-npagas-custom','nf-grupo','nf-sspct'].forEach(id => document.getElementById(id)?.addEventListener('input', updatePreview));
       ['nf-npagas','nf-irpfmodo','nf-representacion'].forEach(id => document.getElementById(id)?.addEventListener('change', () => {
         const npagasSel = document.getElementById('nf-npagas')?.value;
         document.getElementById('nf-custom-pagas-wrap').style.display = npagasSel === 'custom' ? '' : 'none';
@@ -521,6 +538,7 @@ const NominasModule = (() => {
       grupoNomina:      document.getElementById('nf-grupo').value.trim(),
       mesActualizacionIPC: mesIPC,
       varianza:         parseFloat(document.getElementById('nf-varianza').value) || 0,
+      ssPct:            parseFloat(document.getElementById('nf-sspct')?.value) ?? 6.35,
       escenarioIds:     EscenariosModule.readCheckedEscenarios(),
       retribucionFlexible: _editFlexPlan,
     };

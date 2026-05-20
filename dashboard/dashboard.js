@@ -432,6 +432,43 @@ const DashboardModule = (() => {
             <div class="stat-sub pos" style="margin-top:2px">+${FinanceMath.eur(totalBenef)} beneficio</div>
           </div>`;
         })()}
+        ${(()=>{
+          const today = new Date().toISOString().slice(0, 10);
+          const evExtraord = extracto.filter(e =>
+            e.tipo === 'gasto' && e.sourceType === 'expense' &&
+            e.fecha >= config.dashboardStart && e.fecha <= today
+          ).filter(e => {
+            const ex = expenses.find(ex => ex._id === e.sourceId);
+            return ex?.tipoFrecuencia === 'extraordinario';
+          });
+          const totalExtraord = evExtraord.reduce((s, e) => s + Math.abs(e.cuantia), 0);
+          if (!evExtraord.length) return `<div class="stat-card">
+            <div class="stat-label">Gastos extraordinarios</div>
+            <div class="stat-value" style="color:var(--text3)">0,00 €</div>
+            <div class="stat-sub">Sin gastos únicos en el periodo</div>
+          </div>`;
+          const agrup = {};
+          evExtraord.forEach(e => {
+            const ex = expenses.find(ex => ex._id === e.sourceId);
+            const key = ex?.concepto || e.concepto || '—';
+            agrup[key] = (agrup[key] || 0) + Math.abs(e.cuantia);
+          });
+          const items = Object.entries(agrup).sort((a, b) => b[1] - a[1]).slice(0, 4);
+          const resto = Object.entries(agrup).length - items.length;
+          return `<div class="stat-card">
+            <div class="stat-label">Gastos extraordinarios</div>
+            <div class="stat-value neg" style="font-size:18px">${FinanceMath.eur(totalExtraord)}</div>
+            <div style="display:flex;flex-direction:column;gap:3px;margin-top:6px">
+              ${items.map(([label, val]) => `
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11px">
+                  <span style="color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px" title="${label}">${label}</span>
+                  <span style="font-family:var(--font-mono);color:var(--red);flex-shrink:0">${FinanceMath.eur(val)}</span>
+                </div>`).join('')}
+              ${resto > 0 ? `<div style="font-size:10px;color:var(--text3);margin-top:1px">+${resto} más…</div>` : ''}
+            </div>
+            <div class="stat-sub" style="margin-top:4px">${evExtraord.length} evento${evExtraord.length !== 1 ? 's' : ''} · desde ${config.dashboardStart}</div>
+          </div>`;
+        })()}
       </div>
       ${(()=>{
         const goalsActivos = goals.filter(g=>!g.completado).slice().sort((a,b)=>(a.prioridad||99)-(b.prioridad||99)).slice(0,3);
