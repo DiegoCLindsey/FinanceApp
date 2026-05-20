@@ -961,7 +961,7 @@ const DashboardModule = (() => {
     }
 
     // Critical point vertical lines
-    const alertasChart = FinanceMath.detectarPuntosCriticos(extracto, colchon);
+    const alertasChart = FinanceMath.detectarPuntosCriticos(extracto, colchonHoy);
     const criticoDatasets = (config.showCriticos !== false) ? alertasChart.map(alerta => {
       const ts = new Date(alerta.fecha+'T00:00:00').getTime();
       const yVals = saldoXY.map(p=>p.y);
