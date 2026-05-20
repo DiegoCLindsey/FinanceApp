@@ -540,6 +540,54 @@ const FinanceMath = (() => {
     return (totalMes + cuotasBasicas) * (p.meses || 6);
   }
 
+  // Target value for a margen de seguridad at a given date (0 = no restriction)
+  function calcMargenEnFecha(margen, expenses, config, loans, fecha) {
+    const puntos = [...(margen.puntos || [])].sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const p = puntos.filter(pt => pt.fecha <= fecha).pop();
+    if (!p) return 0;
+    if (p.tipo === 'fijo') return p.importe || 0;
+    const totalMes = calcGastoBasicoMensual(expenses);
+    const cuotasBasicas = (loans||[])
+      .filter(l => l.basico && l.activo && !l.simulacion)
+      .reduce((s, l) => s + cuotaMensual(l.capital, l.tin, l.meses), 0);
+    return (totalMes + cuotasBasicas) * (p.meses || 1);
+  }
+
+  // Builds a per-account running saldo array parallel to extracto
+  // Starting from saldoRealCuenta, applies each event's cuantia to ev.cuenta
+  function saldosPorCuentaEnExtracto(extracto, accounts) {
+    const running = {};
+    for (const acc of accounts) running[acc._id] = saldoRealCuenta(acc);
+    return extracto.map(ev => {
+      if (ev.cuenta && running[ev.cuenta] !== undefined) running[ev.cuenta] += ev.cuantia;
+      return { fecha: ev.fecha, saldos: { ...running } };
+    });
+  }
+
+  // Detects when account-group saldo crosses below (or recovers above) each margen target
+  function detectarCrucesMargenes(margenes, extracto, saldosPorCuenta, expenses, config, loans) {
+    const alertas = [];
+    for (const margen of (margenes || []).filter(m => m.activo !== false)) {
+      let dentroAlerta = false;
+      for (let i = 0; i < extracto.length; i++) {
+        const ev = extracto[i];
+        const target = calcMargenEnFecha(margen, expenses, config, loans, ev.fecha);
+        if (target <= 0) { dentroAlerta = false; continue; }
+        const saldo = (!margen.cuentas || margen.cuentas.length === 0)
+          ? ev.saldoAcum
+          : margen.cuentas.reduce((s, id) => s + (saldosPorCuenta[i]?.saldos?.[id] || 0), 0);
+        if (saldo < target && !dentroAlerta) {
+          dentroAlerta = true;
+          alertas.push({ tipo: 'bajo_margen', fecha: ev.fecha, saldo, target, nombre: margen.nombre, mensaje: `⚠ ${margen.nombre}: ${eur(saldo)} < ${eur(target)} desde ${ev.fecha}` });
+        } else if (saldo >= target && dentroAlerta) {
+          dentroAlerta = false;
+          alertas.push({ tipo: 'recuperacion_margen', fecha: ev.fecha, saldo, target, nombre: margen.nombre, mensaje: `✓ ${margen.nombre}: recuperado el ${ev.fecha}` });
+        }
+      }
+    }
+    return alertas;
+  }
+
   // Saldo real actual: último histórico si existe, sino saldoInicial
   function saldoRealCuenta(acc) {
     const hist = [...(acc.historicoSaldos||[])].sort((a,b)=>b.fecha.localeCompare(a.fecha));
@@ -1417,12 +1465,12 @@ const FinanceMath = (() => {
 
       const { label, ini, fin, dia15 } = mesInfo(i);
 
-      // Si la fecha de amortización ya pasó, el evento quedaría antes de
-      // dashboardStart y no aparecería en el extracto → saldo incorrecto.
       if (dia15 < hoyStr) continue;
 
+      const colchonMes = calcColchonEnFecha(expenses, config, loans, fin);
+
       const saldoMin  = saldoMinDelMes(ini, fin);
-      const excedente = saldoMin - colchon - SAFETY_BUFFER;
+      const excedente = saldoMin - colchonMes - SAFETY_BUFFER;
       if (excedente < minAmortizable) continue;
 
       // Snapshot para rollback si el mes siguiente queda por debajo del colchón
@@ -1777,6 +1825,6 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct, calcPrestacionParo };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct, calcPrestacionParo };
 })();
 

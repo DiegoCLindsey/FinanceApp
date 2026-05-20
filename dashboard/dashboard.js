@@ -960,15 +960,31 @@ const DashboardModule = (() => {
       }
     }
 
-    // Critical point vertical lines
+    // Per-account running saldo for margen crossing detection
+    const margenesSeguridad = (config.margenesSeguridad || []).filter(m => m.activo !== false);
+    const saldosPorCuenta = FinanceMath.saldosPorCuentaEnExtracto(extracto, accounts);
+
+    // Margen threshold lines — one per active margen
+    const MARGEN_COLORS = ['rgba(251,146,60,0.8)','rgba(244,114,182,0.8)','rgba(167,139,250,0.8)','rgba(52,211,153,0.8)','rgba(96,165,250,0.8)','rgba(250,204,21,0.8)'];
+    const margenDatasets = margenesSeguridad.map((mg, idx) => {
+      const color = MARGEN_COLORS[idx % MARGEN_COLORS.length];
+      const data = saldoXY.map(({x}) => ({ x, y: FinanceMath.calcMargenEnFecha(mg, expenses, config, loans, new Date(x).toISOString().slice(0,10)) }));
+      const valorHoy = FinanceMath.calcMargenEnFecha(mg, expenses, config, loans, new Date().toISOString().slice(0,10));
+      return { label: `${mg.nombre} — ${FinanceMath.eur(valorHoy)}`, data, borderColor: color, backgroundColor: 'transparent', borderWidth: 1.5, borderDash: [3,3], pointRadius: 0, tension: 0, fill: false, order: 4 };
+    });
+
+    // Critical point vertical lines (colchón + márgenes)
     const alertasChart = FinanceMath.detectarPuntosCriticos(extracto, colchonHoy);
-    const criticoDatasets = (config.showCriticos !== false) ? alertasChart.map(alerta => {
+    const alertasMargenes = FinanceMath.detectarCrucesMargenes(margenesSeguridad, extracto, saldosPorCuenta, expenses, config, loans);
+    const todasAlertas = [...alertasChart, ...alertasMargenes];
+    const criticoDatasets = (config.showCriticos !== false) ? todasAlertas.map(alerta => {
       const ts = new Date(alerta.fecha+'T00:00:00').getTime();
       const yVals = saldoXY.map(p=>p.y);
       const yMin = Math.min(...yVals), yMax = Math.max(...yVals);
       const span = Math.abs(yMax - yMin) * 0.05;
       const color = alerta.tipo==='saldo_negativo' ? 'rgba(255,77,109,0.6)' :
-                    alerta.tipo==='bajo_colchon'    ? 'rgba(255,209,102,0.5)' : 'rgba(0,229,160,0.4)';
+                    alerta.tipo==='bajo_colchon'    ? 'rgba(255,209,102,0.5)' :
+                    alerta.tipo==='bajo_margen'     ? 'rgba(251,146,60,0.6)' : 'rgba(0,229,160,0.4)';
       return { label:alerta.mensaje, data:[{x:ts,y:yMin-span},{x:ts,y:yMax+span}],
         borderColor:color, backgroundColor:color, borderWidth:1.5, borderDash:[4,4],
         pointRadius:[6,0], pointStyle:['crossRot',false], showLine:true, tension:0, fill:false, order:3 };
@@ -981,6 +997,7 @@ const DashboardModule = (() => {
     ];
     if (histDataset)    datasets.push(histDataset);
     if (colchonDataset) datasets.push(colchonDataset);
+    margenDatasets.forEach(d => datasets.push(d));
 
     // Fondos bloqueados en pensiones — línea horizontal por fecha de desbloqueo progresivo
     const pensionesActivas = accounts.filter(a => a.activo && a.esFondoPension);

@@ -1,7 +1,7 @@
 // Depends on: DashboardModule, LoansModule, ExpensesModule, AccountsModule
 const Router = (() => {
-  const views=['dashboard','loans','expenses','accounts','nominas','inflacion','escenarios','rentas'];
-  const mods={ dashboard:DashboardModule, loans:LoansModule, expenses:ExpensesModule, accounts:AccountsModule, nominas:NominasModule, inflacion:InflacionModule, escenarios:EscenariosModule, rentas:RentasModule };
+  const views=['dashboard','loans','expenses','accounts','nominas','inflacion','escenarios','rentas','margenes'];
+  const mods={ dashboard:DashboardModule, loans:LoansModule, expenses:ExpensesModule, accounts:AccountsModule, nominas:NominasModule, inflacion:InflacionModule, escenarios:EscenariosModule, rentas:RentasModule, margenes:MargenesModule };
   let _current = 'dashboard';
   function navigate(view) {
     if(!views.includes(view))return;
