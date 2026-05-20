@@ -194,7 +194,16 @@ const DataIO = (() => {
       </div>` : '';
 
     const noCloud = (!fbx && !dbx) ? `
-      <p class="dm-no-cloud">Sin sincronización activa.<br>Conecta Firebase o Dropbox al iniciar sesión.</p>` : '';
+      <div class="dm-section" style="border-left:3px solid var(--accent)">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">Sin copia de seguridad en la nube</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5">
+          Tus datos solo están en este dispositivo. Conecta la nube para tenerlos siempre a salvo y sincronizados.
+        </div>
+        <div class="dm-grid">
+          <button class="btn-firebase dm-btn" id="dm-connect-firebase" style="font-size:12px">🔥 Firebase</button>
+          <button class="btn-dropbox dm-btn" id="dm-connect-dropbox" style="font-size:12px">☁ Dropbox</button>
+        </div>
+      </div>` : '';
 
     UI.openModal(`
       <div class="dm-modal">
@@ -209,6 +218,12 @@ const DataIO = (() => {
         </div>
         ${fbxSection}${dbxSection}${noCloud}
       </div>`, 'Administrar datos');
+
+    // Upgrade to cloud (shown when no cloud connected)
+    if (!fbx && !dbx) {
+      document.getElementById('dm-connect-firebase')?.addEventListener('click', () => AuthModule.connectCloud('firebase'));
+      document.getElementById('dm-connect-dropbox')?.addEventListener('click',  () => AuthModule.connectCloud('dropbox'));
+    }
 
     // Local
     document.getElementById('dm-export')?.addEventListener('click', exportJSON);

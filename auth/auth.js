@@ -258,6 +258,35 @@ const AuthModule = (() => {
     btn.textContent = busy ? '…' : label;
   }
 
+  // ── Migration helper: si la nube está vacía y hay datos locales, ofrece subirlos
+  async function _offerMigration(service, modeName) {
+    const backup = await service.downloadBackup();
+    if (backup) {
+      for (const [k, v] of Object.entries(backup)) {
+        if (v !== undefined) StorageAdapter.set('state_' + k, v);
+      }
+      UI.toast('Datos cargados desde la nube ✓');
+      return;
+    }
+    // No cloud backup — check local data
+    const loans    = (State.get('loans')    || []).length;
+    const expenses = (State.get('expenses') || []).length;
+    const accounts = (State.get('accounts') || []).filter(a => a._id !== 'default' || a.saldoInicial > 0).length;
+    if (loans + expenses + accounts > 0) {
+      const parts = [
+        expenses > 0 ? `${expenses} gasto${expenses !== 1 ? 's/ingresos' : '/ingreso'}` : '',
+        loans    > 0 ? `${loans} préstamo${loans !== 1 ? 's' : ''}` : '',
+        accounts > 0 ? `${accounts} cuenta${accounts !== 1 ? 's' : ''}` : '',
+      ].filter(Boolean).join(', ');
+      if (window.confirm(`Tienes ${parts} guardados localmente.\n¿Subir estos datos a ${modeName} ahora?`)) {
+        await service.uploadBackup();
+        UI.toast('Datos locales subidos a la nube ✓');
+        return;
+      }
+    }
+    UI.toast(`${modeName} conectado. Sin backup previo.`);
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────────
   async function init() {
     // Mostrar overlay de auth al arrancar
@@ -330,18 +359,7 @@ const AuthModule = (() => {
       _setBusy('btn-dropbox-connect', true, 'Conectar y continuar');
       try {
         await DropboxService.setup(token, pass);
-
-        // Intentar descargar backup existente
-        const backup = await DropboxService.downloadBackup();
-        if (backup) {
-          for (const [k, v] of Object.entries(backup)) {
-            if (v !== undefined) StorageAdapter.set('state_' + k, v);
-          }
-          UI.toast('Backup cargado desde Dropbox ✓');
-        } else {
-          UI.toast('Dropbox conectado. Sin backup previo — empezando desde cero.');
-        }
-
+        await _offerMigration(DropboxService, 'Dropbox');
         await launch('dropbox');
       } catch (err) {
         _err('dbx-error', err.message);
@@ -472,17 +490,9 @@ const AuthModule = (() => {
       return { config, err: null };
     };
 
-    // Post-auth: load backup and launch
+    // Post-auth: load backup or offer migration, then launch
     const _afterAuth = async () => {
-      const backup = await FirebaseService.downloadBackup();
-      if (backup) {
-        for (const [k, v] of Object.entries(backup)) {
-          if (v !== undefined) StorageAdapter.set('state_' + k, v);
-        }
-        UI.toast('Datos cargados desde Firebase ✓');
-      } else {
-        UI.toast('Firebase conectado. Sin backup previo.');
-      }
+      await _offerMigration(FirebaseService, 'Firebase');
       await launch('firebase');
     };
 
@@ -744,5 +754,18 @@ const AuthModule = (() => {
     await render();
   }
 
-  return { init, launch, _wlRemove: null, _wlSetAdmin: null };
+  function connectCloud(target) {
+    UI.closeModal();
+    document.getElementById('auth-overlay')?.classList.remove('hidden');
+    document.getElementById('main-shell')?.classList.add('hidden');
+    if (target === 'firebase') {
+      _showStep('auth-step-firebase-setup');
+      _wireFirebaseSetupStep();
+    } else {
+      _showStep('auth-step-dropbox');
+      _wireDropboxStep();
+    }
+  }
+
+  return { init, launch, connectCloud, _wlRemove: null, _wlSetAdmin: null };
 })();
