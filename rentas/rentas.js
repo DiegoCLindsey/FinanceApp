@@ -150,12 +150,42 @@ const RentasModule = (() => {
     const cuotaAho    = FinanceMath.calcIRPF(baseAhorro, tramosA);
     const cuotaIntegra = cuotaGen + cuotaAho;
 
-    // Retenciones — consistentes con irpfAnualNomina (SS + Art.19.2 + Art.20 por nómina)
-    const retNomina = nominas.reduce((s, n) => {
-      const nFlexAnual = (n.retribucionFlexible || []).reduce((ss, c) => ss + (c.importe || 0) * 12, 0);
-      if (n.irpfModo === 'manual') return s + (n.bruto || 0) * ((n.irpfPct || 0) / 100);
-      return s + FinanceMath.calcIRPF(FinanceMath.calcBaseImponibleTrabajo(n.bruto || 0, nFlexAnual), tramos);
-    }, 0);
+    // Retenciones — mismo stacking que irpfAnualNomina: desgravaciones a nivel de grupo,
+    // distribución proporcional y stacking marginal para preservar tipos marginales correctos.
+    // Nóminas sin grupo: cada una aplica sus propias desgravaciones de forma independiente.
+    const retNomina = (() => {
+      const grupos_r = {};
+      const solo_r   = [];
+      for (const n of nominas) {
+        if (n.grupoNomina) { (grupos_r[n.grupoNomina] = grupos_r[n.grupoNomina] || []).push(n); }
+        else { solo_r.push(n); }
+      }
+      let total = 0;
+      // Standalone: desgravaciones individuales
+      for (const n of solo_r) {
+        const nFlex = (n.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
+        if (n.irpfModo === 'manual') { total += (n.bruto || 0) * ((n.irpfPct || 0) / 100); continue; }
+        total += FinanceMath.calcIRPF(FinanceMath.calcBaseImponibleTrabajo(n.bruto || 0, nFlex), tramos);
+      }
+      // Grupos: desgravaciones a nivel de grupo + stacking marginal proporcional
+      for (const noms of Object.values(grupos_r)) {
+        const gBruto  = noms.reduce((s, n) => s + (n.bruto || 0), 0);
+        const gFlex   = noms.reduce((s, n) => s + (n.retribucionFlexible || []).reduce((ss, c) => ss + (c.importe || 0) * 12, 0), 0);
+        const gBase   = Math.max(0, gBruto - gFlex);
+        const gImp    = FinanceMath.calcBaseImponibleTrabajo(gBruto, gFlex);
+        const sorted  = [...noms].sort((a, b) => (b.bruto || 0) - (a.bruto || 0));
+        let base = 0;
+        for (const n of sorted) {
+          const nFlex = (n.retribucionFlexible || []).reduce((s, c) => s + (c.importe || 0) * 12, 0);
+          if (n.irpfModo === 'manual') { total += (n.bruto || 0) * ((n.irpfPct || 0) / 100); continue; }
+          const nBase = Math.max(0, (n.bruto || 0) - nFlex);
+          const nImp  = gBase > 0 ? gImp * (nBase / gBase) : 0;
+          total += FinanceMath.calcIRPF(base + nImp, tramos) - FinanceMath.calcIRPF(base, tramos);
+          base  += nImp;
+        }
+      }
+      return total;
+    })();
     const totalRet = retNomina + retCapital;
 
     // Resultado
