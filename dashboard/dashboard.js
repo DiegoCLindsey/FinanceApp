@@ -87,7 +87,7 @@ const DashboardModule = (() => {
     const totalIngresos=extracto.filter(e=>e.tipo==='ingreso').reduce((s,e)=>s+Math.abs(e.cuantia),0);
     const mediaMensual=FinanceMath.mediaMensualGastos(extracto, config);
     const allTags=[...new Set(extracto.flatMap(e=>e.tags||[]))];
-    const colchon = FinanceMath.calcColchon(expenses, config, loans);
+    const colchon = FinanceMath.calcColchonEnFecha(expenses, config, loans, new Date().toISOString().slice(0,10));
     const score = FinanceMath.calcScore(extracto, loans, expenses, accounts, config);
     const alertas = FinanceMath.detectarPuntosCriticos(extracto, colchon).slice(0,5);
     const goals = State.get('goals') || [];
@@ -311,6 +311,31 @@ const DashboardModule = (() => {
               const nivel = mesesActuales < 3 ? '⚠️ Por debajo del mínimo recomendado (3 meses).' : mesesActuales < 6 ? '💡 Aceptable. Lo ideal son 6 meses.' : '✅ Colchón sólido.';
               return `<div class="text-sm mt-6" style="color:var(--text3)">${nivel} Con ${FinanceMath.eur(gastoBasMes)}/mes de básicos: <strong style="color:var(--text2)">${FinanceMath.eur(colchonActual)}</strong>.</div>`;
             })()}
+            <div class="mt-10">
+              <div class="flex justify-between items-center mb-6">
+                <span class="text-sm" style="color:var(--text2);font-weight:600">Línea temporal del colchón</span>
+                <div class="flex gap-6">
+                  ${config.colchonTipo !== 'fijo' ? `<button type="button" class="btn-sm btn-secondary" onclick="DashboardModule.fijarColchon()">Fijar actual</button>` : ''}
+                  <button type="button" class="btn-sm btn-secondary" onclick="DashboardModule.addColchonPunto()">+ Añadir punto</button>
+                </div>
+              </div>
+              ${(()=>{
+                const puntos = [...(config.colchonPuntos||[])].sort((a,b)=>a.fecha.localeCompare(b.fecha));
+                if (puntos.length === 0) return `<div class="text-sm" style="color:var(--text3)">Sin puntos — el colchón es constante. Añade puntos para que cambie a lo largo del tiempo.</div>`;
+                return puntos.map(p => `<div class="flex gap-6 items-center mb-4" style="background:var(--bg2);border-radius:6px;padding:5px 8px;flex-wrap:wrap">
+                  <input type="date" class="form-input" style="width:130px;padding:3px 6px;font-size:12px" value="${p.fecha}" onchange="DashboardModule.updateColchonPunto('${p._id}','fecha',this.value)"/>
+                  <select class="form-input" style="width:90px;padding:3px 6px;font-size:12px" onchange="DashboardModule.updateColchonPunto('${p._id}','tipo',this.value)">
+                    <option value="meses" ${p.tipo!=='fijo'?'selected':''}>Meses</option>
+                    <option value="fijo" ${p.tipo==='fijo'?'selected':''}>Fijo €</option>
+                  </select>
+                  ${p.tipo === 'fijo'
+                    ? `<input type="number" class="form-input" style="width:110px;padding:3px 6px;font-size:12px" value="${p.importe||0}" min="0" onchange="DashboardModule.updateColchonPunto('${p._id}','importe',this.value)"/> <span class="text-sm">€</span>`
+                    : `<input type="number" class="form-input" style="width:70px;padding:3px 6px;font-size:12px" value="${p.meses||6}" min="1" max="36" onchange="DashboardModule.updateColchonPunto('${p._id}','meses',this.value)"/> <span class="text-sm">m básicos</span>`
+                  }
+                  <button class="btn-icon" style="margin-left:auto" onclick="DashboardModule.removeColchonPunto('${p._id}')"><svg viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
+                </div>`).join('');
+              })()}
+            </div>
           </div>
           <div class="form-group" style="display:flex;align-items:flex-start;gap:10px;padding-top:8px;flex-direction:column">
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)">
@@ -831,30 +856,34 @@ const DashboardModule = (() => {
     const labels = extracto.map(e=>e.fecha);
     const saldoData = extracto.map(e=>e.saldoAcum);
 
-    // Colchon threshold
-    const colchon = FinanceMath.calcColchon(expenses, config, loans);
-
     // Convert extracto to {x: timestamp, y: saldo} for time axis
     const saldoXY = extracto.map(e=>({ x: new Date(e.fecha+'T00:00:00').getTime(), y: e.saldoAcum }));
 
-    // Colchon: use same x range as extracto
+    // Colchon threshold — dynamic per-date if waypoints exist
+    const colchonHoy = FinanceMath.calcColchonEnFecha(expenses, config, loans, new Date().toISOString().slice(0,10));
+    const tienePuntos = (config.colchonPuntos||[]).length > 0;
     let colchonDataset = null;
-    if (config.showColchon && colchon > 0 && saldoXY.length > 0) {
-      colchonDataset = {
-        label: `Colchón (${config.colchonMeses||6}m básicos) — ${FinanceMath.eur(colchon)}`,
-        data: [
-          { x: saldoXY[0].x,                    y: colchon },
-          { x: saldoXY[saldoXY.length-1].x,     y: colchon }
-        ],
-        borderColor: 'rgba(255,209,102,0.8)',
-        backgroundColor: 'transparent',
-        borderWidth: 2,
-        borderDash: [6,4],
-        pointRadius: 0,
-        tension: 0,
-        fill: false,
-        order: 4
-      };
+    if (config.showColchon && saldoXY.length > 0) {
+      const colchonData = tienePuntos
+        ? saldoXY.map(({x}) => ({ x, y: FinanceMath.calcColchonEnFecha(expenses, config, loans, new Date(x).toISOString().slice(0,10)) }))
+        : [{ x: saldoXY[0].x, y: colchonHoy }, { x: saldoXY[saldoXY.length-1].x, y: colchonHoy }];
+      if (colchonHoy > 0 || tienePuntos) {
+        const colchonLabel = tienePuntos
+          ? `Colchón dinámico — ${FinanceMath.eur(colchonHoy)} hoy`
+          : `Colchón (${config.colchonMeses||6}m básicos) — ${FinanceMath.eur(colchonHoy)}`;
+        colchonDataset = {
+          label: colchonLabel,
+          data: colchonData,
+          borderColor: 'rgba(255,209,102,0.8)',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          borderDash: [6,4],
+          pointRadius: 0,
+          tension: 0,
+          fill: false,
+          order: 4
+        };
+      }
     }
 
     // Historial scatter — LOCF por cuenta: para cada fecha en cualquier cuenta,
@@ -1355,5 +1384,40 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, applyConfig, applyPreset, setColchonTipo, setVentana, toggleTag, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleScoreDetail, toggleCriticos, toggleConfig, toggleAnalisis };
+  function _colchonPuntos() { return [...(State.get('config').colchonPuntos || [])]; }
+  function _saveColchonPuntos(puntos) {
+    State.set('config', {...State.get('config'), colchonPuntos: puntos});
+    render();
+  }
+
+  function addColchonPunto() {
+    const cfg = State.get('config');
+    const hoy = new Date().toISOString().slice(0,10);
+    const nuevo = { _id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), fecha: hoy, tipo: cfg.colchonTipo === 'fijo' ? 'fijo' : 'meses', meses: cfg.colchonMeses || 6, importe: cfg.colchonFijo || 0 };
+    _saveColchonPuntos([..._colchonPuntos(), nuevo]);
+  }
+
+  function removeColchonPunto(id) {
+    _saveColchonPuntos(_colchonPuntos().filter(p => p._id !== id));
+  }
+
+  function updateColchonPunto(id, field, value) {
+    _saveColchonPuntos(_colchonPuntos().map(p => {
+      if (p._id !== id) return p;
+      const v = field === 'meses' ? parseInt(value)||6 : field === 'importe' ? parseFloat(value)||0 : value;
+      return {...p, [field]: v};
+    }));
+  }
+
+  function fijarColchon() {
+    const cfg = State.get('config');
+    const expenses = State.get('expenses') || [];
+    const loans = State.get('loans') || [];
+    const hoy = new Date().toISOString().slice(0,10);
+    const valorAuto = FinanceMath.calcColchon(expenses, cfg, loans);
+    const nuevo = { _id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), fecha: hoy, tipo: 'fijo', importe: Math.round(valorAuto * 100) / 100, meses: cfg.colchonMeses || 6 };
+    _saveColchonPuntos([..._colchonPuntos(), nuevo]);
+  }
+
+  return { render, applyConfig, applyPreset, setColchonTipo, setVentana, toggleTag, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleScoreDetail, toggleCriticos, toggleConfig, toggleAnalisis, addColchonPunto, removeColchonPunto, updateColchonPunto, fijarColchon };
 })();

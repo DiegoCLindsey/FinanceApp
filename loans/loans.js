@@ -418,7 +418,7 @@ const LoansModule = (() => {
     const html = `
       <div class="auth-hint mb-12">
         El optimizador calcula cuándo y cuánto amortizar usando el excedente mensual
-        por encima del colchón económico (${FinanceMath.eur(FinanceMath.calcColchon(State.get('expenses'), config, loans))}).
+        por encima del colchón económico (${FinanceMath.eur(FinanceMath.calcColchonEnFecha(State.get('expenses'), config, loans, new Date().toISOString().slice(0,10)))}).
         Las amortizaciones se aplican primero al préstamo con mayor interés.
       </div>
 

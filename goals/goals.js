@@ -13,13 +13,13 @@ const GoalsModule = (() => {
       : accounts.filter(a => a.activo && !a.simulacion);
     if (!cuentas.length) return null;
 
-    const colchon = g.usarColchon !== false ? FinanceMath.calcColchon(expenses, config, loans) : 0;
     const horizonte = 120; // máx 10 años
 
     for (let i = 1; i <= horizonte; i++) {
       const mesD  = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1);
       const mesLabel = mesD.getFullYear() + '-' + String(mesD.getMonth()+1).padStart(2,'0');
       const mesFin   = new Date(mesD.getFullYear(), mesD.getMonth()+1, 0).toISOString().slice(0,10);
+      const colchon = g.usarColchon !== false ? FinanceMath.calcColchonEnFecha(expenses, config, loans, mesFin) : 0;
 
       // Proyectar extracto de cada cuenta hasta fin de ese mes
       let saldoTotal = 0;
@@ -50,7 +50,8 @@ const GoalsModule = (() => {
     }, 0);
 
     if (g.usarColchon !== false) {
-      const colchon = FinanceMath.calcColchon(expenses, config, loans);
+      const hoy = new Date().toISOString().slice(0,10);
+      const colchon = FinanceMath.calcColchonEnFecha(expenses, config, loans, hoy);
       return Math.max(0, total - colchon);
     }
     return total;
@@ -63,7 +64,7 @@ const GoalsModule = (() => {
     const config   = State.get('config');
     const loans    = State.get('loans');
     const expenses = State.get('expenses');
-    const colchon  = FinanceMath.calcColchon(expenses, config, loans);
+    const colchon  = FinanceMath.calcColchonEnFecha(expenses, config, loans, new Date().toISOString().slice(0,10));
 
     const cards = goals.map((g, idx) => {
       const saldo     = saldoParaObjetivo(g, accounts, config, loans, expenses);
