@@ -125,7 +125,8 @@ const NominasModule = (() => {
           <div class="form-group">
             <label class="form-label">Días cotizados (últimos 6 años)</label>
             <input type="number" class="form-input" id="paro-dias" min="0" max="2160" placeholder="360"/>
-            <div style="font-size:11px;color:var(--text3);margin-top:4px">Mínimo 360 días para ser elegible. Máx. relevante: 1800.</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:4px">Mínimo 360 días para ser elegible. Máx. 2160 días (6 años). Suma cotizaciones de todos tus empleadores.</div>
+            <div class="paro-prefill-hint" style="font-size:11px;color:var(--accent);margin-top:2px"></div>
           </div>
           <div class="form-group">
             <label class="form-label">Hijos a cargo</label>
@@ -165,6 +166,8 @@ const NominasModule = (() => {
         const hoy    = new Date();
         const dias   = Math.max(0, Math.min(2160, Math.floor((hoy - inicio) / 86400000)));
         diasEl.value = dias;
+        const hint = diasEl.parentElement?.querySelector('.paro-prefill-hint');
+        if (hint) hint.textContent = `Estimado desde la nómina seleccionada. Añade días de empleos anteriores si los tienes.`;
       }
     });
 

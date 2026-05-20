@@ -1703,7 +1703,9 @@ const FinanceMath = (() => {
       [1260, 1439, 420],
       [1440, 1619, 480],
       [1620, 1799, 540],
-      [1800, Infinity, 720],
+      [1800, 1979, 600],
+      [1980, 2159, 660],
+      [2160, Infinity, 720],
     ];
 
     if (diasCotizados < 360) return { elegible: false, diasCotizados, minDias: 360 };
