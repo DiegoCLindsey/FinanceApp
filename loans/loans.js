@@ -513,6 +513,9 @@ const LoansModule = (() => {
     const fechaObj         = document.getElementById('opt-fecha-obj')?.value || null;
     const fechaPrimeraAmort= document.getElementById('opt-fecha-primera')?.value || null;
     const loanIds          = _getSelectedLoanIds();
+    // Read DOM values BEFORE opening the loading modal (which replaces the form)
+    const sourceAccountId  = _getSelectedAccountId();
+    const selectedMarginIds = _getSelectedMarginIds();
 
     // Limpiar opt_ previas
     const loansActuales = State.get('loans');
@@ -533,10 +536,8 @@ const LoansModule = (() => {
       <div class="text-sm">Calculando comparativa de frecuencias…</div>
     </div>`, 'Comparando…');
 
-    // Defer para que el modal de "cargando" se pinte antes del cálculo síncrono
+    // Defer so the loading modal renders before the synchronous computation
     setTimeout(() => {
-      const sourceAccountId = _getSelectedAccountId();
-      const selectedMarginIds = _getSelectedMarginIds();
       const comparativa = FinanceMath.compararFrecuencias(loans, expenses, accounts, config, {
         horizonte, minAmortizable: minAmort, tipoAmort, fechaObjetivo: fechaObj,
         frecuencias: [1, 2, 3, 6, 12], fechaPrimeraAmort, loanIds, nominas, sourceAccountId, selectedMarginIds,

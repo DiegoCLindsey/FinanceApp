@@ -1398,11 +1398,13 @@ const FinanceMath = (() => {
       .sort((a, b) => b.tin - a.tin);
 
     // Margins applicable to source account: all-accounts margins OR those listing sourceAccId
-    // Further filtered by user's selectedMarginIds selection (if provided)
+    // selectedMarginIds: null/undefined = apply all; non-empty array = apply only those listed;
+    // empty array (no checkboxes in DOM) is treated as "apply all" to avoid silently disabling limits
+    const hasMarginFilter = selectedMarginIds && selectedMarginIds.length > 0;
     const margenesAplicables = (config.margenesSeguridad || [])
       .filter(m => m.activo !== false)
       .filter(m => !m.cuentas || m.cuentas.length === 0 || m.cuentas.includes(sourceAccId))
-      .filter(m => !selectedMarginIds || selectedMarginIds.includes(m._id));
+      .filter(m => !hasMarginFilter || selectedMarginIds.includes(m._id));
 
     if (loansActivos.length === 0) {
       return { plan: [], margenesAplicados: margenesAplicables.length, totalAmortizado: 0, totalComisiones: 0, totalAhorroIntereses: 0, resumenPorLoan: [] };
@@ -1487,18 +1489,18 @@ const FinanceMath = (() => {
     }
 
     // Max amortizable AT fecha: source saldo minus the most restrictive applicable limit.
-    // All-accounts margins constrain total saldo; source margins constrain source saldo.
-    // Amortization debits source, so both reduce by the same amount.
+    // Amortization only debits the source account, so ALL margin targets are applied against
+    // source — regardless of whether the margin scope is "all accounts" or "this account."
+    // This guarantees the source account never drops below any active limit.
     function maxAmortAt(fecha) {
-      const { source, total } = saldosAt(fecha);
+      const { source } = saldosAt(fecha);
 
       let cap = source; // absolute ceiling: can't take more than the account has
 
       for (const mg of margenesAplicables) {
         const target = calcMargenEnFecha(mg, expenses, config, loans, fecha, true);
         if (target <= 0) continue;
-        const isAll = !mg.cuentas || mg.cuentas.length === 0;
-        cap = Math.min(cap, (isAll ? total : source) - target);
+        cap = Math.min(cap, source - target);
       }
 
       return cap;
