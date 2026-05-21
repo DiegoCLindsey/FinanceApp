@@ -725,7 +725,7 @@ const LoansModule = (() => {
         <td class="num">${FinanceMath.eur(p.capitalAntes)}</td>
         <td class="num neg">${FinanceMath.eur(p.cantidadAmort)}${p.comision>0?`<br><span style="font-size:9px;color:var(--text3)">+${FinanceMath.eur(p.comision)} com.</span>`:''}</td>
         <td class="num">${FinanceMath.eur(p.capitalDespues)}</td>
-        <td class="num" style="color:var(--text3)">${FinanceMath.eur(p.saldoMinMes)} → ${FinanceMath.eur(p.saldoDespuesMes)}</td>
+        <td class="num" style="color:var(--text3)">${FinanceMath.eur(p.saldoDisponible)} → ${FinanceMath.eur(p.saldoDespues)}</td>
       </tr>`).join('');
 
     // Resumen por préstamo

@@ -1449,114 +1449,87 @@ const FinanceMath = (() => {
       return Math.max(0, loanActual.capital - yaAmort);
     }
 
-    // ── Helper: máximo amortizable en el mes garantizando que la cuenta de origen
-    // nunca baje de los límites establecidos por los márgenes seleccionados.
+    // ── Helper: saldos proyectados AT a specific date ────────────────────────────
+    // Generates a fresh extracto (with all currently-planned amortizations) up to
+    // 'fecha' and returns { source: sourceAccSaldo, total: totalSaldo } at that date.
     //
-    // Proyección del saldo de la cuenta de origen con atribución proporcional:
-    //  - Eventos directos de la cuenta (cuenta=sourceAccId): se aplican 1:1
-    //  - Eventos no atribuidos (cuenta='default' u otras no activas): se reparten
-    //    proporcionalmente al peso inicial de la cuenta sobre el total
-    //  - Eventos de otras cuentas específicas: no afectan a la cuenta de origen
-    function calcMaxAmortMes(ini, fin) {
+    // Source account tracking uses proportional attribution for unassigned events:
+    //   - cuenta=sourceAccId → 1:1
+    //   - cuenta='default' or unknown → * (sourceBase / totalBase)  [proportional share]
+    //   - cuenta=other specific account → 0 (doesn't affect source)
+    function saldosAt(fecha) {
       const loansActualizados = loans.map(l => ({
         ...l,
         amortizaciones: [...(l.amortizaciones || []), ...(amortsPorLoan[l._id] || [])]
       }));
-      const cfg = { ...config, dashboardStart: hoyStr, dashboardEnd: fin };
+      const cfg = { ...config, dashboardStart: hoyStr, dashboardEnd: fecha };
       const ext = generarExtracto(loansActualizados, expenses, accounts, cfg, null, nominas);
 
-      const saldoBase  = activeAccs.reduce((s, a) => s + saldoRealCuenta(a), 0);
-      const srcAccObj  = activeAccs.find(a => a._id === sourceAccId);
-      const sourceBase = srcAccObj ? saldoRealCuenta(srcAccObj) : 0;
-      // Fraction of total assets held in source account — distributes unattributed events
-      const srcFraction = saldoBase > 0 ? sourceBase / saldoBase : 1;
+      const totalBase  = activeAccs.reduce((s, a) => s + saldoRealCuenta(a), 0);
+      const sourceBase = srcAcc ? saldoRealCuenta(srcAcc) : 0;
+      const srcFrac    = totalBase > 0 ? sourceBase / totalBase : 1;
 
-      let _srcSnaps = null;
-      function getSourceSnaps() {
-        if (_srcSnaps) return _srcSnaps;
-        let srcSaldo = sourceBase;
-        _srcSnaps = ext.map(ev => {
-          if (ev.cuenta === sourceAccId) {
-            srcSaldo += ev.cuantia;
-          } else if (!allActiveIds.includes(ev.cuenta)) {
-            // Unattributed event: attribute proportionally by initial asset fraction
-            srcSaldo += ev.cuantia * srcFraction;
-          }
-          // Events for other specific accounts: don't affect source
-          return { fecha: ev.fecha, src: srcSaldo };
-        });
-        return _srcSnaps;
+      let srcSaldo   = sourceBase;
+      let totalSaldo = totalBase;
+
+      for (const ev of ext) {
+        if (ev.cuenta === sourceAccId) {
+          srcSaldo += ev.cuantia;
+        } else if (!allActiveIds.includes(ev.cuenta)) {
+          srcSaldo += ev.cuantia * srcFrac;
+        }
+        totalSaldo = ev.saldoAcum; // always authoritative from extracto
       }
 
-      function minSaldoSource() {
-        const snaps = getSourceSnaps();
-        const antes = snaps.filter(s => s.fecha < ini);
-        const en    = snaps.filter(s => s.fecha >= ini && s.fecha <= fin);
-        const ini0  = antes.length > 0 ? antes[antes.length - 1].src : sourceBase;
-        return en.length > 0 ? Math.min(ini0, ...en.map(s => s.src)) : ini0;
-      }
+      return { source: srcSaldo, total: totalSaldo };
+    }
 
-      function minSaldoTotal() {
-        const antes = ext.filter(e => e.fecha < ini);
-        const en    = ext.filter(e => e.fecha >= ini && e.fecha <= fin);
-        const ini0  = antes.length > 0 ? antes[antes.length - 1].saldoAcum : saldoBase;
-        return en.length > 0 ? Math.min(ini0, ...en.map(e => e.saldoAcum)) : ini0;
-      }
+    // Max amortizable AT fecha: source saldo minus the most restrictive applicable limit.
+    // All-accounts margins constrain total saldo; source margins constrain source saldo.
+    // Amortization debits source, so both reduce by the same amount.
+    function maxAmortAt(fecha) {
+      const { source, total } = saldosAt(fecha);
 
-      // Hard ceiling: source account is the one being debited
-      let maxAmort = minSaldoSource();
+      let cap = source; // absolute ceiling: can't take more than the account has
 
-      // Tighten by each applicable margin
       for (const mg of margenesAplicables) {
-        const target = calcMargenEnFecha(mg, expenses, config, loans, fin);
+        const target = calcMargenEnFecha(mg, expenses, config, loans, fecha);
         if (target <= 0) continue;
         const isAll = !mg.cuentas || mg.cuentas.length === 0;
-        // All-accounts margin: amortization reduces total → constrain on total
-        // Source-specific margin: constrain on source saldo
-        const sMin = isAll ? minSaldoTotal() : minSaldoSource();
-        maxAmort = Math.min(maxAmort, sMin - target);
+        cap = Math.min(cap, (isAll ? total : source) - target);
       }
 
-      return maxAmort;
+      return cap;
     }
 
     // ── Bucle principal ─────────────────────────────────────────────────────────
-    // Buffer de seguridad para absorber redondeos y evitar bajar del colchón
     const SAFETY_BUFFER = 2;
 
-    // Índice de inicio: primer mes i cuyo dia15 >= fechaPrimeraAmort (si se especifica)
-    // A partir de ese mes, la frecuencia se cuenta desde él (no desde i=0).
     let primerMesValido = 0;
     if (fechaPrimeraAmort) {
       for (let i = 0; i < horizonte; i++) {
-        const { dia15 } = mesInfo(i);
-        if (dia15 >= fechaPrimeraAmort) { primerMesValido = i; break; }
+        if (mesInfo(i).dia15 >= fechaPrimeraAmort) { primerMesValido = i; break; }
       }
     }
 
     for (let i = 0; i < horizonte; i++) {
       if ((i - primerMesValido) % frecuencia !== 0 || i < primerMesValido) continue;
 
-      const { label, ini, fin, dia15 } = mesInfo(i);
-
+      const { label, dia15 } = mesInfo(i);
       if (dia15 < hoyStr) continue;
 
-      const excedente = calcMaxAmortMes(ini, fin) - SAFETY_BUFFER;
+      // Saldo proyectado AT the amortization date (includes all previous planned amorts)
+      const excedente = maxAmortAt(dia15) - SAFETY_BUFFER;
       if (excedente < minAmortizable) continue;
 
-      // Snapshot para rollback si el mes siguiente queda por debajo del colchón
-      const planLenAntes = plan.length;
-      const amortSnap = {};
-      for (const l of loansActivos) amortSnap[l._id] = [...amortsPorLoan[l._id]];
-
-      let excedentRestante = excedente;
+      let excedentRestante       = excedente;
       let totalAmortizadoEsteMes = 0;
 
       for (const loan of loansActivos) {
         if (excedentRestante < minAmortizable) break;
 
         const capActual = capPendienteAntes(loan, dia15);
-        if (capActual < 1) continue; // préstamo terminado
+        if (capActual < 1) continue;
 
         const comAmort     = loan.comisionAmort || 0;
         const factorCom    = 1 + comAmort / 100;
@@ -1567,10 +1540,9 @@ const FinanceMath = (() => {
         const cantidad   = Math.min(Math.floor(cantidadF), Math.floor(capActual));
         const comision   = +(cantidad * comAmort / 100).toFixed(2);
         const costeTotal = cantidad + comision;
-
-        // Verificación: el coste no puede superar el excedente restante
         if (costeTotal > excedentRestante) continue;
 
+        // Record the planned amortization — it will appear as a gasto in future saldosAt() calls
         amortsPorLoan[loan._id].push({
           _id: `opt_${label}_${loan._id}`,
           fecha: dia15, cantidad, tipo: tipoAmort, simulacion: true,
@@ -1582,22 +1554,12 @@ const FinanceMath = (() => {
           loanId: loan._id, loanNombre: loan.nombre, tin: loan.tin,
           capitalAntes: capActual, cantidadAmort: cantidad, comision,
           capitalDespues: Math.max(0, capActual - cantidad),
-          saldoMin: excedente + SAFETY_BUFFER, excedente,
-          saldoDespuesMes: excedente + SAFETY_BUFFER - totalAmortizadoEsteMes,
+          saldoDisponible: excedente + SAFETY_BUFFER, excedente,
+          saldoDespues: excedente + SAFETY_BUFFER - totalAmortizadoEsteMes,
           tipoAmort,
         });
 
         excedentRestante -= costeTotal;
-      }
-
-      // Verificar que el mes siguiente no baje del colchón por las amortizaciones
-      // de este mes. Si lo hace, se deshacen todas las amortizaciones del mes.
-      if (plan.length > planLenAntes) {
-        const next = mesInfo(i + 1);
-        if (calcMaxAmortMes(next.ini, next.fin) < SAFETY_BUFFER) {
-          plan.length = planLenAntes;
-          for (const l of loansActivos) amortsPorLoan[l._id] = amortSnap[l._id];
-        }
       }
     }
 
