@@ -417,27 +417,26 @@ const LoansModule = (() => {
 
     const allAccounts = State.get('accounts').filter(a => a.activo && !a.simulacion);
     const principalId = allAccounts.find(a => a.esCuentaPrincipal)?._id || allAccounts[0]?._id;
-    const accountCheckboxes = allAccounts.map(a => `
+    const accountRadios = allAccounts.map(a => `
       <label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;background:var(--bg2)">
-        <input type="checkbox" class="opt-acc-check" value="${a._id}" ${a._id === principalId ? 'checked' : ''} style="accent-color:var(--accent)"/>
+        <input type="radio" name="opt-src-acc" class="opt-acc-radio" value="${a._id}" ${a._id === principalId ? 'checked' : ''} style="accent-color:var(--accent)" onchange="LoansModule._updateOptMargins()"/>
         <span style="font-size:13px;flex:1">${a.nombre}${a._id === principalId ? ' <span class="badge badge-blue" style="font-size:10px">principal</span>' : ''}</span>
         <span class="text-sm" style="color:var(--text3)">${FinanceMath.eur(FinanceMath.saldoRealCuenta(a))}</span>
       </label>`).join('');
 
-    const margenesActivos = (config.margenesSeguridad||[]).filter(m => m.activo !== false);
-    const margenesHint = margenesActivos.length > 0
-      ? `Respetará ${margenesActivos.length} margen${margenesActivos.length>1?'es':''} de seguridad activo${margenesActivos.length>1?'s':''}: ${margenesActivos.map(m=>m.nombre).join(', ')}.`
-      : `<span style="color:var(--yellow)">Sin márgenes de seguridad configurados. Define umbrales en <strong>Márgenes de seguridad</strong> para proteger tus cuentas.</span>`;
-
     const html = `
       <div class="auth-hint mb-12">
-        El optimizador calcula cuándo y cuánto amortizar usando el excedente mensual respetando los márgenes de seguridad activos.
-        Las amortizaciones se aplican primero al préstamo con mayor interés. ${margenesHint}
+        El optimizador calcula cuándo y cuánto amortizar garantizando que el saldo de la cuenta de origen nunca baje de los límites configurados.
+        Las amortizaciones se aplican primero al préstamo con mayor interés.
       </div>
 
-      <div class="card-title mb-6">Cuentas de origen</div>
+      <div class="card-title mb-6">Cuenta de origen</div>
       <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px">
-        ${accountCheckboxes || '<span class="text-sm" style="color:var(--text3)">Sin cuentas activas</span>'}
+        ${accountRadios || '<span class="text-sm" style="color:var(--text3)">Sin cuentas activas</span>'}
+      </div>
+
+      <div class="card-title mb-6">Límites a respetar</div>
+      <div id="opt-margenes-wrap" style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px">
       </div>
 
       <div class="card-title mb-6">Préstamos a amortizar</div>
@@ -464,6 +463,7 @@ const LoansModule = (() => {
         <button class="btn-primary" onclick="LoansModule.runOptimizador()">Calcular plan manual</button>
       </div>`;
     UI.openModal(html, '✨ Optimizar amortizaciones');
+    _updateOptMargins();
   }
 
   function _toggleAllLoans() {
@@ -479,10 +479,31 @@ const LoansModule = (() => {
     return selected.length === checks.length ? null : selected;
   }
 
-  function _getSelectedAccountIds() {
-    const checks = [...document.querySelectorAll('.opt-acc-check')];
-    if (checks.length === 0) return [];
-    return checks.filter(c => c.checked).map(c => c.value);
+  function _getSelectedAccountId() {
+    return document.querySelector('.opt-acc-radio:checked')?.value || null;
+  }
+
+  function _getSelectedMarginIds() {
+    return [...document.querySelectorAll('.opt-margin-check:checked')].map(el => el.value);
+  }
+
+  function _updateOptMargins() {
+    const accId = document.querySelector('.opt-acc-radio:checked')?.value;
+    const config = State.get('config');
+    const margenes = (config.margenesSeguridad || []).filter(m => m.activo !== false);
+    const applicable = margenes.filter(m => !m.cuentas || m.cuentas.length === 0 || (accId && m.cuentas.includes(accId)));
+    const wrap = document.getElementById('opt-margenes-wrap');
+    if (!wrap) return;
+    if (applicable.length === 0) {
+      wrap.innerHTML = '<span class="text-sm" style="color:var(--yellow)">Sin márgenes configurados para esta cuenta. Define límites en <strong>Márgenes de seguridad</strong>.</span>';
+      return;
+    }
+    wrap.innerHTML = applicable.map(m => `
+      <label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;background:var(--bg2)">
+        <input type="checkbox" class="opt-margin-check" value="${m._id}" checked style="accent-color:var(--accent)"/>
+        <span style="font-size:13px;flex:1">${m.nombre}</span>
+        <span class="text-sm" style="color:var(--text3)">${!m.cuentas || m.cuentas.length === 0 ? 'Todas las cuentas' : 'Esta cuenta'}</span>
+      </label>`).join('');
   }
 
   function runComparador() {
@@ -514,10 +535,11 @@ const LoansModule = (() => {
 
     // Defer para que el modal de "cargando" se pinte antes del cálculo síncrono
     setTimeout(() => {
-      const sourceAccountIds = _getSelectedAccountIds();
+      const sourceAccountId = _getSelectedAccountId();
+      const selectedMarginIds = _getSelectedMarginIds();
       const comparativa = FinanceMath.compararFrecuencias(loans, expenses, accounts, config, {
         horizonte, minAmortizable: minAmort, tipoAmort, fechaObjetivo: fechaObj,
-        frecuencias: [1, 2, 3, 6, 12], fechaPrimeraAmort, loanIds, nominas, sourceAccountIds,
+        frecuencias: [1, 2, 3, 6, 12], fechaPrimeraAmort, loanIds, nominas, sourceAccountId, selectedMarginIds,
       });
 
       if (comparativa.resultados.length === 0) {
@@ -669,10 +691,11 @@ const LoansModule = (() => {
     const config   = State.get('config');
     const nominas  = State.get('nominas') || [];
 
-    const sourceAccountIds = _getSelectedAccountIds();
+    const sourceAccountId = _getSelectedAccountId();
+    const selectedMarginIds = _getSelectedMarginIds();
     const resultado = FinanceMath.optimizarAmortizaciones(loans, expenses, accounts, config, {
       frecuencia, mesesHorizonte: horizonte, minAmortizable: minAmort, tipoAmort,
-      fechaPrimeraAmort, loanIds, nominas, sourceAccountIds,
+      fechaPrimeraAmort, loanIds, nominas, sourceAccountId, selectedMarginIds,
     });
 
     if (resultado.plan.length === 0) {
@@ -805,5 +828,5 @@ const LoansModule = (() => {
     render(Object.keys(porLoan));
   }
 
-  return { render, saveLoan, deleteAmort, openAmortForm, saveAmort, openOptimizador, runOptimizador, runComparador, aplicarDesdeComparador, aplicarPlanOptimizado, toggleFinalizados, _toggleAllLoans, _getSelectedLoanIds };
+  return { render, saveLoan, deleteAmort, openAmortForm, saveAmort, openOptimizador, runOptimizador, runComparador, aplicarDesdeComparador, aplicarPlanOptimizado, toggleFinalizados, _toggleAllLoans, _getSelectedLoanIds, _updateOptMargins };
 })();

@@ -1373,28 +1373,37 @@ const FinanceMath = (() => {
     fechaPrimeraAmort = null,
     loanIds = null,
     nominas = [],
-    sourceAccountIds = [],
+    sourceAccountId = null,
+    selectedMarginIds = null,
   } = {}) {
 
     const hoy       = new Date();
     const hoyStr    = hoy.toISOString().slice(0, 10);
     const horizonte = Math.min(120, Math.max(1, mesesHorizonte));
 
-    const activeAccs  = accounts.filter(a => a.activo);
+    const activeAccs   = accounts.filter(a => a.activo);
     const allActiveIds = activeAccs.map(a => a._id);
-    // Source account IDs: accounts from which surplus is evaluated; default = all active
-    const sourceAccIds = sourceAccountIds.length > 0
-      ? sourceAccountIds.filter(id => allActiveIds.includes(id))
-      : allActiveIds;
+
+    // Single source account — the one being debited for amortizations
+    const principalAcc = activeAccs.find(a => a.esCuentaPrincipal) || activeAccs[0];
+    const srcAcc   = (sourceAccountId && allActiveIds.includes(sourceAccountId))
+      ? activeAccs.find(a => a._id === sourceAccountId)
+      : principalAcc;
+    const sourceAccId = srcAcc?._id;
 
     const loansActivos = loans
       .filter(l => l.activo && !l.simulacion && (!loanIds || loanIds.includes(l._id)))
       .sort((a, b) => b.tin - a.tin);
 
-    const margenesActivos = (config.margenesSeguridad || []).filter(m => m.activo !== false);
+    // Margins applicable to source account: all-accounts margins OR those listing sourceAccId
+    // Further filtered by user's selectedMarginIds selection (if provided)
+    const margenesAplicables = (config.margenesSeguridad || [])
+      .filter(m => m.activo !== false)
+      .filter(m => !m.cuentas || m.cuentas.length === 0 || m.cuentas.includes(sourceAccId))
+      .filter(m => !selectedMarginIds || selectedMarginIds.includes(m._id));
 
     if (loansActivos.length === 0) {
-      return { plan: [], margenesAplicados: margenesActivos.length, totalAmortizado: 0, totalComisiones: 0, totalAhorroIntereses: 0, resumenPorLoan: [] };
+      return { plan: [], margenesAplicados: margenesAplicables.length, totalAmortizado: 0, totalComisiones: 0, totalAhorroIntereses: 0, resumenPorLoan: [] };
     }
 
     // Amortizaciones del plan por préstamo (se acumulan durante la simulación)
@@ -1440,10 +1449,13 @@ const FinanceMath = (() => {
       return Math.max(0, loanActual.capital - yaAmort);
     }
 
-    // ── Helper: máximo amortizable en el mes respetando todos los márgenes activos
-    // Genera el extracto una vez. Para márgenes sobre TODAS las cuentas usa saldoAcum
-    // directamente (evita divergencia por eventos con cuenta='default'). Para márgenes
-    // sobre cuentas específicas usa tracking per-account.
+    // ── Helper: máximo amortizable en el mes garantizando que la cuenta de origen
+    // nunca baje de los límites establecidos por los márgenes seleccionados.
+    //
+    // Método residual para el saldo de la cuenta de origen:
+    //   saldo_source = saldoAcum_total - sum(saldo_otras_cuentas_tracking_individual)
+    // Los eventos con cuenta='default' reducen el total pero no las otras cuentas
+    // → se atribuyen conservadoramente a la cuenta de origen. Nunca sobreestima.
     function calcMaxAmortMes(ini, fin) {
       const loansActualizados = loans.map(l => ({
         ...l,
@@ -1452,51 +1464,50 @@ const FinanceMath = (() => {
       const cfg = { ...config, dashboardStart: hoyStr, dashboardEnd: fin };
       const ext = generarExtracto(loansActualizados, expenses, accounts, cfg, null, nominas);
 
-      const saldoBase = activeAccs.reduce((s, a) => s + saldoRealCuenta(a), 0);
+      const saldoBase   = activeAccs.reduce((s, a) => s + saldoRealCuenta(a), 0);
+      const otherAccBase = activeAccs.filter(a => a._id !== sourceAccId).reduce((s, a) => s + saldoRealCuenta(a), 0);
+      const sourceBase  = saldoBase - otherAccBase;
 
-      // Min saldo total (all accounts) — authoritative, uses saldoAcum from extracto
+      // Track other accounts per specific events; source = total - others (residual)
+      let _srcSnaps = null;
+      function getSourceSnaps() {
+        if (_srcSnaps) return _srcSnaps;
+        const others = {};
+        for (const acc of activeAccs) if (acc._id !== sourceAccId) others[acc._id] = saldoRealCuenta(acc);
+        _srcSnaps = ext.map(ev => {
+          if (ev.cuenta && others[ev.cuenta] !== undefined) others[ev.cuenta] += ev.cuantia;
+          const othersSum = Object.values(others).reduce((s, v) => s + v, 0);
+          return { fecha: ev.fecha, src: ev.saldoAcum - othersSum };
+        });
+        return _srcSnaps;
+      }
+
+      function minSaldoSource() {
+        const snaps = getSourceSnaps();
+        const antes = snaps.filter(s => s.fecha < ini);
+        const en    = snaps.filter(s => s.fecha >= ini && s.fecha <= fin);
+        const ini0  = antes.length > 0 ? antes[antes.length - 1].src : sourceBase;
+        return en.length > 0 ? Math.min(ini0, ...en.map(s => s.src)) : ini0;
+      }
+
       function minSaldoTotal() {
         const antes = ext.filter(e => e.fecha < ini);
         const en    = ext.filter(e => e.fecha >= ini && e.fecha <= fin);
         const ini0  = antes.length > 0 ? antes[antes.length - 1].saldoAcum : saldoBase;
-        return Math.min(ini0, ...en.map(e => e.saldoAcum));
+        return en.length > 0 ? Math.min(ini0, ...en.map(e => e.saldoAcum)) : ini0;
       }
 
-      // Per-account tracking — only built if a specific-accounts margin exists
-      let snaps = null;
-      function getSnaps() {
-        if (snaps) return snaps;
-        const running = {};
-        for (const acc of activeAccs) running[acc._id] = saldoRealCuenta(acc);
-        snaps = ext.map(ev => {
-          if (ev.cuenta && running[ev.cuenta] !== undefined) running[ev.cuenta] += ev.cuantia;
-          return { fecha: ev.fecha, saldos: { ...running } };
-        });
-        return snaps;
-      }
+      // Hard ceiling: source account is the one being debited
+      let maxAmort = minSaldoSource();
 
-      function minSaldoPartial(ids) {
-        const s = getSnaps();
-        const fn  = snap => ids.reduce((sum, id) => sum + (snap.saldos[id] || 0), 0);
-        const base = ids.reduce((sum, id) => { const a = activeAccs.find(x => x._id === id); return sum + (a ? saldoRealCuenta(a) : 0); }, 0);
-        const antes = s.filter(x => x.fecha < ini);
-        const en    = s.filter(x => x.fecha >= ini && x.fecha <= fin);
-        const ini0  = antes.length > 0 ? fn(antes[antes.length - 1]) : base;
-        return Math.min(ini0, ...en.map(fn));
-      }
-
-      // Always bound by source accounts first — they are the ones being debited
-      const srcIsAll = sourceAccIds.length === allActiveIds.length;
-      let maxAmort = srcIsAll ? minSaldoTotal() : minSaldoPartial(sourceAccIds);
-
-      // Further constrain by each active margin
-      for (const mg of margenesActivos) {
+      // Tighten by each applicable margin
+      for (const mg of margenesAplicables) {
         const target = calcMargenEnFecha(mg, expenses, config, loans, fin);
         if (target <= 0) continue;
         const isAll = !mg.cuentas || mg.cuentas.length === 0;
-        const sMin  = isAll
-          ? minSaldoTotal()
-          : minSaldoPartial(mg.cuentas.filter(id => allActiveIds.includes(id)));
+        // All-accounts margin: amortization reduces total → constrain on total
+        // Source-specific margin: constrain on source saldo
+        const sMin = isAll ? minSaldoTotal() : minSaldoSource();
         maxAmort = Math.min(maxAmort, sMin - target);
       }
 
@@ -1608,7 +1619,7 @@ const FinanceMath = (() => {
 
     const totalAhorroIntereses = resumenPorLoan.reduce((s, r) => s + r.ahorroIntereses, 0);
 
-    return { plan, margenesAplicados: margenesActivos.length, totalAmortizado, totalComisiones, totalAhorroIntereses, resumenPorLoan };
+    return { plan, margenesAplicados: margenesAplicables.length, totalAmortizado, totalComisiones, totalAhorroIntereses, resumenPorLoan };
   }
   // ── Comparador de frecuencias de amortización ────────────────────────────────
   // Corre optimizarAmortizaciones para cada frecuencia candidata y calcula el
@@ -1622,7 +1633,8 @@ const FinanceMath = (() => {
     fechaPrimeraAmort = null,
     loanIds        = null,
     nominas        = [],
-    sourceAccountIds = [],
+    sourceAccountId  = null,
+    selectedMarginIds = null,
   } = {}) {
 
     // Fecha objetivo para medir el saldo
@@ -1660,7 +1672,8 @@ const FinanceMath = (() => {
         fechaPrimeraAmort,
         loanIds,
         nominas,
-        sourceAccountIds,
+        sourceAccountId,
+        selectedMarginIds,
       });
 
       // Reconstruir amortsPorLoan desde el plan para calcular saldo
