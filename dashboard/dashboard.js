@@ -1,6 +1,8 @@
 // Depends on: State, FinanceMath, UI
 const DashboardModule = (() => {
   let charts={}, ventana='mes', activeTags=new Set(), filtroAccounts=[], chartMode='summed';
+  // Stable color palette for promoted tags (index 0 reserved for base categories)
+  const _TAG_PROMO_PALETTE = ['#f97316','#eab308','#22d3ee','#a78bfa','#34d399','#fb7185','#60a5fa','#c084fc','#4ade80','#f472b6'];
   // colchon + historial toggles driven from config, no local state needed
 
   function destroyCharts() { Object.values(charts).forEach(c=>{try{c.destroy();}catch{}}); charts={}; }
@@ -213,6 +215,9 @@ const DashboardModule = (() => {
     };
 
     const accPills=accounts.map(acc=>`<span class="acc-pill ${filtroAccounts.includes(acc._id)?'active':''} ${acc.simulacion?'sim':''}" onclick="DashboardModule.toggleAccFilter('${acc._id}')">${acc.nombre}${acc.simulacion?' ◌':''}</span>`).join('');
+    // All unique tags from expenses (for promoted-tags config UI)
+    const allExpTags=[...new Set(expenses.flatMap(e=>e.tags||[]))].filter(Boolean).sort();
+    const tagCategorias = config.tagCategorias || [];
 
     view.innerHTML=`
       <div class="page-header">
@@ -308,6 +313,19 @@ const DashboardModule = (() => {
             <button class="btn-primary btn-sm" onclick="DashboardModule.applyConfig()">Actualizar</button>
           </div>
         </div>
+        ${allExpTags.length>0?`<div class="mt-10">
+          <div class="form-label mb-6">Etiquetas como categoría propia</div>
+          <div class="tag-filter-bar" id="cfg-tag-cat-bar">
+            ${allExpTags.map((t,i)=>{
+              const idx=tagCategorias.indexOf(t);
+              const active=idx>=0;
+              const color=active?_TAG_PROMO_PALETTE[idx%_TAG_PROMO_PALETTE.length]:'';
+              const safeName=t.replace(/'/g,"\\'");
+              return `<span class="tag${active?' active':''}" style="${active?`background:${color}22;color:${color};border-color:${color}`:''};cursor:pointer" onclick="DashboardModule.toggleTagCategoria('${safeName}')">${t}</span>`;
+            }).join('')}
+          </div>
+          <div class="text-sm mt-4" style="color:var(--text3)">Las etiquetas activas aparecen como segmento propio en los gráficos en lugar de "Otros gastos".</div>
+        </div>`:''}
         ${cuentasActivas.length>0?`<div class="mt-8 text-sm" style="color:var(--text3)">Ref. ${config.fechaReferencia||'—'}: ${cuentasActivas.map(a=>`${a.nombre} ${FinanceMath.eur(FinanceMath.saldoEnFecha(a, config.fechaReferencia||config.dashboardStart))}`).join(' · ')} · Total: ${FinanceMath.eur(cuentasActivas.reduce((s,a)=>s+FinanceMath.saldoEnFecha(a,config.fechaReferencia||config.dashboardStart),0))}</div>`:''}
         `}
       </div>
@@ -523,7 +541,7 @@ const DashboardModule = (() => {
         <div class="card">
           <div class="card-title mb-8">Distribución media mensual (periodo)</div>
           ${(()=>{
-            const otrosGastosMed = Math.max(0, gastosMediaMes - gastosBasicosMediaMes);
+            const otrosGastosMed = Math.max(0, gastosMediaMes - gastosBasicosMediaMes - totalTagPromoMediaMes);
             const ahorroMed      = Math.max(0, ingresosMediaMes - cuotasMediaMes - gastosMediaMes - amortizacionesMediaMes);
             const totalRef       = ingresosMediaMes > 0 ? ingresosMediaMes : (cuotasMediaMes + gastosMediaMes + amortizacionesMediaMes + 0.01);
             const pctBasicos = (gastosBasicosMediaMes / totalRef * 100).toFixed(1);
@@ -532,26 +550,24 @@ const DashboardModule = (() => {
             const pctAmort   = (amortizacionesMediaMes / totalRef * 100).toFixed(1);
             const pctAhorro  = (ahorroMed / totalRef * 100).toFixed(1);
             const ahorroColor = ahorroMed > 0 ? 'var(--accent)' : 'var(--text3)';
+            const legendRow = (color, label, amount, pct) =>
+              `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px">
+                <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:${color};display:inline-block"></span><span style="color:var(--text2)">${label}</span></span>
+                <span style="font-family:var(--font-mono)">${FinanceMath.eur(amount)}<span style="color:var(--text3);margin-left:4px">${pct}%</span></span>
+              </div>`;
             return `
             <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
               <div style="position:relative;width:140px;height:140px;flex-shrink:0"><canvas id="chart-expense-donut"></canvas></div>
               <div style="flex:1;min-width:130px;display:flex;flex-direction:column;gap:7px">
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px">
-                  <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#4d9fff;display:inline-block"></span><span style="color:var(--text2)">Básicos</span></span>
-                  <span style="font-family:var(--font-mono)">${FinanceMath.eur(gastosBasicosMediaMes)}<span style="color:var(--text3);margin-left:4px">${pctBasicos}%</span></span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px">
-                  <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#ff4d6d;display:inline-block"></span><span style="color:var(--text2)">Otros gastos</span></span>
-                  <span style="font-family:var(--font-mono)">${FinanceMath.eur(otrosGastosMed)}<span style="color:var(--text3);margin-left:4px">${pctOtros}%</span></span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px">
-                  <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#a855f7;display:inline-block"></span><span style="color:var(--text2)">Deuda</span></span>
-                  <span style="font-family:var(--font-mono)">${FinanceMath.eur(cuotasMediaMes)}<span style="color:var(--text3);margin-left:4px">${pctDeuda}%</span></span>
-                </div>
-                ${amortizacionesMediaMes > 0.01 ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px">
-                  <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#fb923c;display:inline-block"></span><span style="color:var(--text2)">Amortizaciones</span></span>
-                  <span style="font-family:var(--font-mono)">${FinanceMath.eur(amortizacionesMediaMes)}<span style="color:var(--text3);margin-left:4px">${pctAmort}%</span></span>
-                </div>` : ''}
+                ${legendRow('#4d9fff','Básicos',gastosBasicosMediaMes,pctBasicos)}
+                ${tagCategorias.map((t,i)=>{
+                  const v=_tagPromoMediaMes[t]||0; if(v<0.01)return '';
+                  const c=_TAG_PROMO_PALETTE[i%_TAG_PROMO_PALETTE.length];
+                  return legendRow(c,t,v,(v/totalRef*100).toFixed(1));
+                }).join('')}
+                ${legendRow('#ff4d6d','Otros gastos',otrosGastosMed,pctOtros)}
+                ${legendRow('#a855f7','Deuda',cuotasMediaMes,pctDeuda)}
+                ${amortizacionesMediaMes > 0.01 ? legendRow('#fb923c','Amortizaciones',amortizacionesMediaMes,pctAmort) : ''}
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;border-top:1px solid var(--border);padding-top:6px">
                   <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#00e5a0;display:inline-block"></span><span style="color:var(--text2)">Ahorro est.</span></span>
                   <span style="font-family:var(--font-mono);font-weight:700;color:${ahorroColor}">${FinanceMath.eur(ahorroMed)}<span style="margin-left:4px">${pctAhorro}%</span></span>
@@ -768,14 +784,34 @@ const DashboardModule = (() => {
       `}
 `;
 
+    // Helper: returns the first promoted tag for an expense, or null
+    const _tagPromocionada = (expId) => {
+      const ex = expenses.find(ex => ex._id === expId);
+      if (!ex) return null;
+      for (const t of tagCategorias) { if ((ex.tags || []).includes(t)) return t; }
+      return null;
+    };
+
+    // Media mensual por tag promovida (period average)
+    const _tagPromoMediaMes = {};
+    for (const t of tagCategorias) _tagPromoMediaMes[t] = 0;
+    evSinTransf.filter(e => e.tipo === 'gasto' && e.sourceType === 'expense').forEach(e => {
+      const ex = expenses.find(ex => ex._id === e.sourceId);
+      if (!ex || ex.basico) return;
+      const tp = _tagPromocionada(e.sourceId);
+      if (tp) _tagPromoMediaMes[tp] = (_tagPromoMediaMes[tp] || 0) + Math.abs(e.cuantia) / numMeses;
+    });
+    const totalTagPromoMediaMes = Object.values(_tagPromoMediaMes).reduce((s, v) => s + v, 0);
+
     // Pass computed metrics to chart functions
-    const _metricasGraficos = { loans, expenses, config, numMeses, extracto };
-    const _donutMetrics = { gastosBasicosMediaMes, gastosMediaMes, cuotasMediaMes, ingresosMediaMes, amortizacionesMediaMes };
-    // Breakdown "otros gastos" por tag (media mensual del periodo)
+    const _metricasGraficos = { loans, expenses, config, numMeses, extracto, tagCategorias };
+    const _donutMetrics = { gastosBasicosMediaMes, gastosMediaMes, cuotasMediaMes, ingresosMediaMes, amortizacionesMediaMes, tagPromoMediaMes: _tagPromoMediaMes };
+    // Breakdown "otros gastos" por tag (media mensual del periodo), excluding promoted tags
     const _otrosTagMap = {};
     evSinTransf.filter(e => e.tipo === 'gasto' && e.sourceType === 'expense').forEach(e => {
       const ex = expenses.find(ex => ex._id === e.sourceId);
       if (!ex || ex.basico) return;
+      if (_tagPromocionada(e.sourceId)) return; // already a promoted category
       const cat = (ex.tags && ex.tags.length > 0) ? ex.tags[0] : (ex.concepto || 'Sin categoría');
       _otrosTagMap[cat] = (_otrosTagMap[cat] || 0) + Math.abs(e.cuantia);
     });
@@ -1162,7 +1198,7 @@ const DashboardModule = (() => {
     });
   }
 
-  function renderChartBreakdown({ loans, expenses, config, numMeses, extracto }) {
+  function renderChartBreakdown({ loans, expenses, config, numMeses, extracto, tagCategorias=[] }) {
     const ctx = document.getElementById('chart-breakdown-mensual'); if (!ctx) return;
     const dS = new Date(config.dashboardStart+'T00:00:00');
     const dE = new Date(config.dashboardEnd+'T00:00:00');
@@ -1178,6 +1214,15 @@ const DashboardModule = (() => {
     }
 
     const dataIngresos = [], dataCuotas = [], dataBasicos = [], dataOtros = [], dataFiscal = [];
+    const dataTagPromo = tagCategorias.map(() => []);
+
+    // Helper: first promoted tag for expense (same priority logic as render)
+    const _tagPromo = (expId) => {
+      const ex = expenses.find(ex => ex._id === expId);
+      if (!ex) return null;
+      for (const t of tagCategorias) { if ((ex.tags || []).includes(t)) return t; }
+      return null;
+    };
 
     for (const mesLabel of months) {
       const mesIni = mesLabel + '-01';
@@ -1195,14 +1240,27 @@ const DashboardModule = (() => {
       dataIngresos.push(evsMes.filter(e=>e.tipo==='ingreso').reduce((s,e)=>s+Math.abs(e.cuantia),0));
       dataCuotas.push(evsMes.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto').reduce((s,e)=>s+Math.abs(e.cuantia),0));
       dataFiscal.push(evsMes.filter(esFiscal).reduce((s,e)=>s+Math.abs(e.cuantia),0));
-      dataBasicos.push(evsMes.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense'&&!esFiscal(e)).filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
-      dataOtros.push(evsMes.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense'&&!esFiscal(e)).filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return !ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
+      const gastoExpNoFiscal = evsMes.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense'&&!esFiscal(e));
+      dataBasicos.push(gastoExpNoFiscal.filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
+      // Promoted tags: per-tag buckets
+      tagCategorias.forEach((tag, ti) => {
+        dataTagPromo[ti].push(gastoExpNoFiscal.filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return !ex?.basico&&_tagPromo(e.sourceId)===tag;}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
+      });
+      // Otros: non-basic, non-promoted
+      dataOtros.push(gastoExpNoFiscal.filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return !ex?.basico&&!_tagPromo(e.sourceId);}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
     }
 
     const labels = months.map(m => {
       const [y, mo] = m.split('-');
       return new Date(+y, +mo-1, 1).toLocaleDateString('es-ES', {month:'short', year:'2-digit'});
     });
+
+    const promoDatasets = tagCategorias.map((tag, i) => ({
+      label: tag,
+      data: dataTagPromo[i],
+      backgroundColor: _TAG_PROMO_PALETTE[i % _TAG_PROMO_PALETTE.length] + 'bf',
+      borderWidth: 0, borderRadius: 2, stack: 'gastos', order: 2,
+    }));
 
     charts['chart-breakdown-mensual'] = new Chart(ctx, {
       type: 'bar',
@@ -1213,6 +1271,7 @@ const DashboardModule = (() => {
           { label:'Cuotas préstamos', data:dataCuotas, backgroundColor:'rgba(168,85,247,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
           { label:'Gastos básicos', data:dataBasicos, backgroundColor:'rgba(77,159,255,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
           { label:'Fiscal / IRPF', data:dataFiscal, backgroundColor:'rgba(251,146,60,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
+          ...promoDatasets,
           { label:'Otros gastos', data:dataOtros, backgroundColor:'rgba(255,77,109,0.65)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
         ]
       },
@@ -1235,12 +1294,18 @@ const DashboardModule = (() => {
     });
   }
 
-  function renderChartExpenseDonut({ gastosBasicosMediaMes, gastosMediaMes, cuotasMediaMes, ingresosMediaMes, amortizacionesMediaMes=0 }) {
+  function renderChartExpenseDonut({ gastosBasicosMediaMes, gastosMediaMes, cuotasMediaMes, ingresosMediaMes, amortizacionesMediaMes=0, tagPromoMediaMes={} }) {
     const ctx = document.getElementById('chart-expense-donut'); if (!ctx) return;
-    const otrosGastos = Math.max(0, gastosMediaMes - gastosBasicosMediaMes);
+    const tagCategorias = State.get('config').tagCategorias || [];
+    const totalTagPromo = tagCategorias.reduce((s, t) => s + (tagPromoMediaMes[t] || 0), 0);
+    const otrosGastos = Math.max(0, gastosMediaMes - gastosBasicosMediaMes - totalTagPromo);
     const ahorro      = Math.max(0, ingresosMediaMes - cuotasMediaMes - gastosMediaMes - amortizacionesMediaMes);
+    const promoSegments = tagCategorias
+      .map((t, i) => ({ label: t, value: tagPromoMediaMes[t] || 0, color: _TAG_PROMO_PALETTE[i % _TAG_PROMO_PALETTE.length] }))
+      .filter(s => s.value > 0.01);
     const segments = [
       { label:'Básicos',         value: gastosBasicosMediaMes, color:'#4d9fff' },
+      ...promoSegments,
       { label:'Otros gastos',    value: otrosGastos,           color:'#ff4d6d' },
       { label:'Deuda',           value: cuotasMediaMes,        color:'#a855f7' },
       { label:'Amortizaciones',  value: amortizacionesMediaMes,color:'#fb923c' },
@@ -1343,6 +1408,14 @@ const DashboardModule = (() => {
     State.set('config', {...State.get('config'), activeTagsFilter: [...activeTags]});
     render();
   }
+  function toggleTagCategoria(tag) {
+    const cfg = State.get('config');
+    const cats = [...(cfg.tagCategorias || [])];
+    const idx = cats.indexOf(tag);
+    if (idx >= 0) cats.splice(idx, 1); else cats.push(tag);
+    State.set('config', { ...cfg, tagCategorias: cats });
+    render();
+  }
   function toggleAccFilter(id) { if(filtroAccounts.includes(id)) filtroAccounts=filtroAccounts.filter(a=>a!==id); else filtroAccounts.push(id); render(); }
   function clearAccFilter() { filtroAccounts=[]; render(); }
   function toggleCriticos() {
@@ -1351,5 +1424,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, applyConfig, applyPreset, setVentana, setChartMode, toggleTag, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleScoreDetail, toggleCriticos, toggleConfig, toggleAnalisis };
+  return { render, applyConfig, applyPreset, setVentana, setChartMode, toggleTag, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleScoreDetail, toggleCriticos, toggleConfig, toggleAnalisis };
 })();

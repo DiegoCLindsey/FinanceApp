@@ -30,6 +30,7 @@ const State = (() => {
       colchonFijo: 0,         // € cuando colchonTipo='fijo'
       escenarioActivo: null,  // _id del escenario activo o null (realidad base)
       activeTagsFilter: [],   // persisted tag filter selection for dashboard
+      tagCategorias: [],      // tags promoted to their own chart category
       storageMode: 'local',   // 'local' | 'firebase' | 'dropbox'
       autoSave: false,
       autoSaveInterval: 15,
