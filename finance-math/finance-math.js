@@ -1477,10 +1477,15 @@ const FinanceMath = (() => {
       let totalSaldo = totalBase;
 
       for (const ev of ext) {
+        // ev.delta is the correctly-signed cash flow set by _aplicarSaldoRef:
+        //   tipo='ingreso' → +Math.abs(cuantia), tipo='gasto' → -Math.abs(cuantia)
+        // We must use delta, NOT cuantia — regular expenses store cuantia as positive
+        // (sign encoded in tipo), so using cuantia directly would ADD expenses instead of subtracting.
+        const d = ev.delta ?? (ev.tipo === 'ingreso' ? Math.abs(ev.cuantia) : -Math.abs(ev.cuantia));
         if (ev.cuenta === sourceAccId) {
-          srcSaldo += ev.cuantia;
+          srcSaldo += d;
         } else if (!allActiveIds.includes(ev.cuenta)) {
-          srcSaldo += ev.cuantia * srcFrac;
+          srcSaldo += d * srcFrac;
         }
         totalSaldo = ev.saldoAcum; // always authoritative from extracto
       }
@@ -1500,11 +1505,8 @@ const FinanceMath = (() => {
       let maxTarget = 0; // baseline: no limit below zero
       for (const mg of margenesAplicables) {
         const target = calcMargenEnFecha(mg, expenses, config, loans, fecha, true);
-        console.log('[OPT DEBUG] margin:', mg.nombre, '| tipo:', mg.puntos?.[0]?.tipo, '| importe:', mg.puntos?.[0]?.importe, '| target:', target, '| fecha:', fecha);
         if (target > maxTarget) maxTarget = target;
       }
-
-      console.log('[OPT DEBUG] fecha:', fecha, '| source:', source, '| maxTarget:', maxTarget, '| cap:', source - maxTarget, '| margenesAplicables:', margenesAplicables.length);
       return source - maxTarget;
     }
 
