@@ -540,10 +540,12 @@ const FinanceMath = (() => {
     return (totalMes + cuotasBasicas) * (p.meses || 6);
   }
 
-  // Target value for a margen de seguridad at a given date (0 = no restriction)
-  function calcMargenEnFecha(margen, expenses, config, loans, fecha) {
+  // Target value for a margen de seguridad at a given date (0 = no restriction).
+  // fallbackToFirst: if no waypoint precedes 'fecha', use the first waypoint instead of 0.
+  // Used by the optimizer so a limit defined with a future start date still applies.
+  function calcMargenEnFecha(margen, expenses, config, loans, fecha, fallbackToFirst = false) {
     const puntos = [...(margen.puntos || [])].sort((a, b) => a.fecha.localeCompare(b.fecha));
-    const p = puntos.filter(pt => pt.fecha <= fecha).pop();
+    const p = puntos.filter(pt => pt.fecha <= fecha).pop() || (fallbackToFirst ? puntos[0] : null);
     if (!p) return 0;
     if (p.tipo === 'fijo') return p.importe || 0;
     const totalMes = calcGastoBasicoMensual(expenses);
@@ -1493,7 +1495,7 @@ const FinanceMath = (() => {
       let cap = source; // absolute ceiling: can't take more than the account has
 
       for (const mg of margenesAplicables) {
-        const target = calcMargenEnFecha(mg, expenses, config, loans, fecha);
+        const target = calcMargenEnFecha(mg, expenses, config, loans, fecha, true);
         if (target <= 0) continue;
         const isAll = !mg.cuentas || mg.cuentas.length === 0;
         cap = Math.min(cap, (isAll ? total : source) - target);
