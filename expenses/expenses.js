@@ -2,12 +2,14 @@
 const ExpensesModule = (() => {
   // Sort/filter state
   let showExpired=false, sortKey='concepto', sortDir=1;
-  let filterTipo='', filterCuenta='', filterFechaMin='', filterFechaMax='', filterSearch='';
+  let filterTipo='', filterCuenta='', filterFechaMin='', filterFechaMax='', filterSearch='', filterTags=new Set();
 
   function render() {
     const view=document.getElementById('view-expenses');
     const today=new Date().toISOString().slice(0,10);
     let expenses=[...State.get('expenses')];
+    // Collect all unique tags before applying tag filter (for the tag pill bar)
+    const allTags=[...new Set(expenses.flatMap(e=>e.tags||[]))].filter(Boolean).sort();
     if (!showExpired) expenses=expenses.filter(e=>!e.fechaFin||e.fechaFin>=today);
     // Filtros
     if (filterTipo) expenses=expenses.filter(e=>e.tipo===filterTipo);
@@ -15,6 +17,7 @@ const ExpensesModule = (() => {
     if (filterFechaMin) expenses=expenses.filter(e=>e.fechaInicio>=filterFechaMin);
     if (filterFechaMax) expenses=expenses.filter(e=>e.fechaInicio<=filterFechaMax);
     if (filterSearch) expenses=expenses.filter(e=>e.concepto.toLowerCase().includes(filterSearch.toLowerCase()));
+    if (filterTags.size>0) expenses=expenses.filter(e=>(e.tags||[]).some(t=>filterTags.has(t)));
     // Sort
     expenses.sort((a,b)=>{
       let av=a[sortKey]??'', bv=b[sortKey]??'';
@@ -42,6 +45,12 @@ const ExpensesModule = (() => {
         <input class="form-input" type="date" id="flt-fecha-max" value="${filterFechaMax}" title="Fecha inicio hasta"/>
         <button class="btn-secondary btn-sm" onclick="ExpensesModule.clearFilters()">Limpiar</button>
       </div>
+      ${allTags.length>0?`<div class="tag-filter-bar" id="exp-tag-bar">
+        <span class="text-sm" style="color:var(--text3);white-space:nowrap">Etiquetas:</span>
+        ${allTags.map(t=>`<span class="tag${filterTags.has(t)?' active':''}" data-flt-tag="${t}">${t}</span>`).join('')}
+        ${filterTags.size>0?`<button class="btn-secondary btn-sm" id="btn-clear-tags" style="white-space:nowrap">✕ Limpiar etiquetas</button>`:''}
+      </div>`:''}
+
       <div class="card" style="padding:0;overflow:hidden">
         <div class="exp-table-head">
           ${sortHead('concepto','Concepto')} ${sortHead('tipo','Tipo')} ${sortHead('cuantia','Cuantía')} ${sortHead('tipoFrecuencia','Frecuencia')} <span class="exp-col-head exp-col-hide">Cuenta</span> <span class="exp-col-head exp-col-hide">Básico/Estado</span> <span></span>
@@ -56,6 +65,14 @@ const ExpensesModule = (() => {
     document.getElementById('flt-cuenta').onchange=e=>{filterCuenta=e.target.value;render();};
     document.getElementById('flt-fecha-min').onchange=e=>{filterFechaMin=e.target.value;render();};
     document.getElementById('flt-fecha-max').onchange=e=>{filterFechaMax=e.target.value;render();};
+    document.getElementById('btn-clear-tags')?.addEventListener('click',()=>{filterTags=new Set();render();});
+    // Tag pills — use event delegation to handle both filter bar and row tags
+    view.addEventListener('click', e=>{
+      const tag=e.target.dataset.fltTag;
+      if(tag===undefined) return;
+      if(filterTags.has(tag)) filterTags.delete(tag); else filterTags.add(tag);
+      render();
+    });
     // Sort headers
     view.querySelectorAll('[data-sort]').forEach(el=>{ el.onclick=()=>{ if(sortKey===el.dataset.sort) sortDir*=-1; else{ sortKey=el.dataset.sort; sortDir=1; } render(); }; });
     // Row events
@@ -107,7 +124,7 @@ const ExpensesModule = (() => {
     return `<div class="exp-table-row">
       <div>
         <div style="font-weight:500">${exp.concepto}</div>
-        <div class="tag-list mt-4">${(exp.tags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}${histBadge}</div>
+        <div class="tag-list mt-4">${(exp.tags||[]).map(t=>`<span class="tag${filterTags.has(t)?' active':''}" data-flt-tag="${t}" title="Filtrar por ${t}">${t}</span>`).join('')}${histBadge}</div>
       </div>
       <div>${tipoBadge}</div>
       <div class="num ${exp.tipo==='ingreso'?'pos':isTransfer?'':'neg'}">${isTransfer?'⇄ ':''}${FinanceMath.eur(exp.cuantia)}</div>
@@ -127,7 +144,7 @@ const ExpensesModule = (() => {
     </div>`;
   }
 
-  function clearFilters() { filterTipo=''; filterCuenta=''; filterFechaMin=''; filterFechaMax=''; filterSearch=''; render(); }
+  function clearFilters() { filterTipo=''; filterCuenta=''; filterFechaMin=''; filterFechaMax=''; filterSearch=''; filterTags=new Set(); render(); }
 
   function _buildFormHtml(exp, saveId) {
     const isTransfer = exp?.tipo === 'transferencia';
