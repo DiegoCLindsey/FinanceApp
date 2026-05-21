@@ -1500,9 +1500,11 @@ const FinanceMath = (() => {
       let maxTarget = 0; // baseline: no limit below zero
       for (const mg of margenesAplicables) {
         const target = calcMargenEnFecha(mg, expenses, config, loans, fecha, true);
+        console.log('[OPT DEBUG] margin:', mg.nombre, '| tipo:', mg.puntos?.[0]?.tipo, '| importe:', mg.puntos?.[0]?.importe, '| target:', target, '| fecha:', fecha);
         if (target > maxTarget) maxTarget = target;
       }
 
+      console.log('[OPT DEBUG] fecha:', fecha, '| source:', source, '| maxTarget:', maxTarget, '| cap:', source - maxTarget, '| margenesAplicables:', margenesAplicables.length);
       return source - maxTarget;
     }
 
