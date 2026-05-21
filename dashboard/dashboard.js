@@ -1,6 +1,6 @@
 // Depends on: State, FinanceMath, UI
 const DashboardModule = (() => {
-  let charts={}, ventana='mes', activeTags=new Set(), filtroAccounts=[];
+  let charts={}, ventana='mes', activeTags=new Set(), filtroAccounts=[], chartMode='summed';
   // colchon + historial toggles driven from config, no local state needed
 
   function destroyCharts() { Object.values(charts).forEach(c=>{try{c.destroy();}catch{}}); charts={}; }
@@ -599,6 +599,10 @@ const DashboardModule = (() => {
         <div class="flex justify-between items-center mb-8" style="flex-wrap:wrap;gap:6px">
           <div class="card-title" style="margin:0">Evolución del saldo</div>
           <div class="flex gap-8 items-center flex-wrap">
+            <div class="period-selector">
+              <button class="period-btn ${chartMode==='summed'?'active':''}" onclick="DashboardModule.setChartMode('summed')" title="Suma de cuentas seleccionadas">∑ Total</button>
+              <button class="period-btn ${chartMode==='stacked'?'active':''}" onclick="DashboardModule.setChartMode('stacked')" title="Una línea por cuenta, apiladas">≡ Apilado</button>
+            </div>
             ${alertas.length>0?`<button class="btn-secondary btn-sm" style="font-size:11px;color:${config.showCriticos!==false?'var(--yellow)':'var(--text3)'}" onclick="DashboardModule.toggleCriticos()">
               ⚠️ ${alertas.length} punto${alertas.length>1?'s':''} crítico${alertas.length>1?'s':''} ${config.showCriticos!==false?'(visible)':'(oculto)'}
             </button>`:''}
@@ -797,11 +801,20 @@ const DashboardModule = (() => {
     const nominas = State.get('nominas') || [];
     const SCN_COLORS = ['#a855f7','#fb923c','#f472b6','#60a5fa','#34d399','#facc15'];
 
-    const labels = extracto.map(e=>e.fecha);
-    const saldoData = extracto.map(e=>e.saldoAcum);
-
-    // Convert extracto to {x: timestamp, y: saldo} for time axis
+    // Convert extracto to {x: timestamp, y: saldo} for time axis (summed total)
     const saldoXY = extracto.map(e=>({ x: new Date(e.fecha+'T00:00:00').getTime(), y: e.saldoAcum }));
+
+    // Per-account running saldos using ev.delta (correctly signed: + ingreso, - gasto).
+    // Computed inline to avoid the cuantia sign-convention bug in saldosPorCuentaEnExtracto.
+    const ACC_COLORS = ['#00e5a0','#a855f7','#fb923c','#f472b6','#60a5fa','#34d399','#facc15','#f87171','#e879f9','#22d3ee'];
+    const selectedAccs = accounts.filter(a => a.activo && (filtroAccounts.length === 0 || filtroAccounts.includes(a._id)));
+    const _running = {};
+    for (const acc of selectedAccs) _running[acc._id] = FinanceMath.saldoRealCuenta(acc);
+    const perAccXY = extracto.map(ev => {
+      const d = ev.delta ?? (ev.tipo === 'ingreso' ? Math.abs(ev.cuantia) : -Math.abs(ev.cuantia));
+      if (ev.cuenta && _running[ev.cuenta] !== undefined) _running[ev.cuenta] += d;
+      return { ts: new Date(ev.fecha+'T00:00:00').getTime(), saldos: { ..._running } };
+    });
 
 
     // Historial scatter — LOCF por cuenta: para cada fecha en cualquier cuenta,
@@ -908,10 +921,29 @@ const DashboardModule = (() => {
         pointRadius:[6,0], pointStyle:['crossRot',false], showLine:true, tension:0, fill:false, order:3 };
     }) : [];
 
+    const stackedDatasets = selectedAccs.map((acc, idx) => {
+      const hex = ACC_COLORS[idx % ACC_COLORS.length];
+      return {
+        label: acc.nombre,
+        data: perAccXY.map(pt => ({ x: pt.ts, y: pt.saldos[acc._id] ?? 0 })),
+        borderColor: hex,
+        backgroundColor: hex + '28',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        borderWidth: 1.5,
+        pointHitRadius: 20,
+        order: 5 + idx,
+      };
+    });
+
     const datasets = [
       ...mcDatasets,
-      { label:'Saldo estimado', data:saldoXY, borderColor:'#00e5a0', backgroundColor:'rgba(0,229,160,0.07)',
-        fill:true, tension:0.3, pointRadius:0, borderWidth:2, pointHitRadius:20, order:5 }
+      ...(chartMode === 'stacked'
+        ? stackedDatasets
+        : [{ label:'Saldo estimado', data:saldoXY, borderColor:'#00e5a0', backgroundColor:'rgba(0,229,160,0.07)',
+             fill:true, tension:0.3, pointRadius:0, borderWidth:2, pointHitRadius:20, order:5 }]
+      ),
     ];
     if (histDataset) datasets.push(histDataset);
     margenDatasets.forEach(d => datasets.push(d));
@@ -984,6 +1016,7 @@ const DashboardModule = (() => {
       }
     }
 
+    const isStacked = chartMode === 'stacked';
     charts.saldo = new Chart(ctx, {
       type: 'line',
       data: { datasets },
@@ -992,7 +1025,7 @@ const DashboardModule = (() => {
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: {
-            display: (histDataset != null) || margenDatasets.length>0 || mcDatasets.length>0 || criticoDatasets.length>0 || datasets.some(d=>d.label?.startsWith('🏁')),
+            display: isStacked || (histDataset != null) || margenDatasets.length>0 || mcDatasets.length>0 || criticoDatasets.length>0 || datasets.some(d=>d.label?.startsWith('🏁')),
             labels: { color:'#8b92a8', font:{size:11}, boxWidth:12, filter: i => !['MC p25','MC p10','MC p75','MC p90'].includes(i.text) }
           },
           tooltip: {
@@ -1004,7 +1037,13 @@ const DashboardModule = (() => {
                 const d = new Date(items[0].parsed.x);
                 return d.toLocaleDateString('es-ES', { year:'numeric', month:'short', day:'numeric' });
               },
-              label: ctx => ` ${ctx.dataset.label}: ${FinanceMath.eur(ctx.parsed.y)}`
+              label: ctx => ` ${ctx.dataset.label}: ${FinanceMath.eur(ctx.parsed.y)}`,
+              ...(isStacked ? {
+                footer: items => {
+                  const total = items.filter(i => stackedDatasets.some(d => d.label === i.dataset.label)).reduce((s, i) => s + (i.parsed.y || 0), 0);
+                  return total > 0 ? `Total: ${FinanceMath.eur(total)}` : '';
+                }
+              } : {})
             }
           }
         },
@@ -1016,6 +1055,7 @@ const DashboardModule = (() => {
             grid: { color: '#252a38' }
           },
           y: {
+            stacked: isStacked,
             ticks: { color: '#555d77', callback: v => FinanceMath.eur(v) },
             grid: { color: ctx => ctx.tick.value === 0 ? 'rgba(255,255,255,0.22)' : '#252a38' }
           }
@@ -1297,6 +1337,7 @@ const DashboardModule = (() => {
   }
   function applyPreset(preset) { PeriodBar.applyPreset(preset); }
   function setVentana(v) { ventana=v; render(); }
+  function setChartMode(m) { chartMode=m; render(); }
   function toggleTag(t) {
     if(activeTags.has(t))activeTags.delete(t); else activeTags.add(t);
     State.set('config', {...State.get('config'), activeTagsFilter: [...activeTags]});
@@ -1310,5 +1351,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, applyConfig, applyPreset, setVentana, toggleTag, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleScoreDetail, toggleCriticos, toggleConfig, toggleAnalisis };
+  return { render, applyConfig, applyPreset, setVentana, setChartMode, toggleTag, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleScoreDetail, toggleCriticos, toggleConfig, toggleAnalisis };
 })();
