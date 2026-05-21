@@ -1489,21 +1489,21 @@ const FinanceMath = (() => {
     }
 
     // Max amortizable AT fecha: source saldo minus the most restrictive applicable limit.
-    // Amortization only debits the source account, so ALL margin targets are applied against
-    // source — regardless of whether the margin scope is "all accounts" or "this account."
-    // This guarantees the source account never drops below any active limit.
+    // "Most restrictive" = highest target value across all applicable margins at that date.
+    // Amortization only debits source, so cap = source - max(targets).
     function maxAmortAt(fecha) {
       const { source } = saldosAt(fecha);
 
-      let cap = source; // absolute ceiling: can't take more than the account has
+      if (source <= 0) return source;
 
+      // Aggregate: most restrictive = maximum target among all applicable margins
+      let maxTarget = 0; // baseline: no limit below zero
       for (const mg of margenesAplicables) {
         const target = calcMargenEnFecha(mg, expenses, config, loans, fecha, true);
-        if (target <= 0) continue;
-        cap = Math.min(cap, source - target);
+        if (target > maxTarget) maxTarget = target;
       }
 
-      return cap;
+      return source - maxTarget;
     }
 
     // ── Bucle principal ─────────────────────────────────────────────────────────
