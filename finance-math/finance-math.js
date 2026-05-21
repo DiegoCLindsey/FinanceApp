@@ -1452,10 +1452,11 @@ const FinanceMath = (() => {
     // ── Helper: máximo amortizable en el mes garantizando que la cuenta de origen
     // nunca baje de los límites establecidos por los márgenes seleccionados.
     //
-    // Método residual para el saldo de la cuenta de origen:
-    //   saldo_source = saldoAcum_total - sum(saldo_otras_cuentas_tracking_individual)
-    // Los eventos con cuenta='default' reducen el total pero no las otras cuentas
-    // → se atribuyen conservadoramente a la cuenta de origen. Nunca sobreestima.
+    // Proyección del saldo de la cuenta de origen con atribución proporcional:
+    //  - Eventos directos de la cuenta (cuenta=sourceAccId): se aplican 1:1
+    //  - Eventos no atribuidos (cuenta='default' u otras no activas): se reparten
+    //    proporcionalmente al peso inicial de la cuenta sobre el total
+    //  - Eventos de otras cuentas específicas: no afectan a la cuenta de origen
     function calcMaxAmortMes(ini, fin) {
       const loansActualizados = loans.map(l => ({
         ...l,
@@ -1464,20 +1465,25 @@ const FinanceMath = (() => {
       const cfg = { ...config, dashboardStart: hoyStr, dashboardEnd: fin };
       const ext = generarExtracto(loansActualizados, expenses, accounts, cfg, null, nominas);
 
-      const saldoBase   = activeAccs.reduce((s, a) => s + saldoRealCuenta(a), 0);
-      const otherAccBase = activeAccs.filter(a => a._id !== sourceAccId).reduce((s, a) => s + saldoRealCuenta(a), 0);
-      const sourceBase  = saldoBase - otherAccBase;
+      const saldoBase  = activeAccs.reduce((s, a) => s + saldoRealCuenta(a), 0);
+      const srcAccObj  = activeAccs.find(a => a._id === sourceAccId);
+      const sourceBase = srcAccObj ? saldoRealCuenta(srcAccObj) : 0;
+      // Fraction of total assets held in source account — distributes unattributed events
+      const srcFraction = saldoBase > 0 ? sourceBase / saldoBase : 1;
 
-      // Track other accounts per specific events; source = total - others (residual)
       let _srcSnaps = null;
       function getSourceSnaps() {
         if (_srcSnaps) return _srcSnaps;
-        const others = {};
-        for (const acc of activeAccs) if (acc._id !== sourceAccId) others[acc._id] = saldoRealCuenta(acc);
+        let srcSaldo = sourceBase;
         _srcSnaps = ext.map(ev => {
-          if (ev.cuenta && others[ev.cuenta] !== undefined) others[ev.cuenta] += ev.cuantia;
-          const othersSum = Object.values(others).reduce((s, v) => s + v, 0);
-          return { fecha: ev.fecha, src: ev.saldoAcum - othersSum };
+          if (ev.cuenta === sourceAccId) {
+            srcSaldo += ev.cuantia;
+          } else if (!allActiveIds.includes(ev.cuenta)) {
+            // Unattributed event: attribute proportionally by initial asset fraction
+            srcSaldo += ev.cuantia * srcFraction;
+          }
+          // Events for other specific accounts: don't affect source
+          return { fecha: ev.fecha, src: srcSaldo };
         });
         return _srcSnaps;
       }
