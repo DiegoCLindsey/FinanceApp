@@ -957,11 +957,17 @@ const DashboardModule = (() => {
         pointRadius:[6,0], pointStyle:['crossRot',false], showLine:true, tension:0, fill:false, order:3 };
     }) : [];
 
+    // Stacked area: pass CUMULATIVE values per dataset so the y-axis stays
+    // unstacked (decorative overlays — limits, flags, historical — render at
+    // their true y values). fill:'-1' draws each band between adjacent lines.
     const stackedDatasets = selectedAccs.map((acc, idx) => {
       const hex = ACC_COLORS[idx % ACC_COLORS.length];
       return {
         label: acc.nombre,
-        data: perAccXY.map(pt => ({ x: pt.ts, y: pt.saldos[acc._id] ?? 0 })),
+        data: perAccXY.map(pt => ({
+          x: pt.ts,
+          y: selectedAccs.slice(0, idx + 1).reduce((s, a) => s + (pt.saldos[a._id] ?? 0), 0),
+        })),
         borderColor: hex,
         backgroundColor: hex + '40',
         fill: idx === 0 ? 'origin' : '-1',
@@ -969,7 +975,7 @@ const DashboardModule = (() => {
         pointRadius: 0,
         borderWidth: 1.5,
         pointHitRadius: 20,
-        order: 5 + idx,
+        order: 6 + idx,
       };
     });
 
@@ -1073,11 +1079,22 @@ const DashboardModule = (() => {
                 const d = new Date(items[0].parsed.x);
                 return d.toLocaleDateString('es-ES', { year:'numeric', month:'short', day:'numeric' });
               },
-              label: ctx => ` ${ctx.dataset.label}: ${FinanceMath.eur(ctx.parsed.y)}`,
+              label: ctx => {
+                if (isStacked) {
+                  const dsIdx = stackedDatasets.findIndex(d => d.label === ctx.dataset.label);
+                  if (dsIdx >= 0) {
+                    const prevY = dsIdx > 0 ? (ctx.chart.data.datasets[ctx.chart.data.datasets.indexOf(ctx.dataset) - 1]?.data[ctx.dataIndex]?.y ?? 0) : 0;
+                    return ` ${ctx.dataset.label}: ${FinanceMath.eur(ctx.parsed.y - prevY)}`;
+                  }
+                }
+                return ` ${ctx.dataset.label}: ${FinanceMath.eur(ctx.parsed.y)}`;
+              },
               ...(isStacked ? {
                 footer: items => {
-                  const total = items.filter(i => stackedDatasets.some(d => d.label === i.dataset.label)).reduce((s, i) => s + (i.parsed.y || 0), 0);
-                  return total > 0 ? `Total: ${FinanceMath.eur(total)}` : '';
+                  const accItems = items.filter(i => stackedDatasets.some(d => d.label === i.dataset.label));
+                  if (!accItems.length) return '';
+                  const total = accItems[accItems.length - 1]?.parsed.y ?? 0;
+                  return `Total: ${FinanceMath.eur(total)}`;
                 }
               } : {})
             }
@@ -1091,7 +1108,6 @@ const DashboardModule = (() => {
             grid: { color: '#252a38' }
           },
           y: {
-            stacked: isStacked,
             ticks: { color: '#555d77', callback: v => FinanceMath.eur(v) },
             grid: { color: ctx => ctx.tick.value === 0 ? 'rgba(255,255,255,0.22)' : '#252a38' }
           }
