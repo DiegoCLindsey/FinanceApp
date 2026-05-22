@@ -149,8 +149,8 @@ const AccountsModule = (() => {
         if (!recargas.length && !acc.grupoNomina) return 0;
         let tipoMarginal;
         if (acc.grupoNomina) {
-          // calcTipoMarginalPension computes the bracket for the sum of all nominas in the group
-          tipoMarginal = FinanceMath.calcTipoMarginalPension(acc, nominas, tramos);
+          // calcTipoMarginalGrupo sums annual bruto correctly and applies SS+Art.19.2+Art.20 deductions
+          tipoMarginal = FinanceMath.calcTipoMarginalGrupo(acc.grupoNomina, nominas, config);
         } else {
           const nom = recargas[0].nominaObj;
           const brutoAnual = (nom.bruto || 0) * (nom.nPagas || 12);
@@ -171,8 +171,8 @@ const AccountsModule = (() => {
         ${limiteAnual ? `<div class="flex justify-between mb-5"><span class="text-sm" style="color:var(--text2)">Límite exención</span><span class="num">${FinanceMath.eur(limiteAnual)}/año</span></div>` : ''}
         ${ahorroFiscal > 0 ? (() => {
           const tipoUsado = acc.grupoNomina
-            ? FinanceMath.calcTipoMarginalPension(acc, nominas, tramos)
-            : (recargas.length ? tramos.reduce((r,[m,p])=>(recargas[0].nominaObj.bruto||0)*(recargas[0].nominaObj.nPagas||12)>=m?p:r, 0) : 0);
+            ? FinanceMath.calcTipoMarginalGrupo(acc.grupoNomina, nominas, config)
+            : (recargas.length ? tramos.reduce((r,[m,p])=>(recargas[0].nominaObj.bruto||0)>=m?p:r, 0) : 0);
           const grupoLabel = acc.grupoNomina ? ` — grupo "${acc.grupoNomina}", tipo marginal ${tipoUsado}%` : ` — tipo marginal ${tipoUsado}%`;
           return `<div class="flex justify-between mb-5"><span class="text-sm" style="color:var(--text2)">Ahorro IRPF estimado</span><span class="num pos" title="Importe exento × tipo marginal${grupoLabel}">≈ ${FinanceMath.eur(ahorroFiscal)}/año <span style="font-size:10px;color:var(--text3)">(${tipoUsado}%)</span></span></div>`;
         })() : ''}

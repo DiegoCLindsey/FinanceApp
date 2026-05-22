@@ -507,6 +507,25 @@ const FinanceMath = (() => {
     return pct;
   }
 
+  // Marginal bracket for a grupoNomina, using proper base imponible (SS + Art.19.2 + Art.20).
+  // bruto on each nomina is the annual figure — do NOT multiply by nPagas.
+  function calcTipoMarginalGrupo(grupoId, nominas, config) {
+    const year = new Date().getFullYear();
+    const tramos = tramosIRPFParaAño(year, config);
+    const grupoNoms = (nominas || []).filter(n => (n.grupoNomina || '') === grupoId && n.activo !== false);
+    if (!grupoNoms.length) return 0;
+    const totalBruto = grupoNoms.reduce((s, n) => s + (n.bruto || 0), 0);
+    const totalFlex  = grupoNoms.reduce((s, n) => s + (n.retribucionFlexible || []).reduce((a, c) => a + c.importe * 12, 0), 0);
+    const imponible  = calcBaseImponibleTrabajo(totalBruto, totalFlex);
+    const sorted = [...tramos].sort((a, b) => a[0] - b[0]);
+    let pct = sorted[0]?.[1] || 19;
+    for (const [desde, p] of sorted) {
+      if (imponible >= desde) pct = p;
+      else break;
+    }
+    return pct;
+  }
+
   // Retorna el gasto básico mensual (base para el colchón)
   function calcGastoBasicoMensual(expenses) {
     const hoy = new Date().toISOString().slice(0,10);
@@ -1869,6 +1888,6 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct, calcPrestacionParo };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct, calcPrestacionParo };
 })();
 
