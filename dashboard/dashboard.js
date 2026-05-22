@@ -852,6 +852,9 @@ const DashboardModule = (() => {
       return { ts: new Date(ev.fecha+'T00:00:00').getTime(), saldos: { ..._running } };
     });
 
+    // Sort accounts by area under curve (descending) so the largest goes at the bottom of the stack.
+    const _auc = acc => perAccXY.reduce((s, pt) => s + Math.max(0, pt.saldos[acc._id] ?? 0), 0);
+    selectedAccs.sort((a, b) => _auc(b) - _auc(a));
 
     // Historial scatter — LOCF por cuenta: para cada fecha en cualquier cuenta,
     // suma el saldo más reciente de CADA cuenta hasta esa fecha.
