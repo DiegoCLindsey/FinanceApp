@@ -219,6 +219,25 @@ const DashboardModule = (() => {
     const allExpTags=[...new Set(expenses.flatMap(e=>e.tags||[]))].filter(Boolean).sort();
     const tagCategorias = config.tagCategorias || [];
 
+    // Helper: returns the first promoted tag for an expense, or null
+    const _tagPromocionada = (expId) => {
+      const ex = expenses.find(ex => ex._id === expId);
+      if (!ex) return null;
+      for (const t of tagCategorias) { if ((ex.tags || []).includes(t)) return t; }
+      return null;
+    };
+
+    // Media mensual por tag promovida (period average) — must be computed before view.innerHTML
+    const _tagPromoMediaMes = {};
+    for (const t of tagCategorias) _tagPromoMediaMes[t] = 0;
+    evSinTransf.filter(e => e.tipo === 'gasto' && e.sourceType === 'expense').forEach(e => {
+      const ex = expenses.find(ex => ex._id === e.sourceId);
+      if (!ex || ex.basico) return;
+      const tp = _tagPromocionada(e.sourceId);
+      if (tp) _tagPromoMediaMes[tp] = (_tagPromoMediaMes[tp] || 0) + Math.abs(e.cuantia) / numMeses;
+    });
+    const totalTagPromoMediaMes = Object.values(_tagPromoMediaMes).reduce((s, v) => s + v, 0);
+
     view.innerHTML=`
       <div class="page-header">
         <h1 class="page-title">Cuadro de <span>Mando</span></h1>
@@ -783,25 +802,6 @@ const DashboardModule = (() => {
 
       `}
 `;
-
-    // Helper: returns the first promoted tag for an expense, or null
-    const _tagPromocionada = (expId) => {
-      const ex = expenses.find(ex => ex._id === expId);
-      if (!ex) return null;
-      for (const t of tagCategorias) { if ((ex.tags || []).includes(t)) return t; }
-      return null;
-    };
-
-    // Media mensual por tag promovida (period average)
-    const _tagPromoMediaMes = {};
-    for (const t of tagCategorias) _tagPromoMediaMes[t] = 0;
-    evSinTransf.filter(e => e.tipo === 'gasto' && e.sourceType === 'expense').forEach(e => {
-      const ex = expenses.find(ex => ex._id === e.sourceId);
-      if (!ex || ex.basico) return;
-      const tp = _tagPromocionada(e.sourceId);
-      if (tp) _tagPromoMediaMes[tp] = (_tagPromoMediaMes[tp] || 0) + Math.abs(e.cuantia) / numMeses;
-    });
-    const totalTagPromoMediaMes = Object.values(_tagPromoMediaMes).reduce((s, v) => s + v, 0);
 
     // Pass computed metrics to chart functions
     const _metricasGraficos = { loans, expenses, config, numMeses, extracto, tagCategorias };
