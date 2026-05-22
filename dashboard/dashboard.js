@@ -636,7 +636,9 @@ const DashboardModule = (() => {
           <div class="flex gap-8 items-center flex-wrap">
             <div class="period-selector">
               <button class="period-btn ${chartMode==='summed'?'active':''}" onclick="DashboardModule.setChartMode('summed')" title="Suma de cuentas seleccionadas">∑ Total</button>
-              <button class="period-btn ${chartMode==='stacked'?'active':''}" onclick="DashboardModule.setChartMode('stacked')" title="Una línea por cuenta, apiladas">≡ Apilado</button>
+              <button class="period-btn ${chartMode==='lines'?'active':''}" onclick="DashboardModule.setChartMode('lines')" title="Una línea independiente por cuenta">∥ Líneas</button>
+              <button class="period-btn ${chartMode==='stacked'?'active':''}" onclick="DashboardModule.setChartMode('stacked')" title="Apilado — más área debajo">▲ Apilado</button>
+              <button class="period-btn ${chartMode==='stacked-rev'?'active':''}" onclick="DashboardModule.setChartMode('stacked-rev')" title="Apilado — menos área debajo">▽ Apilado</button>
             </div>
             ${alertas.length>0?`<button class="btn-secondary btn-sm" style="font-size:11px;color:${config.showCriticos!==false?'var(--yellow)':'var(--text3)'}" onclick="DashboardModule.toggleCriticos()">
               ⚠️ ${alertas.length} punto${alertas.length>1?'s':''} crítico${alertas.length>1?'s':''} ${config.showCriticos!==false?'(visible)':'(oculto)'}
@@ -852,9 +854,10 @@ const DashboardModule = (() => {
       return { ts: new Date(ev.fecha+'T00:00:00').getTime(), saldos: { ..._running } };
     });
 
-    // Sort accounts by area under curve (descending) so the largest goes at the bottom of the stack.
+    // Sort accounts by area under curve for stacked modes.
     const _auc = acc => perAccXY.reduce((s, pt) => s + Math.max(0, pt.saldos[acc._id] ?? 0), 0);
-    selectedAccs.sort((a, b) => _auc(b) - _auc(a));
+    if (chartMode === 'stacked') selectedAccs.sort((a, b) => _auc(b) - _auc(a));       // largest at bottom
+    if (chartMode === 'stacked-rev') selectedAccs.sort((a, b) => _auc(a) - _auc(b));   // smallest at bottom
 
     // Historial scatter — LOCF por cuenta: para cada fecha en cualquier cuenta,
     // suma el saldo más reciente de CADA cuenta hasta esa fecha.
@@ -982,12 +985,32 @@ const DashboardModule = (() => {
       };
     });
 
+    // Independent lines: one dataset per account, raw (non-cumulative) values, no fill.
+    const linesDatasets = selectedAccs.map((acc, idx) => {
+      const hex = ACC_COLORS[idx % ACC_COLORS.length];
+      return {
+        label: acc.nombre,
+        data: perAccXY.map(pt => ({ x: pt.ts, y: pt.saldos[acc._id] ?? 0 })),
+        borderColor: hex,
+        backgroundColor: hex + '22',
+        fill: false,
+        tension: 0.3,
+        pointRadius: 0,
+        borderWidth: 1.5,
+        pointHitRadius: 20,
+        order: 6 + idx,
+      };
+    });
+
+    const isStacked = chartMode === 'stacked' || chartMode === 'stacked-rev';
     const datasets = [
       ...mcDatasets,
-      ...(chartMode === 'stacked'
+      ...(isStacked
         ? stackedDatasets
-        : [{ label:'Saldo estimado', data:saldoXY, borderColor:'#00e5a0', backgroundColor:'rgba(0,229,160,0.07)',
-             fill:true, tension:0.3, pointRadius:0, borderWidth:2, pointHitRadius:20, order:5 }]
+        : chartMode === 'lines'
+          ? linesDatasets
+          : [{ label:'Saldo estimado', data:saldoXY, borderColor:'#00e5a0', backgroundColor:'rgba(0,229,160,0.07)',
+               fill:true, tension:0.3, pointRadius:0, borderWidth:2, pointHitRadius:20, order:5 }]
       ),
     ];
     if (histDataset) datasets.push(histDataset);
@@ -1061,7 +1084,6 @@ const DashboardModule = (() => {
       }
     }
 
-    const isStacked = chartMode === 'stacked';
     charts.saldo = new Chart(ctx, {
       type: 'line',
       data: { datasets },
