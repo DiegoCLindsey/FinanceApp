@@ -142,13 +142,20 @@ const AccountsModule = (() => {
       const recargoMensual = recargas.reduce((s, r) => s + r.importe, 0);
       const recargaAnual   = recargoMensual * 12;
       const overLimit = limiteAnual && recargaAnual > limiteAnual;
-      // Estimate IRPF savings using marginal rate of the first linked nomina
+      // Estimate IRPF savings using the group marginal rate when grupoNomina is set,
+      // otherwise fall back to the marginal rate of the first linked nomina.
       const tramos = config.tramos_irpf || [];
       const ahorroFiscal = (() => {
-        if (!recargas.length) return 0;
-        const nom = recargas[0].nominaObj;
-        const brutoAnual = (nom.bruto || 0) * (nom.nPagas || 12);
-        const tipoMarginal = tramos.reduce((rate, [min, r]) => brutoAnual >= min ? r : rate, 0);
+        if (!recargas.length && !acc.grupoNomina) return 0;
+        let tipoMarginal;
+        if (acc.grupoNomina) {
+          // calcTipoMarginalPension computes the bracket for the sum of all nominas in the group
+          tipoMarginal = FinanceMath.calcTipoMarginalPension(acc, nominas, tramos);
+        } else {
+          const nom = recargas[0].nominaObj;
+          const brutoAnual = (nom.bruto || 0) * (nom.nPagas || 12);
+          tipoMarginal = tramos.reduce((rate, [min, r]) => brutoAnual >= min ? r : rate, 0);
+        }
         return Math.min(recargaAnual, limiteAnual || recargaAnual) * tipoMarginal / 100;
       })();
       return `<div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:var(--radius);border:1px solid rgba(99,214,160,0.35)">
@@ -162,7 +169,13 @@ const AccountsModule = (() => {
           <span class="num ${overLimit ? 'neg' : 'pos'}">${FinanceMath.eur(recargaAnual)}/año${overLimit ? ` ⚠ excede límite ${FinanceMath.eur(limiteAnual)}` : ''}</span>
         </div>
         ${limiteAnual ? `<div class="flex justify-between mb-5"><span class="text-sm" style="color:var(--text2)">Límite exención</span><span class="num">${FinanceMath.eur(limiteAnual)}/año</span></div>` : ''}
-        ${ahorroFiscal > 0 ? `<div class="flex justify-between mb-5"><span class="text-sm" style="color:var(--text2)">Ahorro IRPF estimado</span><span class="num pos" title="Importe exento × tipo marginal">≈ ${FinanceMath.eur(ahorroFiscal)}/año</span></div>` : ''}
+        ${ahorroFiscal > 0 ? (() => {
+          const tipoUsado = acc.grupoNomina
+            ? FinanceMath.calcTipoMarginalPension(acc, nominas, tramos)
+            : (recargas.length ? tramos.reduce((r,[m,p])=>(recargas[0].nominaObj.bruto||0)*(recargas[0].nominaObj.nPagas||12)>=m?p:r, 0) : 0);
+          const grupoLabel = acc.grupoNomina ? ` — grupo "${acc.grupoNomina}", tipo marginal ${tipoUsado}%` : ` — tipo marginal ${tipoUsado}%`;
+          return `<div class="flex justify-between mb-5"><span class="text-sm" style="color:var(--text2)">Ahorro IRPF estimado</span><span class="num pos" title="Importe exento × tipo marginal${grupoLabel}">≈ ${FinanceMath.eur(ahorroFiscal)}/año <span style="font-size:10px;color:var(--text3)">(${tipoUsado}%)</span></span></div>`;
+        })() : ''}
         ${recargas.length > 0 ? recargas.map(r => `<div style="font-size:11px;color:var(--text3)">↩ ${r.nomina}: ${FinanceMath.eur(r.importe)}/mes</div>`).join('') : '<div style="font-size:11px;color:var(--yellow)">Sin nómina vinculada — confígurala en Nóminas.</div>'}
       </div>`;
     })() : '';
@@ -418,6 +431,17 @@ const AccountsModule = (() => {
                 ['otros','Otros beneficios'],
               ], acc?.tipoBeneficio||'transporte')}
             </div>
+            <div class="form-group mt-8">
+              ${(() => {
+                const grupos = [...new Set((State.get('nominas')||[]).filter(n=>n.grupoNomina).map(n=>n.grupoNomina))];
+                const grupoOpts = grupos.map(g=>`<option value="${g}" ${acc?.grupoNomina===g?'selected':''}>${g}</option>`).join('');
+                return `<label class="form-label">Grupo de nóminas (para tipo marginal IRPF)</label>
+                  <select class="form-input" id="ac-beneficio-grupo">
+                    <option value="">Sin grupo — usar primera nómina vinculada</option>
+                    ${grupoOpts}
+                  </select>`;
+              })()}
+            </div>
           </div>
           <div class="form-group mt-8">
             <label class="form-label">Aportaciones programadas</label>
@@ -470,6 +494,7 @@ const AccountsModule = (() => {
       bloqueoMeses:     esPension ? (parseInt(document.getElementById('ac-bloqueo')?.value)||120) : 120,
       impuestoRetirada: esPension ? (parseFloat(document.getElementById('ac-impuesto-ret')?.value)||0) : 0,
       tipoBeneficio:    esBeneficio ? (document.getElementById('ac-tipo-beneficio')?.value||'transporte') : undefined,
+      grupoNomina:      esBeneficio ? (document.getElementById('ac-beneficio-grupo')?.value||'') : (acc?.grupoNomina||''),
     };
     if (!acc.nombre) { UI.toast('Nombre obligatorio','err'); return; }
     if (id) {
