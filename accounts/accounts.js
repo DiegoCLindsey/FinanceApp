@@ -477,6 +477,7 @@ const AccountsModule = (() => {
     const esPension   = modeloFondo === 'pension';
     const esInversion = modeloFondo === 'inversion';
     const esBeneficio = modeloFondo === 'beneficio';
+    const existing    = id ? (State.get('accounts').find(a => a._id === id) || null) : null;
     const acc={
       nombre:           document.getElementById('ac-nombre').value.trim(),
       saldo:            nuevoSaldo,
@@ -494,11 +495,10 @@ const AccountsModule = (() => {
       bloqueoMeses:     esPension ? (parseInt(document.getElementById('ac-bloqueo')?.value)||120) : 120,
       impuestoRetirada: esPension ? (parseFloat(document.getElementById('ac-impuesto-ret')?.value)||0) : 0,
       tipoBeneficio:    esBeneficio ? (document.getElementById('ac-tipo-beneficio')?.value||'transporte') : undefined,
-      grupoNomina:      esBeneficio ? (document.getElementById('ac-beneficio-grupo')?.value||'') : (acc?.grupoNomina||''),
+      grupoNomina:      esBeneficio ? (document.getElementById('ac-beneficio-grupo')?.value||'') : (existing?.grupoNomina||''),
     };
     if (!acc.nombre) { UI.toast('Nombre obligatorio','err'); return; }
     if (id) {
-      const existing   = State.get('accounts').find(a=>a._id===id);
       let hist         = [...(existing?.historicoSaldos||[])];
       let aportaciones = [...(existing?.aportaciones||[])];
       const histOrd    = [...hist].sort((a,b)=>b.fecha.localeCompare(a.fecha));
