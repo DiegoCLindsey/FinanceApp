@@ -1,40 +1,129 @@
 // Depends on: State, FinanceMath, UI
 const DashboardModule = (() => {
-  let charts={}, ventana='mes', activeTags=new Set(), filtroAccounts=[], chartMode='summed', tagGroupsMode='desglosado';
+  let charts={}, ventana='mes', activeTags=new Set(), filtroAccounts=[], chartMode='summed', tagGroupsMode='desglosado', saludView='mes';
   // Stable color palette for promoted tags (index 0 reserved for base categories)
   const _TAG_PROMO_PALETTE = ['#f97316','#eab308','#22d3ee','#a78bfa','#34d399','#fb7185','#60a5fa','#c084fc','#4ade80','#f472b6'];
   // colchon + historial toggles driven from config, no local state needed
 
   function destroyCharts() { Object.values(charts).forEach(c=>{try{c.destroy();}catch{}}); charts={}; }
 
-  function renderScoreGauge(score) {
-    // Score summary number
-    const summary = `<div style="text-align:center;padding:12px 0 16px">
-      <div style="font-family:var(--font-mono);font-size:42px;font-weight:700;line-height:1;color:${score.color}">${score.total}</div>
-      <div style="font-size:11px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-top:5px">${score.label}</div>
-      <div style="display:flex;justify-content:center;gap:4px;margin-top:8px">
-        ${[20,40,60,80,100].map(v=>`<div style="width:24px;height:4px;border-radius:2px;background:${score.total>=v?score.color:'var(--border2)'}"></div>`).join('')}
-      </div>
-    </div>`;
+  const _SEM_COLOR = { verde:'#00e5a0', amarillo:'#ffd166', rojo:'#ff4d6d', neutral:'var(--text3)' };
+  function _dot(sem) {
+    return `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_SEM_COLOR[sem]};flex-shrink:0"></span>`;
+  }
+  function _pct(v) { return v !== null && v !== undefined ? v.toFixed(1)+'%' : '—'; }
 
-    // 4 metric cards
-    const cards = Object.entries(score.metricas).map(([key, m]) => `
-      <div class="score-item" onclick="DashboardModule.toggleScoreDetail('${key}')">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <div class="score-item-label">${m.label}</div>
-          <div style="width:8px;height:8px;border-radius:50%;background:${m.color};flex-shrink:0"></div>
+  function renderSaludFinanciera(s) {
+    if (!s || s.ingresos < 0.01) return '<div class="text-sm" style="text-align:center;padding:20px;color:var(--text3)">Sin ingresos proyectados en el período seleccionado.</div>';
+    const e = FinanceMath.eur;
+    return `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">
+
+      <!-- Ahorro -->
+      <div style="background:var(--bg3);border-radius:var(--radius);padding:14px;border:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+          ${_dot(s.semAhorro)}
+          <span style="font-size:12px;font-weight:600;color:var(--text2)">Capacidad de ahorro</span>
         </div>
-        <div class="score-item-val" style="color:${m.color}">${m.valor}</div>
-        ${m.pcts.map(p=>`<div style="font-size:10px;color:var(--text3);margin-top:2px">${p}</div>`).join('')}
-        <div id="score-detail-${key}" class="hidden" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:11px;color:var(--text2);line-height:1.6">${m.rec}</div>
-      </div>`).join('');
+        <div style="font-family:var(--font-mono);font-size:24px;font-weight:700;color:${_SEM_COLOR[s.semAhorro]};line-height:1">${_pct(s.tasaAhorro)}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px">${e(s.ahorroReal)}/mes</div>
+        ${s.amortizaciones > 0.01 ? `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text3)">
+          Ahorro bruto: ${e(s.ahorroBruto)}/mes<br>
+          <span style="color:var(--accent)">+ ${e(s.amortizaciones)}/mes amortizaciones</span>
+        </div>` : ''}
+        <div style="margin-top:8px;font-size:10px;color:var(--text3)">🟢 ≥${s.umbralAhorroVerde}% &nbsp;🟡 ≥${s.umbralAhorroAmarillo}% &nbsp;🔴 debajo</div>
+      </div>
 
-    return `<div class="score-gauge">${summary}<div class="score-breakdown">${cards}</div></div>`;
+      <!-- DTI -->
+      <div style="background:var(--bg3);border-radius:var(--radius);padding:14px;border:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+          ${_dot(s.semDTI)}
+          <span style="font-size:12px;font-weight:600;color:var(--text2)">Endeudamiento (DTI)</span>
+        </div>
+        <div style="font-family:var(--font-mono);font-size:24px;font-weight:700;color:${_SEM_COLOR[s.semDTI]};line-height:1">${_pct(s.dti)}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px">Cuotas: ${e(s.excluyeHipoteca ? s.cuotas - s.cuotasHipoteca : s.cuotas)}/mes</div>
+        ${s.excluyeHipoteca && s.cuotasHipoteca > 0.01 ? `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text3)">
+          DTI total (con hipoteca): ${_pct(s.dtiTotal)}<br>
+          Hipoteca: ${e(s.cuotasHipoteca)}/mes
+        </div>` : ''}
+        <div style="margin-top:8px;font-size:10px;color:var(--text3)">🟢 &lt;${s.umbralDTIVerde}% &nbsp;🟡 &lt;${s.umbralDTIAmarillo}% &nbsp;🔴 encima</div>
+      </div>
+
+      <!-- Distribución 50/30/20 -->
+      <div style="background:var(--bg3);border-radius:var(--radius);padding:14px;border:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px">Distribución (regla ${s.regla.join('/')})</div>
+        ${[
+          { label:'Necesidades', val:s.pctNecesidades, sem:s.semNecesidades, obj:`≤${s.regla[0]}%`, eur:s.gastosBasicos+s.cuotas },
+          { label:'Deseos',      val:s.pctDeseos,      sem:s.semDeseos,      obj:`≤${s.regla[1]}%`, eur:s.gastosOtros },
+          { label:'Ahorro',      val:s.tasaAhorro,     sem:s.semAhorroRegla, obj:`≥${s.regla[2]}%`, eur:s.ahorroReal },
+        ].map(r=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+          <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2)">${_dot(r.sem)} ${r.label}</span>
+          <span style="font-family:var(--font-mono);font-size:12px">
+            <span style="color:${_SEM_COLOR[r.sem]}">${_pct(r.val)}</span>
+            <span style="color:var(--text3);font-size:10px;margin-left:3px">${r.obj}</span>
+          </span>
+        </div>`).join('')}
+        <div style="font-size:10px;color:var(--text3);margin-top:4px">Ajustable en ⚙ Umbrales</div>
+      </div>
+
+    </div>`;
   }
 
-  function toggleScoreDetail(key) {
-    const el = document.getElementById(`score-detail-${key}`);
-    if (el) el.classList.toggle('hidden');
+  function renderSaludConfig(config) {
+    const r = config.saludRegla || [50,30,20];
+    return `
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px">Configurar umbrales</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Tasa de ahorro</div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span style="font-size:11px;color:var(--text2)">🟢 ≥</span>
+            <input type="number" class="form-input" id="salud-ahorro-verde" value="${config.saludUmbralAhorroVerde??20}" min="0" max="100" style="width:60px;font-size:12px;padding:3px 6px">
+            <span style="font-size:11px;color:var(--text2)">% &nbsp;🔴 &lt;</span>
+            <input type="number" class="form-input" id="salud-ahorro-rojo" value="${config.saludUmbralAhorroAmarillo??10}" min="0" max="100" style="width:60px;font-size:12px;padding:3px 6px">
+            <span style="font-size:11px;color:var(--text2)">%</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Endeudamiento (DTI)</div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span style="font-size:11px;color:var(--text2)">🟢 &lt;</span>
+            <input type="number" class="form-input" id="salud-dti-verde" value="${config.saludUmbralDTIVerde??30}" min="0" max="100" style="width:60px;font-size:12px;padding:3px 6px">
+            <span style="font-size:11px;color:var(--text2)">% &nbsp;🔴 ≥</span>
+            <input type="number" class="form-input" id="salud-dti-rojo" value="${config.saludUmbralDTIAmarillo??40}" min="0" max="100" style="width:60px;font-size:12px;padding:3px 6px">
+            <span style="font-size:11px;color:var(--text2)">%</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Regla de distribución <span style="color:var(--text3)">(Nec./Deseos/Ahorro — recomendado: 50/30/20)</span></div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <input type="number" class="form-input" id="salud-regla-0" value="${r[0]}" min="0" max="100" style="width:55px;font-size:12px;padding:3px 6px">
+            <span style="color:var(--text3)">/</span>
+            <input type="number" class="form-input" id="salud-regla-1" value="${r[1]}" min="0" max="100" style="width:55px;font-size:12px;padding:3px 6px">
+            <span style="color:var(--text3)">/</span>
+            <input type="number" class="form-input" id="salud-regla-2" value="${r[2]}" min="0" max="100" style="width:55px;font-size:12px;padding:3px 6px">
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Hipoteca en el DTI</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <label class="toggle"><input type="checkbox" id="salud-excl-hipoteca" ${config.saludExcluirHipoteca?'checked':''}><span class="toggle-slider"></span></label>
+            <span style="font-size:12px;color:var(--text2)">Excluir hipoteca del DTI principal</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:11px;color:var(--text3)">Tag hipoteca:</span>
+            <input type="text" class="form-input" id="salud-tag-hipoteca" value="${config.saludTagHipoteca||'hipoteca'}" style="width:100px;font-size:12px;padding:3px 6px">
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;align-items:center">
+        <button class="btn-primary btn-sm" onclick="DashboardModule.applySaludConfig()">Guardar</button>
+        <button class="btn-secondary btn-sm" onclick="DashboardModule.resetSaludConfig()">Restaurar recomendados (50/30/20)</button>
+      </div>
+    `;
   }
 
   function toggleExecSummary() {
@@ -89,7 +178,6 @@ const DashboardModule = (() => {
     const totalIngresos=extracto.filter(e=>e.tipo==='ingreso').reduce((s,e)=>s+Math.abs(e.cuantia),0);
     const mediaMensual=FinanceMath.mediaMensualGastos(extracto, config);
     const allTags=[...new Set(extracto.flatMap(e=>e.tags||[]))];
-    const score = FinanceMath.calcScore(extracto, loans, expenses, accounts, config);
     const alertas = FinanceMath.detectarPuntosCriticos(extracto, 0).slice(0,5);
     const saldosPorCuentaRender = FinanceMath.saldosPorCuentaEnExtracto(extracto, accounts);
     const margenesActivosRender = (config.margenesSeguridad||[]).filter(m => m.activo !== false);
@@ -138,6 +226,17 @@ const DashboardModule = (() => {
     const amortizacionesMediaMes  = evSinTransf.filter(e=>e.sourceType==='loan-amort').reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
     const gastosMediaMes          = evSinTransf.filter(e=>e.tipo==='gasto'&&e.sourceType!=='loan'&&e.sourceType!=='loan-amort').reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
     const gastosBasicosMediaMes = evSinTransf.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
+
+    // ── Salud financiera — métricas para mes actual y media ──────────────────────
+    const _hipotecaIds = new Set(loans.filter(l => (l.tags||[]).includes(config.saludTagHipoteca||'hipoteca')).map(l => l._id));
+    const amortizacionesMesActual = evsMesActual.filter(e=>e.sourceType==='loan-amort').reduce((s,e)=>s+Math.abs(e.cuantia),0);
+    const cuotasHipotecaMesActual = evsMesActual.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto'&&_hipotecaIds.has(e.sourceId)).reduce((s,e)=>s+Math.abs(e.cuantia),0);
+    const cuotasHipotecaMedia = evSinTransf.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto'&&_hipotecaIds.has(e.sourceId)).reduce((s,e)=>s+Math.abs(e.cuantia),0)/numMeses;
+
+    const _metSaludMes = { ingresos:ingresosMesActual, cuotas:cuotasMesActual, cuotasHipoteca:cuotasHipotecaMesActual, gastosBasicos:gastosBasicosMesActual, gastosOtros:gastosOtrosMesActual, amortizaciones:amortizacionesMesActual };
+    const _metSaludMedia = { ingresos:ingresosMediaMes, cuotas:cuotasMediaMes, cuotasHipoteca:cuotasHipotecaMedia, gastosBasicos:gastosBasicosMediaMes, gastosOtros:gastosMediaMes-gastosBasicosMediaMes, amortizaciones:amortizacionesMediaMes };
+    const saludMes   = FinanceMath.calcSaludFinanciera(_metSaludMes, config);
+    const saludMedia = FinanceMath.calcSaludFinanciera(_metSaludMedia, config);
 
     // Alias para los paneles KPI
     const gastosFijosMes    = gastosTosMesActual;
@@ -658,10 +757,22 @@ const DashboardModule = (() => {
       </div>
       ${config.analisisCollapsed ? '' : `
 
-      <!-- Score gauge -->
+      <!-- Salud financiera -->
       <div class="card mb-14">
-        <div class="card-title mb-12">Puntuación de salud financiera</div>
-        ${renderScoreGauge(score)}
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+          <div class="card-title" style="margin:0">Salud financiera</div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <div class="period-selector">
+              <button class="period-btn ${saludView==='mes'?'active':''}" onclick="DashboardModule.setSaludView('mes')">Mes actual</button>
+              <button class="period-btn ${saludView==='media'?'active':''}" onclick="DashboardModule.setSaludView('media')">Media período</button>
+            </div>
+            <button class="btn-secondary btn-sm" onclick="DashboardModule.toggleSaludConfig()">⚙ Umbrales</button>
+          </div>
+        </div>
+        ${renderSaludFinanciera(saludView==='mes'?saludMes:saludMedia)}
+        <div id="salud-config-panel" style="display:none;margin-top:14px;padding:14px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border2)">
+          ${renderSaludConfig(config)}
+        </div>
       </div>
 
       <!-- Charts row 2 -->
@@ -1517,5 +1628,37 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, applyConfig, applyPreset, setVentana, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleScoreDetail, toggleCriticos, toggleConfig, toggleAnalisis };
+  function setSaludView(v) { saludView=v; render(); }
+  function toggleSaludConfig() {
+    const p=document.getElementById('salud-config-panel');
+    if(p) p.style.display=p.style.display==='none'?'':'none';
+  }
+  function applySaludConfig() {
+    const cfg=State.get('config');
+    State.set('config',{...cfg,
+      saludUmbralAhorroVerde:   parseFloat(document.getElementById('salud-ahorro-verde')?.value)||20,
+      saludUmbralAhorroAmarillo:parseFloat(document.getElementById('salud-ahorro-rojo')?.value)||10,
+      saludUmbralDTIVerde:      parseFloat(document.getElementById('salud-dti-verde')?.value)||30,
+      saludUmbralDTIAmarillo:   parseFloat(document.getElementById('salud-dti-rojo')?.value)||40,
+      saludRegla:[
+        parseFloat(document.getElementById('salud-regla-0')?.value)||50,
+        parseFloat(document.getElementById('salud-regla-1')?.value)||30,
+        parseFloat(document.getElementById('salud-regla-2')?.value)||20,
+      ],
+      saludExcluirHipoteca: document.getElementById('salud-excl-hipoteca')?.checked||false,
+      saludTagHipoteca: document.getElementById('salud-tag-hipoteca')?.value||'hipoteca',
+    });
+    render();
+  }
+  function resetSaludConfig() {
+    const cfg=State.get('config');
+    State.set('config',{...cfg,
+      saludUmbralAhorroVerde:20, saludUmbralAhorroAmarillo:10,
+      saludUmbralDTIVerde:30, saludUmbralDTIAmarillo:40,
+      saludRegla:[50,30,20], saludExcluirHipoteca:false, saludTagHipoteca:'hipoteca',
+    });
+    render();
+  }
+
+  return { render, applyConfig, applyPreset, setVentana, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis, setSaludView, toggleSaludConfig, applySaludConfig, resetSaludConfig };
 })();

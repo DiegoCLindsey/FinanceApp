@@ -32,6 +32,13 @@ const State = (() => {
       activeTagsFilter: [],   // persisted tag filter selection for dashboard
       tagCategorias: [],      // tags promoted to their own chart category
       tagGrupos: [],          // tags that act as group aggregators in tag charts
+      saludUmbralAhorroVerde: 20,
+      saludUmbralAhorroAmarillo: 10,
+      saludUmbralDTIVerde: 30,
+      saludUmbralDTIAmarillo: 40,
+      saludRegla: [50, 30, 20],
+      saludExcluirHipoteca: false,
+      saludTagHipoteca: 'hipoteca',
       storageMode: 'local',   // 'local' | 'firebase' | 'dropbox'
       autoSave: false,
       autoSaveInterval: 15,
@@ -84,6 +91,13 @@ const State = (() => {
       autoSaveInterval: 15,
       analisisCollapsed: false,
       tagGrupos: [],
+      saludUmbralAhorroVerde: 20,
+      saludUmbralAhorroAmarillo: 10,
+      saludUmbralDTIVerde: 30,
+      saludUmbralDTIAmarillo: 40,
+      saludRegla: [50, 30, 20],
+      saludExcluirHipoteca: false,
+      saludTagHipoteca: 'hipoteca',
     };
     for (const [k,v] of Object.entries(cfgDefs)) {
       if (state.config[k] === undefined) state.config[k] = v;
