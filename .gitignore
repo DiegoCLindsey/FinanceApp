@@ -7,3 +7,4 @@ _site/
 .env.local
 .env.*.local
 firebase/firebase-config.js
+.claude/
