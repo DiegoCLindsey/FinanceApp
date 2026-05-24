@@ -31,6 +31,7 @@ const State = (() => {
       escenarioActivo: null,  // _id del escenario activo o null (realidad base)
       activeTagsFilter: [],   // persisted tag filter selection for dashboard
       tagCategorias: [],      // tags promoted to their own chart category
+      tagGrupos: [],          // tags that act as group aggregators in tag charts
       storageMode: 'local',   // 'local' | 'firebase' | 'dropbox'
       autoSave: false,
       autoSaveInterval: 15,
@@ -82,6 +83,7 @@ const State = (() => {
       autoSave: false,
       autoSaveInterval: 15,
       analisisCollapsed: false,
+      tagGrupos: [],
     };
     for (const [k,v] of Object.entries(cfgDefs)) {
       if (state.config[k] === undefined) state.config[k] = v;

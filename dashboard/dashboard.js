@@ -1,6 +1,6 @@
 // Depends on: State, FinanceMath, UI
 const DashboardModule = (() => {
-  let charts={}, ventana='mes', activeTags=new Set(), filtroAccounts=[], chartMode='summed';
+  let charts={}, ventana='mes', activeTags=new Set(), filtroAccounts=[], chartMode='summed', tagGroupsMode='desglosado';
   // Stable color palette for promoted tags (index 0 reserved for base categories)
   const _TAG_PROMO_PALETTE = ['#f97316','#eab308','#22d3ee','#a78bfa','#34d399','#fb7185','#60a5fa','#c084fc','#4ade80','#f472b6'];
   // colchon + historial toggles driven from config, no local state needed
@@ -218,6 +218,7 @@ const DashboardModule = (() => {
     // All unique tags from expenses (for promoted-tags config UI)
     const allExpTags=[...new Set(expenses.flatMap(e=>e.tags||[]))].filter(Boolean).sort();
     const tagCategorias = config.tagCategorias || [];
+    const grupoTags = new Set(config.tagGrupos || []);
 
     // Helper: returns the first promoted tag for an expense, or null
     const _tagPromocionada = (expId) => {
@@ -670,15 +671,30 @@ const DashboardModule = (() => {
           <div class="chart-wrap-lg"><canvas id="chart-breakdown-mensual"></canvas></div>
         </div>
         <div class="card">
-          <div class="card-title">Gastos por etiqueta</div>
-          <div class="tag-list mb-8">${allTags.map(t=>`<span class="tag ${activeTags.has(t)?'active':''}" onclick="DashboardModule.toggleTag('${t}')">${t}</span>`).join('')}</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+            <div class="card-title" style="margin:0">Gastos por etiqueta</div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <div class="period-selector">
+                <button class="period-btn ${tagGroupsMode==='desglosado'?'active':''}" onclick="DashboardModule.setTagGroupsMode('desglosado')" title="Muestra cada etiqueta de forma independiente">Desglosado</button>
+                <button class="period-btn ${tagGroupsMode==='porgrupos'?'active':''}" onclick="DashboardModule.setTagGroupsMode('porgrupos')" title="Agrupa los gastos bajo su etiqueta de grupo">Por grupos</button>
+              </div>
+              <button class="btn-secondary btn-sm" onclick="DashboardModule.toggleGruposPanel()" title="Configurar qué etiquetas actúan como grupos">⚙ Grupos</button>
+            </div>
+          </div>
+          <div id="dash-grupos-panel" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border2)">
+            <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Marca una etiqueta como <strong style="color:var(--text2)">grupo</strong>: en modo "Por grupos" los gastos que tengan esa etiqueta junto a otras se mostrarán solo bajo el grupo.</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              ${allTags.map(t=>`<span class="tag ${grupoTags.has(t)?'active':''}" onclick="DashboardModule.toggleTagGrupo('${t}')" style="cursor:pointer" title="${grupoTags.has(t)?'Quitar como grupo':'Marcar como grupo'}">${t}${grupoTags.has(t)?' <span style="font-size:9px;opacity:.8">GRUPO</span>':''}</span>`).join('')}
+            </div>
+          </div>
+          <div class="tag-list mb-8">${allTags.map(t=>`<span class="tag ${activeTags.has(t)?'active':''}" onclick="DashboardModule.toggleTag('${t}')" title="${grupoTags.has(t)?'Etiqueta de grupo':''}">${t}${grupoTags.has(t)?'&nbsp;<span style="font-size:9px;opacity:.6">●</span>':''}</span>`).join('')}</div>
           <div class="chart-wrap"><canvas id="chart-gastos-tags"></canvas></div>
         </div>
       </div>
       <!-- Charts row 3 -->
       <div class="grid-2 mb-14">
         <div class="card">
-          <div class="card-title">Media mensual de gastos por etiqueta</div>
+          <div class="card-title">Media mensual de gastos por etiqueta <span style="font-size:11px;color:var(--text3);font-weight:400">(${tagGroupsMode==='porgrupos'?'por grupos':'desglosado'})</span></div>
           <div class="chart-wrap"><canvas id="chart-media-mensual"></canvas></div>
         </div>
         <div class="card">
@@ -823,7 +839,7 @@ const DashboardModule = (() => {
     setTimeout(()=>{
       renderChartSaldo(extracto);
       renderChartVelas(extracto);
-      renderChartTags(extracto, activeTags);
+      renderChartTags(extracto, activeTags, grupoTags, tagGroupsMode);
       renderChartBreakdown(_metricasGraficos);
       renderChartExpenseDonut(_donutMetrics);
       renderChartOtrosDonut(_otrosTagData);
@@ -1176,12 +1192,35 @@ const DashboardModule = (() => {
     });
   }
 
-  function renderChartTags(extracto, activeTags) {
+  // Builds a tag→total map from extracto applying the group mode.
+  // 'desglosado': group tags are stripped; expense appears under its remaining tags.
+  // 'porgrupos' : if an expense has ≥1 group tag, it counts only under that/those group tags;
+  //               otherwise it counts under its regular tags (same as desglosado for ungrouped).
+  function _tagMapConGrupos(extracto, grupoTags, mode) {
+    if (!grupoTags || grupoTags.size === 0) return FinanceMath.sumarPorTags(extracto, 'gasto');
+    const map = new Map();
+    for (const ev of extracto) {
+      if (ev.tipo !== 'gasto') continue;
+      const tags = ev.tags || [];
+      const grp  = tags.filter(t => grupoTags.has(t));
+      let effective;
+      if (mode === 'porgrupos') {
+        effective = grp.length > 0 ? grp : tags.filter(t => !grupoTags.has(t));
+      } else {
+        // desglosado: remove group tags; if all tags were group tags skip entirely
+        effective = tags.filter(t => !grupoTags.has(t));
+      }
+      for (const tag of effective) map.set(tag, (map.get(tag) || 0) + Math.abs(ev.cuantia));
+    }
+    return map;
+  }
+
+  function renderChartTags(extracto, activeTags, grupoTags=new Set(), mode='desglosado') {
     const COLORS=['#00e5a0','#4d9fff','#ffd166','#ff4d6d','#a855f7','#fb923c','#34d399','#f472b6','#60a5fa','#facc15'];
 
     // Donut gastos con valor en leyenda
     const ctx=document.getElementById('chart-gastos-tags'); if(!ctx) return;
-    const tagMap=FinanceMath.sumarPorTags(extracto,'gasto');
+    const tagMap=_tagMapConGrupos(extracto, grupoTags, mode);
     const filtered=[...tagMap.entries()].filter(([t])=>activeTags.size===0||activeTags.has(t)).sort((a,b)=>b[1]-a[1]);
     if (filtered.length===0) { ctx.parentElement.innerHTML='<div class="text-sm" style="text-align:center;padding:40px">Sin datos.</div>'; }
     else {
@@ -1202,13 +1241,13 @@ const DashboardModule = (() => {
     }
 
     // Media mensual de gastos por tag — barra horizontal
-    renderChartMediaMensual(extracto, activeTags, COLORS);
+    renderChartMediaMensual(extracto, activeTags, COLORS, grupoTags, mode);
   }
 
-  function renderChartMediaMensual(extracto, activeTags, COLORS=['#00e5a0','#4d9fff','#ffd166','#ff4d6d','#a855f7','#fb923c','#34d399','#f472b6']) {
+  function renderChartMediaMensual(extracto, activeTags, COLORS=['#00e5a0','#4d9fff','#ffd166','#ff4d6d','#a855f7','#fb923c','#34d399','#f472b6'], grupoTags=new Set(), mode='desglosado') {
     const config=State.get('config');
     const ctx=document.getElementById('chart-media-mensual'); if(!ctx) return;
-    const tagMap=FinanceMath.sumarPorTags(extracto,'gasto');
+    const tagMap=_tagMapConGrupos(extracto, grupoTags, mode);
     const dS=new Date(config.dashboardStart+'T00:00:00'), dE=new Date(config.dashboardEnd+'T00:00:00');
     const meses=Math.max(1,(dE-dS)/(30.44*86400000));
     const filtered=[...tagMap.entries()]
@@ -1444,6 +1483,19 @@ const DashboardModule = (() => {
   function applyPreset(preset) { PeriodBar.applyPreset(preset); }
   function setVentana(v) { ventana=v; render(); }
   function setChartMode(m) { chartMode=m; render(); }
+  function setTagGroupsMode(m) { tagGroupsMode=m; render(); }
+  function toggleTagGrupo(tag) {
+    const cfg = State.get('config');
+    const grupos = [...(cfg.tagGrupos || [])];
+    const idx = grupos.indexOf(tag);
+    if (idx >= 0) grupos.splice(idx, 1); else grupos.push(tag);
+    State.set('config', { ...cfg, tagGrupos: grupos });
+    render();
+  }
+  function toggleGruposPanel() {
+    const panel = document.getElementById('dash-grupos-panel');
+    if (panel) panel.style.display = panel.style.display === 'none' ? '' : 'none';
+  }
   function toggleTag(t) {
     if(activeTags.has(t))activeTags.delete(t); else activeTags.add(t);
     State.set('config', {...State.get('config'), activeTagsFilter: [...activeTags]});
@@ -1465,5 +1517,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, applyConfig, applyPreset, setVentana, setChartMode, toggleTag, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleScoreDetail, toggleCriticos, toggleConfig, toggleAnalisis };
+  return { render, applyConfig, applyPreset, setVentana, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleScoreDetail, toggleCriticos, toggleConfig, toggleAnalisis };
 })();
