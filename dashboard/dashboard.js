@@ -460,8 +460,16 @@ const DashboardModule = (() => {
           <div class="exec-item-val ${saldoHoy>=0?'pos':'neg'}">${FinanceMath.eur(saldoHoy)}</div>
         </div>
         <div class="exec-item">
-          <div class="exec-item-label">Score salud</div>
-          <div class="exec-item-val" style="color:${score.color}">${score.total}/100 <span style="font-size:11px;font-family:var(--font-sans)">${score.label}</span></div>
+          <div class="exec-item-label">Salud financiera</div>
+          ${(()=>{
+            const s=saludMes;
+            const sc={'verde':'#00e5a0','amarillo':'#ffd166','rojo':'#ff4d6d','neutral':'var(--text3)'};
+            const sems=[s.semAhorro,s.semDTI,s.semNecesidades];
+            const dots=sems.map(sem=>`<span style="width:8px;height:8px;border-radius:50%;background:${sc[sem]||'var(--text3)'};display:inline-block"></span>`).join('');
+            const worst=sems.includes('rojo')?'rojo':sems.includes('amarillo')?'amarillo':sems.every(x=>x==='verde')?'verde':'neutral';
+            const lbl={'verde':'Saludable','amarillo':'Atención','rojo':'Revisar','neutral':'Sin datos'}[worst]||'—';
+            return `<div class="exec-item-val" style="color:${sc[worst]};display:flex;align-items:center;gap:5px">${dots}<span>${lbl}</span></div>`;
+          })()}
         </div>
         <div class="exec-item">
           <div class="exec-item-label">Ahorro est./mes</div>
