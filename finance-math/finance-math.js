@@ -1059,6 +1059,41 @@ const FinanceMath = (() => {
     return factor;
   }
 
+  // Tasa de inflación media anual ponderada entre fromDate y toDate.
+  // periodos: [{year, tasa}] — igual que calcFactorInflacion.
+  // defaultInflacion: fallback en % anual cuando no hay periodos o no hay registro para un año.
+  function calcInflacionMediaAnual(periodos, fromDate, toDate, defaultInflacion = 0) {
+    const from = new Date(fromDate + 'T00:00:00');
+    const to   = new Date(toDate   + 'T00:00:00');
+    if (to <= from) return defaultInflacion;
+
+    const totalDias = (to - from) / 86400000;
+    const sorted    = periodos ? [...periodos].sort((a, b) => a.year - b.year) : [];
+    let weightedSum = 0;
+    let current     = new Date(from);
+
+    while (current < to) {
+      const year    = current.getFullYear();
+      const yearEnd = new Date(year + 1, 0, 1);
+      const segEnd  = yearEnd < to ? yearEnd : to;
+      const dias    = (segEnd - current) / 86400000;
+
+      const candidates = sorted.filter(r => r.year <= year);
+      const record     = candidates.length > 0 ? candidates[candidates.length - 1] : null;
+      const tasa       = record !== null ? record.tasa : defaultInflacion;
+
+      weightedSum += tasa * dias;
+      current = segEnd;
+    }
+
+    return totalDias > 0 ? weightedSum / totalDias : defaultInflacion;
+  }
+
+  // Tipo de interés real (Fisher): r_real = (1+nominal)/(1+inflacion) - 1, en %
+  function calcTipoRealFisher(nominalPct, inflacionPct) {
+    return ((1 + nominalPct / 100) / (1 + inflacionPct / 100) - 1) * 100;
+  }
+
   // Precio nominal ajustado a valor real (hoy) descontando la inflación acumulada
   function ajustarPrecioReal(importe, periodos, fromDate, toDate) {
     const factor = calcFactorInflacion(periodos, fromDate, toDate);
@@ -1807,6 +1842,6 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct, calcPrestacionParo };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct, calcPrestacionParo };
 })();
 

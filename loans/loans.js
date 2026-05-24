@@ -89,10 +89,68 @@ const LoansModule = (() => {
     const interesesOriginal = res.sinAmort.totalIntereses;
 
     // ── Inflación ─────────────────────────────────────────────────────────────
-    const config    = State.get('config');
-    const periodos  = State.get('inflacion') || [];
-    const conInflac = config.usarInflacion && periodos.length > 0;
-    const hoyStr    = new Date().toISOString().slice(0, 10);
+    const config       = State.get('config');
+    const periodos     = State.get('inflacion') || [];
+    const conInflac    = config.usarInflacion && periodos.length > 0;
+    const inflGlobal   = config.inflacionGlobal || 0;
+    const hoyStr       = new Date().toISOString().slice(0, 10);
+
+    // ── Tipo de interés real (Fisher) ─────────────────────────────────────────
+    // Usamos periodos de inflación + fallback a inflacionGlobal, independientemente
+    // de si el módulo de inflación está activo para gastos (usarInflacion).
+    const hasInflData  = periodos.length > 0 || inflGlobal > 0;
+    const fechaInicioLoan = loan.fechaInicio || hoyStr;
+    const fechaFinLoan    = res.fechaFin || hoyStr;
+    const inflMedia    = hasInflData
+      ? FinanceMath.calcInflacionMediaAnual(periodos, fechaInicioLoan, fechaFinLoan, inflGlobal)
+      : 0;
+    const tinReal      = hasInflData
+      ? FinanceMath.calcTipoRealFisher(loan.tin || 0, inflMedia)
+      : null;
+
+    // ── Ahorro real por amortizaciones (intereses en € de hoy) ───────────────
+    let ahorroRealIntereses = null;
+    let ahorroRealNeto      = null;
+    const amortizacionesSavings = []; // [{nominalSaving, realSaving}] por amortización
+    if (tieneAmorts && hasInflData && periodos.length > 0) {
+      // Ahorro total real: diferencia de intereses deflactados entre plan sin/con amorts
+      const interesesPV = (tabla) => tabla.reduce((s, r) => {
+        if (r.esAmortizacion) return s;
+        const f = FinanceMath.calcFactorInflacion(periodos, hoyStr, r.fecha);
+        return s + (f > 0 ? r.interes / f : r.interes);
+      }, 0);
+      ahorroRealIntereses = interesesPV(res.sinAmort.tabla) - interesesPV(res.tabla);
+      ahorroRealNeto = ahorroRealIntereses - res.costeTotalAmort;
+
+      // Por amortización: análisis marginal secuencial
+      const amorts = loan.amortizaciones || [];
+      for (let idx = 0; idx < amorts.length; idx++) {
+        const loanBase = { ...loan, amortizaciones: amorts.slice(0, idx) };
+        const loanWith = { ...loan, amortizaciones: amorts.slice(0, idx + 1) };
+        const tBase    = FinanceMath.resumenPrestamo(loanBase).tabla;
+        const tWith    = FinanceMath.resumenPrestamo(loanWith).tabla;
+        const nomSaving  = FinanceMath.resumenPrestamo(loanBase).totalIntereses
+                         - FinanceMath.resumenPrestamo(loanWith).totalIntereses;
+        const realSaving = interesesPV(tBase) - interesesPV(tWith);
+        amortizacionesSavings.push({ nominalSaving: nomSaving, realSaving });
+      }
+    } else if (tieneAmorts && hasInflData && inflGlobal > 0) {
+      // Solo inflacionGlobal sin periodos: usar factor promedio desde hoy hasta fechaFin
+      const factorTotal = FinanceMath.calcFactorInflacion(
+        [{ year: new Date().getFullYear(), tasa: inflGlobal }], hoyStr, fechaFinLoan
+      );
+      ahorroRealIntereses = factorTotal > 0 ? res.ahorroIntereses / factorTotal : res.ahorroIntereses;
+      ahorroRealNeto = ahorroRealIntereses - res.costeTotalAmort;
+      const amorts = loan.amortizaciones || [];
+      amorts.forEach((_, idx) => {
+        const loanBase   = { ...loan, amortizaciones: amorts.slice(0, idx) };
+        const loanWith   = { ...loan, amortizaciones: amorts.slice(0, idx + 1) };
+        const nomSaving  = FinanceMath.resumenPrestamo(loanBase).totalIntereses
+                         - FinanceMath.resumenPrestamo(loanWith).totalIntereses;
+        const realSaving = factorTotal > 0 ? nomSaving / factorTotal : nomSaving;
+        amortizacionesSavings.push({ nominalSaving: nomSaving, realSaving });
+      });
+    }
 
     let costoRealTotal = null;
     let costoRealSinAmort = null;
@@ -160,9 +218,15 @@ const LoansModule = (() => {
           </div>
         </div>
         <div class="grid-2 mb-12" style="gap:10px">
-          <div class="stat-card" style="display:flex;gap:16px;align-items:center">
+          <div class="stat-card" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
             <div><div class="stat-label">TAE</div><div class="stat-value">${FinanceMath.pct(res.tae)}</div></div>
             <div><div class="stat-label">TIN</div><div class="stat-value">${loan.tin}%</div></div>
+            ${tinReal !== null ? `<div title="Tipo de interés real (Fisher): TIN ajustado por inflación media del ${inflMedia.toFixed(2)}% anual durante el préstamo">
+              <div class="stat-label">TIN real</div>
+              <div class="stat-value" style="color:${tinReal<=0?'var(--accent)':tinReal<loan.tin?'var(--yellow)':'var(--text)'}">${tinReal.toFixed(2)}%
+                <span style="font-size:10px;color:var(--text3);font-weight:400">(inf. ${inflMedia.toFixed(1)}%)</span>
+              </div>
+            </div>` : ''}
             <div><div class="stat-label">Plazo original</div><div class="stat-value" style="font-size:14px">${loan.meses} meses</div></div>
           </div>
           <div class="stat-card" style="display:flex;gap:16px;align-items:center">
@@ -184,12 +248,36 @@ const LoansModule = (() => {
         ${tieneAmorts ? `
         <div class="card" style="background:var(--bg3);padding:12px;margin-bottom:12px">
           <div class="card-title" style="margin-bottom:8px;color:var(--accent)">💰 Ahorro por amortizaciones</div>
+          ${ahorroRealIntereses !== null ? `
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:10px">
+            <div>
+              <div class="stat-label">Ahorro intereses <span style="font-size:10px;color:var(--text3)">(nominal)</span></div>
+              <div class="num pos">${FinanceMath.eur(res.ahorroIntereses)}</div>
+            </div>
+            <div title="Intereses ahorrados en euros de hoy, descontando la inflación proyectada">
+              <div class="stat-label">Ahorro intereses <span style="font-size:10px;color:var(--yellow)">real (€ hoy)</span></div>
+              <div class="num pos" style="color:var(--yellow)">${FinanceMath.eur(ahorroRealIntereses)}</div>
+            </div>
+            <div><div class="stat-label">Coste amortizaciones</div><div class="num neg">${FinanceMath.eur(res.costeTotalAmort)}</div></div>
+            <div>
+              <div class="stat-label">Ahorro neto <span style="font-size:10px;color:var(--text3)">(nominal)</span></div>
+              <div class="num ${res.ahorroNeto>=0?'pos':'neg'}">${FinanceMath.eur(res.ahorroNeto)}</div>
+            </div>
+            <div title="Ahorro neto en euros de hoy">
+              <div class="stat-label">Ahorro neto <span style="font-size:10px;color:var(--yellow)">real (€ hoy)</span></div>
+              <div class="num ${ahorroRealNeto>=0?'pos':'neg'}" style="color:var(--yellow)">${FinanceMath.eur(ahorroRealNeto)}</div>
+            </div>
+            <div><div class="stat-label">Plazo acortado</div><div class="num pos">${mesesAhorrados > 0 ? mesesAhorrados+' meses' : '—'}</div></div>
+          </div>
+          <div style="font-size:10px;color:var(--text3);margin-top:4px">Real = euros de hoy descontando inflación media ${inflMedia.toFixed(1)}% anual</div>
+          ` : `
           <div class="grid-4" style="gap:8px">
             <div><div class="stat-label">Ahorro intereses</div><div class="num pos">${FinanceMath.eur(res.ahorroIntereses)}</div></div>
             <div><div class="stat-label">Coste amortizaciones</div><div class="num neg">${FinanceMath.eur(res.costeTotalAmort)}</div></div>
             <div><div class="stat-label">Ahorro neto</div><div class="num ${res.ahorroNeto>=0?'pos':'neg'}">${FinanceMath.eur(res.ahorroNeto)}</div></div>
             <div><div class="stat-label">Plazo acortado</div><div class="num pos">${mesesAhorrados > 0 ? mesesAhorrados+' meses' : '—'}</div></div>
           </div>
+          `}
         </div>` : ''}
 
         ${conInflac && costoRealTotal !== null ? (() => {
@@ -256,16 +344,22 @@ const LoansModule = (() => {
 
         ${tieneAmorts?`
           <div class="card-title mt-12">Amortizaciones programadas</div>
-          ${loan.amortizaciones.map(am=>`<div class="amort-item">
-            <span class="num">${am.fecha}</span>
-            <span class="num">${FinanceMath.eur(am.cantidad)}</span>
-            <span class="badge ${am.simulacion?'badge-sim':'badge-active'}">${am.simulacion?'SIM':'REAL'}</span>
-            <span class="badge badge-blue">${am.tipo==='plazo'?'↓ plazo':'↓ cuota'}</span>
-            ${(am.escenarioIds||[]).map(id=>`<span class="badge badge-yellow">🔭 ${EscenariosModule.escenarioName(id)}</span>`).join('')}
-
-            <button class="btn-icon" onclick="LoansModule.openAmortForm('${loan._id}','${am._id}')"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button>
-            <button class="btn-danger btn-sm" onclick="LoansModule.deleteAmort('${loan._id}','${am._id}')">✕</button>
-          </div>`).join('')}
+          ${(loan.amortizaciones||[]).map((am, idx)=>{
+            const sav = amortizacionesSavings[idx] || null;
+            return `<div class="amort-item" style="flex-wrap:wrap">
+              <span class="num">${am.fecha}</span>
+              <span class="num">${FinanceMath.eur(am.cantidad)}</span>
+              <span class="badge ${am.simulacion?'badge-sim':'badge-active'}">${am.simulacion?'SIM':'REAL'}</span>
+              <span class="badge badge-blue">${am.tipo==='plazo'?'↓ plazo':'↓ cuota'}</span>
+              ${(am.escenarioIds||[]).map(id=>`<span class="badge badge-yellow">🔭 ${EscenariosModule.escenarioName(id)}</span>`).join('')}
+              ${sav ? `<span style="font-size:11px;color:var(--text3);margin-left:4px" title="Ahorro de intereses marginal atribuible a esta amortización">
+                Ahorro: <span class="pos">${FinanceMath.eur(sav.nominalSaving)}</span> nominal
+                · <span style="color:var(--yellow)">${FinanceMath.eur(sav.realSaving)} real</span>
+              </span>` : ''}
+              <button class="btn-icon" onclick="LoansModule.openAmortForm('${loan._id}','${am._id}')"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button>
+              <button class="btn-danger btn-sm" onclick="LoansModule.deleteAmort('${loan._id}','${am._id}')">✕</button>
+            </div>`;
+          }).join('')}
         `:''}
       </div>
     </div>`;
