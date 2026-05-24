@@ -1059,6 +1059,41 @@ const FinanceMath = (() => {
     return factor;
   }
 
+  // Tasa de inflación media anual ponderada entre fromDate y toDate.
+  // periodos: [{year, tasa}] — igual que calcFactorInflacion.
+  // defaultInflacion: fallback en % anual cuando no hay periodos o no hay registro para un año.
+  function calcInflacionMediaAnual(periodos, fromDate, toDate, defaultInflacion = 0) {
+    const from = new Date(fromDate + 'T00:00:00');
+    const to   = new Date(toDate   + 'T00:00:00');
+    if (to <= from) return defaultInflacion;
+
+    const totalDias = (to - from) / 86400000;
+    const sorted    = periodos ? [...periodos].sort((a, b) => a.year - b.year) : [];
+    let weightedSum = 0;
+    let current     = new Date(from);
+
+    while (current < to) {
+      const year    = current.getFullYear();
+      const yearEnd = new Date(year + 1, 0, 1);
+      const segEnd  = yearEnd < to ? yearEnd : to;
+      const dias    = (segEnd - current) / 86400000;
+
+      const candidates = sorted.filter(r => r.year <= year);
+      const record     = candidates.length > 0 ? candidates[candidates.length - 1] : null;
+      const tasa       = record !== null ? record.tasa : defaultInflacion;
+
+      weightedSum += tasa * dias;
+      current = segEnd;
+    }
+
+    return totalDias > 0 ? weightedSum / totalDias : defaultInflacion;
+  }
+
+  // Tipo de interés real (Fisher): r_real = (1+nominal)/(1+inflacion) - 1, en %
+  function calcTipoRealFisher(nominalPct, inflacionPct) {
+    return ((1 + nominalPct / 100) / (1 + inflacionPct / 100) - 1) * 100;
+  }
+
   // Precio nominal ajustado a valor real (hoy) descontando la inflación acumulada
   function ajustarPrecioReal(importe, periodos, fromDate, toDate) {
     const factor = calcFactorInflacion(periodos, fromDate, toDate);
@@ -1249,139 +1284,58 @@ const FinanceMath = (() => {
     }).filter(Boolean);
   }
 
-  // ── Score de salud financiera ────────────────────────────────────────────────
-  function calcScore(extracto, loans, expenses, accounts, config) {
-    // Interpolación lineal acotada
-    function lerp(x, x0, x1, y0, y1) {
-      if (x <= x0) return y0; if (x >= x1) return y1;
-      return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
-    }
+  // Analiza la salud financiera del usuario a partir de métricas pre-calculadas.
+  // met: { ingresos, cuotas, cuotasHipoteca, gastosBasicos, gastosOtros, amortizaciones }
+  // config: contiene los umbrales salud*
+  function calcSaludFinanciera(met, config) {
+    const uAV  = config.saludUmbralAhorroVerde   ?? 20;
+    const uAA  = config.saludUmbralAhorroAmarillo ?? 10;
+    const uDV  = config.saludUmbralDTIVerde       ?? 30;
+    const uDA  = config.saludUmbralDTIAmarillo    ?? 40;
+    const regla = config.saludRegla || [50, 30, 20];
+    const exclHip = config.saludExcluirHipoteca || false;
 
-    const ingresosMes = expenses
-      .filter(e => e.activo && e.tipo === 'ingreso' && e.tipoFrecuencia === 'mensual')
-      .reduce((s, e) => s + e.cuantia, 0);
+    const { ingresos=0, cuotas=0, cuotasHipoteca=0, gastosBasicos=0, gastosOtros=0, amortizaciones=0 } = met;
 
-    // ── 1. Gastos fijos ──────────────────────────────────────────────────────────
-    const gastosFijosLista = expenses.filter(e => e.activo && e.tipo === 'gasto' && e.tipoFrecuencia === 'mensual');
-    const gastosFijosMes = gastosFijosLista.reduce((s, e) => s + e.cuantia, 0);
-    const pctFijosIngresos = ingresosMes > 0 ? (gastosFijosMes / ingresosMes) * 100 : null;
-    const colorFijos = gastosFijosMes === 0 || pctFijosIngresos === null ? 'var(--text3)'
-      : pctFijosIngresos < 40 ? '#00e5a0' : pctFijosIngresos < 60 ? '#ffd166' : '#ff4d6d';
-    const scoreFijos = pctFijosIngresos === null ? 50
-      : pctFijosIngresos < 30  ? 100
-      : pctFijosIngresos < 50  ? lerp(pctFijosIngresos, 30, 50, 100, 70)
-      : pctFijosIngresos < 70  ? lerp(pctFijosIngresos, 50, 70, 70, 30)
-      : lerp(pctFijosIngresos, 70, 90, 30, 0);
+    // Derivados
+    const ahorroBruto = ingresos - cuotas - gastosBasicos - gastosOtros;
+    const ahorroReal  = ahorroBruto + amortizaciones;
+    const tasaAhorro  = ingresos > 0 ? ahorroReal / ingresos * 100 : null;
 
-    // ── 2. Gastos básicos ────────────────────────────────────────────────────────
-    const gastosBasicosLista = gastosFijosLista.filter(e => e.basico);
-    const gastosBasicosMes = gastosBasicosLista.reduce((s, e) => s + e.cuantia, 0);
-    const pctBasicosIngresos = ingresosMes > 0 ? (gastosBasicosMes / ingresosMes) * 100 : null;
-    const pctBasicosSobreFijos = gastosFijosMes > 0 ? (gastosBasicosMes / gastosFijosMes) * 100 : null;
-    const colorBasicos = pctBasicosSobreFijos === null ? 'var(--text3)'
-      : pctBasicosSobreFijos > 70 ? '#00e5a0' : pctBasicosSobreFijos > 40 ? '#ffd166' : '#ff4d6d';
+    const cuotasDTI = exclHip ? cuotas - cuotasHipoteca : cuotas;
+    const dti       = ingresos > 0 ? cuotasDTI / ingresos * 100 : null;
+    const dtiTotal  = ingresos > 0 ? cuotas / ingresos * 100 : null;
 
-    // ── 3. Ahorro mensual esperado ───────────────────────────────────────────────
-    const mediaMensualGastos = FinanceMath.mediaMensualGastos(extracto, config);
-    const ahorroMes = ingresosMes - mediaMensualGastos;
-    const pctAhorroIngresos = ingresosMes > 0 ? (ahorroMes / ingresosMes) * 100 : null;
-    const colorAhorro = pctAhorroIngresos === null ? 'var(--text3)'
-      : pctAhorroIngresos > 20 ? '#00e5a0' : pctAhorroIngresos > 5 ? '#ffd166' : '#ff4d6d';
-    const scoreAhorro = pctAhorroIngresos === null ? 50
-      : pctAhorroIngresos >= 25  ? 100
-      : pctAhorroIngresos >= 10  ? lerp(pctAhorroIngresos, 10, 25, 65, 100)
-      : pctAhorroIngresos >= 0   ? lerp(pctAhorroIngresos, 0, 10, 20, 65)
-      : 0;
+    const pctNecesidades = ingresos > 0 ? (gastosBasicos + cuotas) / ingresos * 100 : null;
+    const pctDeseos      = ingresos > 0 ? gastosOtros / ingresos * 100 : null;
 
-    // ── 4. Endeudamiento — excluye préstamos ya finalizados ──────────────────────
-    const today = new Date().toISOString().slice(0,10);
-    const cuotasTotales = loans
-      .filter(l => {
-        if (!l.activo || l.simulacion) return false;
-        const { tabla } = FinanceMath.resumenPrestamo(l);
-        const ultimaCuota = tabla.filter(r => !r.esAmortizacion).slice(-1)[0];
-        return ultimaCuota && ultimaCuota.fecha >= today; // excluye finalizados
-      })
-      .reduce((s, l) => s + FinanceMath.cuotaMensual(l.capital, l.tin, l.meses), 0);
-    const pctDeudaIngresos = ingresosMes > 0 ? (cuotasTotales / ingresosMes) * 100 : null;
-    const colorDeuda = cuotasTotales === 0 ? '#00e5a0'
-      : pctDeudaIngresos === null ? 'var(--text3)'
-      : pctDeudaIngresos < 20 ? '#00e5a0' : pctDeudaIngresos < 35 ? '#ffd166' : '#ff4d6d';
-    const labelDeuda = cuotasTotales === 0 ? 'Sin préstamos activos'
-      : pctDeudaIngresos === null ? '—'
-      : pctDeudaIngresos < 20 ? 'Excelente' : pctDeudaIngresos < 35 ? 'Aceptable' : 'Elevado ⚠️';
-    const scoreDeuda = cuotasTotales === 0 ? 100
-      : pctDeudaIngresos === null ? 50
-      : pctDeudaIngresos < 15  ? 100
-      : pctDeudaIngresos < 35  ? lerp(pctDeudaIngresos, 15, 35, 95, 45)
-      : pctDeudaIngresos < 50  ? lerp(pctDeudaIngresos, 35, 50, 45, 10)
-      : 0;
-
-    // ── Score global con pesos: ahorro 40%, deuda 35%, gastos fijos 25% ──────────
-    const total = Math.round(scoreAhorro * 0.40 + scoreDeuda * 0.35 + scoreFijos * 0.25);
-    const label = total >= 80 ? 'Excelente' : total >= 60 ? 'Buena' : total >= 40 ? 'Regular' : 'Atención';
-    const color = total >= 80 ? '#00e5a0' : total >= 60 ? '#4d9fff' : total >= 40 ? '#ffd166' : '#ff4d6d';
+    // Semáforo: 'verde' | 'amarillo' | 'rojo' | 'neutral'
+    const semHigh = (v, verde, rojo) => {
+      if (v === null) return 'neutral';
+      if (v >= verde) return 'verde';
+      if (v >= rojo)  return 'amarillo';
+      return 'rojo';
+    };
+    const semLow = (v, verde, rojo) => {
+      if (v === null) return 'neutral';
+      if (v <= verde)  return 'verde';
+      if (v <= rojo)   return 'amarillo';
+      return 'rojo';
+    };
 
     return {
-      total, label, color,
-      metricas: {
-        fijos: {
-          label: 'Gastos fijos',
-          valor: eur(gastosFijosMes) + '/mes',
-          pcts: [pctFijosIngresos !== null ? `${pctFijosIngresos.toFixed(1)}% de ingresos` : 'Sin ingresos registrados'],
-          color: colorFijos,
-          rec: gastosFijosMes === 0
-            ? 'Registra tus gastos mensuales recurrentes para activar esta métrica.'
-            : pctFijosIngresos < 40
-            ? '✅ Tus gastos fijos son una proporción saludable de tus ingresos.'
-            : pctFijosIngresos < 60
-            ? '💡 Revisa si algún gasto fijo puede eliminarse o convertirse en variable (suscripciones, seguros...).'
-            : '⚠️ Más del 60% de tus ingresos comprometido en gastos fijos. Ante una bajada de ingresos tendrías muy poco margen.',
-        },
-        basicos: {
-          label: 'Gastos básicos',
-          valor: eur(gastosBasicosMes) + '/mes',
-          pcts: [
-            pctBasicosIngresos !== null ? `${pctBasicosIngresos.toFixed(1)}% de ingresos` : '—',
-            pctBasicosSobreFijos !== null ? `${pctBasicosSobreFijos.toFixed(1)}% de los gastos fijos son básicos` : 'Sin gastos fijos',
-          ],
-          color: colorBasicos,
-          rec: gastosBasicosMes === 0
-            ? 'Marca tus gastos esenciales como "básico" en la sección Gastos para activar esta métrica.'
-            : pctBasicosSobreFijos > 70
-            ? '✅ La mayoría de tus gastos fijos son básicos. Tu presupuesto tiene una base sólida.'
-            : pctBasicosSobreFijos > 40
-            ? '💡 Parte de tus gastos fijos son discrecionales. Revisa si todos son realmente necesarios.'
-            : '⚠️ Menos del 40% de tus gastos fijos son básicos. Alto componente discrecional.',
-        },
-        ahorro: {
-          label: 'Ahorro mensual esperado',
-          valor: eur(ahorroMes) + '/mes',
-          pcts: [pctAhorroIngresos !== null ? `${pctAhorroIngresos.toFixed(1)}% de ingresos` : 'Sin ingresos registrados'],
-          color: colorAhorro,
-          rec: pctAhorroIngresos === null
-            ? 'Registra tus ingresos mensuales para activar esta métrica.'
-            : ahorroMes > 0 && pctAhorroIngresos >= 20
-            ? '✅ Ahorras más del 20% de tus ingresos. Considera invertir el excedente.'
-            : ahorroMes > 0
-            ? '💡 Tasa de ahorro baja. Objetivo recomendado: 20% de los ingresos.'
-            : '⚠️ Tus gastos superan tus ingresos en la proyección. Revisa tus gastos recurrentes urgentemente.',
-        },
-        deuda: {
-          label: 'Endeudamiento',
-          valor: cuotasTotales > 0 ? eur(cuotasTotales) + '/mes' : 'Sin préstamos activos',
-          pcts: cuotasTotales > 0 && pctDeudaIngresos !== null ? [`${pctDeudaIngresos.toFixed(1)}% de ingresos · ${labelDeuda}`] : [],
-          color: colorDeuda,
-          rec: cuotasTotales === 0
-            ? '✅ No tienes préstamos activos en curso.'
-            : pctDeudaIngresos < 20
-            ? '✅ Ratio de deuda excelente (<20%). Cuotas muy manejables.'
-            : pctDeudaIngresos < 35
-            ? '💡 Ratio aceptable (20-35%). Dentro de umbrales bancarios estándar. Las amortizaciones anticipadas pueden mejorar este ratio.'
-            : '⚠️ Ratio de deuda elevado (>35%). Los bancos suelen rechazar nuevos créditos por encima de este umbral.',
-        },
-      },
-      breakdown: {}
+      ingresos, cuotas, cuotasHipoteca, gastosBasicos, gastosOtros, amortizaciones,
+      ahorroBruto, ahorroReal, tasaAhorro,
+      dti, dtiTotal, excluyeHipoteca: exclHip,
+      pctNecesidades, pctDeseos,
+      semAhorro:      semHigh(tasaAhorro, uAV, uAA),
+      semDTI:         semLow(dti, uDV, uDA),
+      semNecesidades: semLow(pctNecesidades, regla[0], regla[0] + 15),
+      semDeseos:      semLow(pctDeseos,      regla[1], regla[1] + 10),
+      semAhorroRegla: semHigh(tasaAhorro,   regla[2], regla[2] * 0.5),
+      umbralAhorroVerde: uAV, umbralAhorroAmarillo: uAA,
+      umbralDTIVerde: uDV, umbralDTIAmarillo: uDA,
+      regla,
     };
   }
 
@@ -1888,6 +1842,6 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcScore, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct, calcPrestacionParo };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct, calcPrestacionParo };
 })();
 
