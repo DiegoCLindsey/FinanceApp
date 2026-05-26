@@ -57,7 +57,7 @@ const DashboardModule = (() => {
         ${[
           { label:'Necesidades', val:s.pctNecesidades, sem:s.semNecesidades, obj:`≤${s.regla[0]}%`, eur:s.gastosBasicos+s.cuotas },
           { label:'Deseos',      val:s.pctDeseos,      sem:s.semDeseos,      obj:`≤${s.regla[1]}%`, eur:s.gastosOtros },
-          { label:'Ahorro',      val:s.tasaAhorro,     sem:s.semAhorroRegla, obj:`≥${s.regla[2]}%`, eur:s.ahorroReal },
+          { label:'Ahorro',      val:s.tasaAhorroRegla, sem:s.semAhorroRegla, obj:`≥${s.regla[2]}%`, eur:s.ahorroBruto },
         ].map(r=>`
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
           <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2)">${_dot(r.sem)} ${r.label}</span>

@@ -1301,6 +1301,9 @@ const FinanceMath = (() => {
     const ahorroBruto = ingresos - cuotas - gastosBasicos - gastosOtros;
     const ahorroReal  = ahorroBruto + amortizaciones;
     const tasaAhorro  = ingresos > 0 ? ahorroReal / ingresos * 100 : null;
+    // Para la regla 50/30/20 usamos ahorroBruto (sin amortizaciones)
+    // así los tres buckets suman exactamente 100 %
+    const tasaAhorroRegla = ingresos > 0 ? ahorroBruto / ingresos * 100 : null;
 
     const cuotasDTI = exclHip ? cuotas - cuotasHipoteca : cuotas;
     const dti       = ingresos > 0 ? cuotasDTI / ingresos * 100 : null;
@@ -1325,14 +1328,14 @@ const FinanceMath = (() => {
 
     return {
       ingresos, cuotas, cuotasHipoteca, gastosBasicos, gastosOtros, amortizaciones,
-      ahorroBruto, ahorroReal, tasaAhorro,
+      ahorroBruto, ahorroReal, tasaAhorro, tasaAhorroRegla,
       dti, dtiTotal, excluyeHipoteca: exclHip,
       pctNecesidades, pctDeseos,
       semAhorro:      semHigh(tasaAhorro, uAV, uAA),
       semDTI:         semLow(dti, uDV, uDA),
       semNecesidades: semLow(pctNecesidades, regla[0], regla[0] + 15),
       semDeseos:      semLow(pctDeseos,      regla[1], regla[1] + 10),
-      semAhorroRegla: semHigh(tasaAhorro,   regla[2], regla[2] * 0.5),
+      semAhorroRegla: semHigh(tasaAhorroRegla, regla[2], regla[2] * 0.5),
       umbralAhorroVerde: uAV, umbralAhorroAmarillo: uAA,
       umbralDTIVerde: uDV, umbralDTIAmarillo: uDA,
       regla,
