@@ -13,9 +13,93 @@ const DashboardModule = (() => {
   }
   function _pct(v) { return v !== null && v !== undefined ? v.toFixed(1)+'%' : '—'; }
 
-  function renderSaludFinanciera(s) {
+  // Agrupa eventos de gasto por sourceId para el desglose de salud financiera.
+  // divisor=1 para mes actual, divisor=numMeses para media del período.
+  function _buildSaludBreakdown(evs, expenses, divisor) {
+    const groups = new Map();
+    for (const ev of evs) {
+      if (ev.tipo !== 'gasto') continue;
+      const st = ev.sourceType;
+      if (st === 'transfer-out' || st === 'transfer-in' || st === 'loan-amort' || st === 'traspaso-out') continue;
+      if (st !== 'loan' && st !== 'expense') continue;
+      const key = ev.sourceId;
+      if (!groups.has(key)) groups.set(key, { concepto: ev.concepto, sourceType: st, sourceId: key, total: 0, count: 0 });
+      const g = groups.get(key);
+      g.total += Math.abs(ev.cuantia);
+      g.count++;
+    }
+    const nec = [], des = [];
+    for (const g of groups.values()) {
+      const item = {
+        concepto: g.concepto,
+        count: g.count / divisor,
+        unitCost: g.count > 0 ? g.total / g.count : 0,
+        total: g.total / divisor,
+      };
+      if (g.sourceType === 'loan') {
+        nec.push(item);
+      } else {
+        const exp = expenses.find(ex => ex._id === g.sourceId);
+        if (exp?.basico) nec.push(item);
+        else des.push(item);
+      }
+    }
+    nec.sort((a, b) => b.total - a.total);
+    des.sort((a, b) => b.total - a.total);
+    return { nec, des };
+  }
+
+  function renderSaludFinanciera(s, bd) {
     if (!s || s.ingresos < 0.01) return '<div class="text-sm" style="text-align:center;padding:20px;color:var(--text3)">Sin ingresos proyectados en el período seleccionado.</div>';
     const e = FinanceMath.eur;
+
+    const _fmtCount = c => {
+      const r = Math.round(c * 10) / 10;
+      return (r === Math.round(r) ? r.toFixed(0) : r.toFixed(1)) + 'x';
+    };
+
+    const _detailTable = (items) => {
+      if (!items || !items.length) return '<div style="font-size:11px;color:var(--text3);padding:4px 0">Sin elementos</div>';
+      const totalMes = items.reduce((s, i) => s + i.total, 0);
+      return `<table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:11px">
+        <thead>
+          <tr style="color:var(--text3);border-bottom:1px solid var(--border)">
+            <th style="text-align:left;padding:3px 6px 3px 0;font-weight:500">Concepto</th>
+            <th style="text-align:right;padding:3px 4px;font-weight:500">x/mes</th>
+            <th style="text-align:right;padding:3px 4px;font-weight:500">€/unidad</th>
+            <th style="text-align:right;padding:3px 0 3px 4px;font-weight:500">€/mes</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(it => `
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:3px 6px 3px 0;color:var(--text2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${it.concepto.replace(/"/g,'&quot;')}">${it.concepto}</td>
+            <td style="text-align:right;padding:3px 4px;color:var(--text3);font-family:var(--font-mono)">${_fmtCount(it.count)}</td>
+            <td style="text-align:right;padding:3px 4px;font-family:var(--font-mono)">${e(it.unitCost)}</td>
+            <td style="text-align:right;padding:3px 0 3px 4px;font-family:var(--font-mono);font-weight:600">${e(it.total)}</td>
+          </tr>`).join('')}
+          <tr>
+            <td colspan="3" style="padding:4px 6px 2px 0;font-size:10px;color:var(--text3);font-weight:600">Total</td>
+            <td style="text-align:right;padding:4px 0 2px 4px;font-family:var(--font-mono);font-weight:700;color:var(--text1)">${e(totalMes)}</td>
+          </tr>
+        </tbody>
+      </table>`;
+    };
+
+    const _catRow = (label, val, sem, obj, items) => `
+      <details style="margin-bottom:7px">
+        <summary style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;list-style:none;user-select:none">
+          <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2)">${_dot(sem)} ${label} <span style="font-size:9px;color:var(--text3)">▾</span></span>
+          <span style="font-family:var(--font-mono);font-size:12px">
+            <span style="color:${_SEM_COLOR[sem]}">${_pct(val)}</span>
+            <span style="color:var(--text3);font-size:10px;margin-left:3px">${obj}</span>
+          </span>
+        </summary>
+        <div style="padding:4px 0 2px 12px;border-left:2px solid var(--border)">
+          ${_detailTable(items)}
+        </div>
+      </details>`;
+
     return `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">
 
@@ -54,18 +138,15 @@ const DashboardModule = (() => {
       <!-- Distribución 50/30/20 -->
       <div style="background:var(--bg3);border-radius:var(--radius);padding:14px;border:1px solid var(--border)">
         <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px">Distribución (regla ${s.regla.join('/')})</div>
-        ${[
-          { label:'Necesidades', val:s.pctNecesidades, sem:s.semNecesidades, obj:`≤${s.regla[0]}%`, eur:s.gastosBasicos+s.cuotas },
-          { label:'Deseos',      val:s.pctDeseos,      sem:s.semDeseos,      obj:`≤${s.regla[1]}%`, eur:s.gastosOtros },
-          { label:'Ahorro',      val:s.tasaAhorroRegla, sem:s.semAhorroRegla, obj:`≥${s.regla[2]}%`, eur:s.ahorroBruto },
-        ].map(r=>`
+        ${_catRow('Necesidades', s.pctNecesidades, s.semNecesidades, `≤${s.regla[0]}%`, bd?.nec || [])}
+        ${_catRow('Deseos',      s.pctDeseos,      s.semDeseos,      `≤${s.regla[1]}%`, bd?.des || [])}
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
-          <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2)">${_dot(r.sem)} ${r.label}</span>
+          <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2)">${_dot(s.semAhorroRegla)} Ahorro</span>
           <span style="font-family:var(--font-mono);font-size:12px">
-            <span style="color:${_SEM_COLOR[r.sem]}">${_pct(r.val)}</span>
-            <span style="color:var(--text3);font-size:10px;margin-left:3px">${r.obj}</span>
+            <span style="color:${_SEM_COLOR[s.semAhorroRegla]}">${_pct(s.tasaAhorroRegla)}</span>
+            <span style="color:var(--text3);font-size:10px;margin-left:3px">≥${s.regla[2]}%</span>
           </span>
-        </div>`).join('')}
+        </div>
         <div style="font-size:10px;color:var(--text3);margin-top:4px">Ajustable en ⚙ Umbrales</div>
       </div>
 
@@ -239,6 +320,8 @@ const DashboardModule = (() => {
     const _metSaludMedia = { ingresos:ingresosMediaMes, cuotas:cuotasMediaMes, cuotasHipoteca:cuotasHipotecaMedia, gastosBasicos:gastosBasicosMediaMes, gastosOtros:gastosMediaMes-gastosBasicosMediaMes, amortizaciones:amortizacionesMediaMes };
     const saludMes   = FinanceMath.calcSaludFinanciera(_metSaludMes, config);
     const saludMedia = FinanceMath.calcSaludFinanciera(_metSaludMedia, config);
+    const _bdMes   = _buildSaludBreakdown(evsMesActual, expenses, 1);
+    const _bdMedia = _buildSaludBreakdown(evSinTransf, expenses, numMeses);
 
     // Alias para los paneles KPI
     const gastosFijosMes    = gastosTosMesActual;
@@ -800,7 +883,7 @@ const DashboardModule = (() => {
             <button class="btn-secondary btn-sm" onclick="DashboardModule.toggleSaludConfig()">⚙ Umbrales</button>
           </div>
         </div>
-        ${renderSaludFinanciera(saludView==='mes'?saludMes:saludMedia)}
+        ${renderSaludFinanciera(saludView==='mes'?saludMes:saludMedia, saludView==='mes'?_bdMes:_bdMedia)}
         <div id="salud-config-panel" style="display:none;margin-top:14px;padding:14px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border2)">
           ${renderSaludConfig(config)}
         </div>
