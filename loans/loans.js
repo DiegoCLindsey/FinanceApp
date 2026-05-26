@@ -21,20 +21,37 @@ const LoansModule = (() => {
     const loans = mostrarFinalizados ? allLoans : allLoans.filter(l => !completedIds.has(l._id));
     const numFinalizados = completedIds.size;
 
-    // ── Cuota del mes actual — solo préstamos activos y no finalizados ────────
-    const hoy = new Date();
+    // ── Cuota del mes actual — solo préstamos ya iniciados ────────────────────
+    const hoy      = new Date();
+    const hoyStr   = hoy.toISOString().slice(0, 10);
     const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
     let totalCuotaMes = 0;
     const cuotaMesMap = {};
-    allLoans.filter(l => l.activo && !l.simulacion && !completedIds.has(l._id)).forEach(loan => {
+    // Solo contamos préstamos cuya fechaInicio <= hoy (ya han arrancado)
+    allLoans.filter(l => l.activo && !l.simulacion && !completedIds.has(l._id) && (l.fechaInicio||'') <= hoyStr).forEach(loan => {
       const { tabla } = FinanceMath.resumenPrestamo(loan);
       const filasMes = tabla.filter(r => !r.esAmortizacion && r.fecha.startsWith(mesActual));
       const cuota = filasMes.length > 0 ? filasMes[0].cuota : 0;
       cuotaMesMap[loan._id] = cuota;
       totalCuotaMes += cuota;
     });
-
     const activosConCuota = allLoans.filter(l => l.activo && !l.simulacion && !completedIds.has(l._id) && cuotaMesMap[l._id] > 0).length;
+
+    // ── Cuota media del periodo (dashboard) ───────────────────────────────────
+    const cfg      = State.get('config');
+    const dStart   = cfg.dashboardStart;
+    const dEnd     = cfg.dashboardEnd;
+    const dS       = new Date(dStart + 'T00:00:00');
+    const dE       = new Date(dEnd   + 'T00:00:00');
+    const numMeses = Math.max(1, (dE - dS) / (30.44 * 86400000));
+    let totalCuotasPeriodo = 0;
+    allLoans.filter(l => l.activo && !l.simulacion).forEach(loan => {
+      const { tabla } = FinanceMath.resumenPrestamo(loan);
+      totalCuotasPeriodo += tabla
+        .filter(r => !r.esAmortizacion && r.fecha >= dStart && r.fecha <= dEnd)
+        .reduce((s, r) => s + r.cuota, 0);
+    });
+    const cuotaMediaPeriodo = totalCuotasPeriodo / numMeses;
 
     view.innerHTML = `
       <div class="page-header">
@@ -45,14 +62,19 @@ const LoansModule = (() => {
           <button class="btn-primary" id="btn-new-loan">+ Nuevo préstamo</button>
         </div>
       </div>
-      ${totalCuotaMes > 0 ? `
+      ${(totalCuotaMes > 0 || cuotaMediaPeriodo > 0) ? `
       <div class="card mb-14" style="padding:14px 18px">
         <div class="flex gap-24 items-center flex-wrap">
-          <div>
+          ${totalCuotaMes > 0 ? `<div>
             <div class="stat-label">Cuotas este mes (${hoy.toLocaleDateString('es-ES',{month:'long',year:'numeric'})})</div>
             <div style="font-family:var(--font-mono);font-size:24px;font-weight:700;color:var(--text);margin-top:2px">${FinanceMath.eur(totalCuotaMes)}</div>
-          </div>
-          <div class="text-sm" style="color:var(--text3)">${activosConCuota} préstamo${activosConCuota!==1?'s':''} con cuota activa este mes</div>
+            <div class="text-sm" style="color:var(--text3);margin-top:2px">${activosConCuota} préstamo${activosConCuota!==1?'s':''} activo${activosConCuota!==1?'s':''} este mes</div>
+          </div>` : ''}
+          ${cuotaMediaPeriodo > 0.01 ? `<div>
+            <div class="stat-label">Cuota media del período</div>
+            <div style="font-family:var(--font-mono);font-size:24px;font-weight:700;color:var(--text2);margin-top:2px">${FinanceMath.eur(cuotaMediaPeriodo)}<span style="font-size:13px;font-weight:400;color:var(--text3);margin-left:4px">/mes</span></div>
+            <div class="text-sm" style="color:var(--text3);margin-top:2px">${dStart} → ${dEnd}</div>
+          </div>` : ''}
         </div>
       </div>` : ''}
       <div id="loans-list">

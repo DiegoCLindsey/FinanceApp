@@ -210,7 +210,9 @@ const DashboardModule = (() => {
     );
 
     const ingresosMesActual      = evsMesActual.filter(e=>e.tipo==='ingreso').reduce((s,e)=>s+Math.abs(e.cuantia),0);
-    const cuotasMesActual        = evsMesActual.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto').reduce((s,e)=>s+Math.abs(e.cuantia),0);
+    // Solo préstamos cuya fechaInicio <= hoy (ya arrancados)
+    const _loanIdsIniciados = new Set(loans.filter(l=>(l.fechaInicio||'')<=hoyStr).map(l=>l._id));
+    const cuotasMesActual        = evsMesActual.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto'&&_loanIdsIniciados.has(e.sourceId)).reduce((s,e)=>s+Math.abs(e.cuantia),0);
     const gastosBasicosMesActual = evsMesActual.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
     const gastosOtrosMesActual   = evsMesActual.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return !ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
     const gastosTosMesActual     = cuotasMesActual + gastosBasicosMesActual + gastosOtrosMesActual;
@@ -715,25 +717,46 @@ const DashboardModule = (() => {
         </div>
 
         <div class="card">
-          <div class="card-title mb-12">Rendimiento cuentas</div>
-          ${interesesMesActual > 0
-            ? `<div class="stat-value pos mb-8">${FinanceMath.eur(interesesMesActual)}<span class="stat-sub" style="font-size:11px;margin-left:6px">este mes</span></div>`
-            : `<div class="stat-value mb-8" style="color:var(--text3)">0,00 €<span class="stat-sub" style="font-size:11px;margin-left:6px">este mes</span></div>`
-          }
-          <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
-            ${interesesMediaMes > 0 ? `~${FinanceMath.eur(interesesMediaMes)}/mes · ${FinanceMath.eur(interesesTotalIntervalo)} total período` : 'Sin cuentas remuneradas configuradas'}
-          </div>
-          <div style="display:flex;flex-direction:column;gap:5px">
-            ${interesesPorCuenta.length > 0
-              ? interesesPorCuenta.map(a =>
-                  `<div style="display:flex;justify-content:space-between;font-size:12px">
-                    <span style="color:var(--text2)">${a.nombre} (${a.interes}%)</span>
-                    <span style="font-family:var(--font-mono);color:var(--accent)">${FinanceMath.eur(a.total)}</span>
-                  </div>`
-                ).join('')
-              : `<div style="font-size:10px;color:var(--text3)">Añade un % de interés a tus cuentas para proyectar el rendimiento</div>`
-            }
-          </div>
+          <div class="card-title mb-8">Distribución de saldos</div>
+          ${(()=>{
+            const cuentasActivas = accounts.filter(a => a.activo && !a.simulacion);
+            const saldoTotal = cuentasActivas.reduce((s, a) => s + FinanceMath.saldoRealCuenta(a), 0);
+            // Límite más alto activo hoy: max(colchón, márgenes de seguridad)
+            const colchonHoy = FinanceMath.calcColchonEnFecha(expenses, config, loans, hoyStr);
+            const margenesHoy = margenesActivosRender.map(m =>
+              FinanceMath.calcMargenEnFecha(m, expenses, config, loans, hoyStr, true)
+            );
+            const limiteHoy = Math.max(colchonHoy, ...margenesHoy, 0);
+            const saldoDisponible = saldoTotal - limiteHoy;
+            const _SALDO_PALETTE = ['#00e5a0','#4d9fff','#a855f7','#f97316','#eab308','#22d3ee','#fb7185','#34d399','#60a5fa','#c084fc'];
+            const segments = cuentasActivas
+              .map((a, i) => ({ label: a.nombre, value: Math.max(0, FinanceMath.saldoRealCuenta(a)), color: _SALDO_PALETTE[i % _SALDO_PALETTE.length] }))
+              .filter(s => s.value > 0.01);
+            if (!segments.length) return '<div style="font-size:12px;color:var(--text3);padding:20px 0">Sin cuentas con saldo</div>';
+            const legendRow = (color, label, amount) =>
+              `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px">
+                <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0"></span><span style="color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px" title="${label}">${label}</span></span>
+                <span style="font-family:var(--font-mono);flex-shrink:0">${FinanceMath.eur(amount)}</span>
+              </div>`;
+            return `
+            <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+              <div style="position:relative;width:140px;height:140px;flex-shrink:0"><canvas id="chart-saldos-donut"></canvas></div>
+              <div style="flex:1;min-width:130px;display:flex;flex-direction:column;gap:6px">
+                ${segments.map(s => legendRow(s.color, s.label, s.value)).join('')}
+                <div style="border-top:1px solid var(--border);padding-top:6px;margin-top:2px;display:flex;flex-direction:column;gap:4px">
+                  <div style="display:flex;justify-content:space-between;font-size:12px">
+                    <span style="color:var(--text3)">Total</span>
+                    <span style="font-family:var(--font-mono);font-weight:700">${FinanceMath.eur(saldoTotal)}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;font-size:12px" title="Saldo total menos el límite más alto activo hoy (colchón/margen: ${FinanceMath.eur(limiteHoy)})">
+                    <span style="color:var(--text3)">Disponible</span>
+                    <span style="font-family:var(--font-mono);font-weight:700;color:${saldoDisponible>=0?'var(--accent)':'var(--red)'}">${FinanceMath.eur(saldoDisponible)}</span>
+                  </div>
+                  ${limiteHoy > 0 ? `<div style="font-size:10px;color:var(--text3)">Reserva: ${FinanceMath.eur(limiteHoy)}</div>` : ''}
+                </div>
+              </div>
+            </div>`;
+          })()}
         </div>
       </div>
 
@@ -962,6 +985,7 @@ const DashboardModule = (() => {
       renderChartBreakdown(_metricasGraficos);
       renderChartExpenseDonut(_donutMetrics);
       renderChartOtrosDonut(_otrosTagData);
+      renderChartSaldosDonut(accounts.filter(a => a.activo && !a.simulacion));
     }, 60);
   }
 
@@ -1581,6 +1605,35 @@ const DashboardModule = (() => {
         </span>
         <span style="font-family:var(--font-mono);white-space:nowrap">${FinanceMath.eur(s.value)}<span style="color:var(--text3);margin-left:4px">${(s.value/total*100).toFixed(1)}%</span></span>
       </div>`).join('');
+  }
+
+  function renderChartSaldosDonut(cuentasActivas) {
+    const ctx = document.getElementById('chart-saldos-donut'); if (!ctx) return;
+    const _SALDO_PALETTE = ['#00e5a0','#4d9fff','#a855f7','#f97316','#eab308','#22d3ee','#fb7185','#34d399','#60a5fa','#c084fc'];
+    const segments = cuentasActivas
+      .map((a, i) => ({ label: a.nombre, value: Math.max(0, FinanceMath.saldoRealCuenta(a)), color: _SALDO_PALETTE[i % _SALDO_PALETTE.length] }))
+      .filter(s => s.value > 0.01);
+    if (!segments.length) return;
+    const total = segments.reduce((s, x) => s + x.value, 0);
+    if (charts['chart-saldos-donut']) { try { charts['chart-saldos-donut'].destroy(); } catch {} }
+    charts['chart-saldos-donut'] = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: segments.map(s => s.label),
+        datasets: [{ data: segments.map(s => s.value), backgroundColor: segments.map(s => s.color), borderWidth: 0, hoverOffset: 4 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '68%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor:'#13161e', borderColor:'#252a38', borderWidth:1,
+            titleColor:'#8b92a8', bodyColor:'#e8eaf2',
+            callbacks: { label: c => ` ${c.label}: ${FinanceMath.eur(c.parsed)} (${(c.parsed/(total||1)*100).toFixed(1)}%)` }
+          }
+        }
+      }
+    });
   }
 
   function toggleConfig() {
