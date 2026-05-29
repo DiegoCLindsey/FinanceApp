@@ -213,8 +213,10 @@ const DashboardModule = (() => {
     // Solo préstamos cuya fechaInicio <= hoy (ya arrancados)
     const _loanIdsIniciados = new Set(loans.filter(l=>(l.fechaInicio||'')<=hoyStr).map(l=>l._id));
     const cuotasMesActual        = evsMesActual.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto'&&_loanIdsIniciados.has(e.sourceId)).reduce((s,e)=>s+Math.abs(e.cuantia),0);
-    const gastosBasicosMesActual = evsMesActual.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
-    const gastosOtrosMesActual   = evsMesActual.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return !ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
+    // clasificacion: 'necesidad'|undefined = necesidad (default); 'deseo' = deseo; null = excluido
+    const _clas = ex => ex?.clasificacion;
+    const gastosBasicosMesActual = evsMesActual.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c!=='deseo'&&c!==null;}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
+    const gastosOtrosMesActual   = evsMesActual.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c==='deseo';}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
     const gastosTosMesActual     = cuotasMesActual + gastosBasicosMesActual + gastosOtrosMesActual;
 
     const dS = new Date(config.dashboardStart+'T00:00:00');
@@ -227,7 +229,8 @@ const DashboardModule = (() => {
     const cuotasMediaMes          = evSinTransf.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto').reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
     const amortizacionesMediaMes  = evSinTransf.filter(e=>e.sourceType==='loan-amort').reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
     const gastosMediaMes          = evSinTransf.filter(e=>e.tipo==='gasto'&&e.sourceType!=='loan'&&e.sourceType!=='loan-amort').reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
-    const gastosBasicosMediaMes = evSinTransf.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
+    const gastosBasicosMediaMes = evSinTransf.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c!=='deseo'&&c!==null;}).reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
+    const gastosDeseoMediaMes   = evSinTransf.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c==='deseo';}).reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
 
     // ── Salud financiera — métricas para mes actual y media ──────────────────────
     const _hipotecaIds = new Set(loans.filter(l => (l.tags||[]).includes(config.saludTagHipoteca||'hipoteca')).map(l => l._id));
@@ -236,7 +239,7 @@ const DashboardModule = (() => {
     const cuotasHipotecaMedia = evSinTransf.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto'&&_hipotecaIds.has(e.sourceId)).reduce((s,e)=>s+Math.abs(e.cuantia),0)/numMeses;
 
     const _metSaludMes = { ingresos:ingresosMesActual, cuotas:cuotasMesActual, cuotasHipoteca:cuotasHipotecaMesActual, gastosBasicos:gastosBasicosMesActual, gastosOtros:gastosOtrosMesActual, amortizaciones:amortizacionesMesActual };
-    const _metSaludMedia = { ingresos:ingresosMediaMes, cuotas:cuotasMediaMes, cuotasHipoteca:cuotasHipotecaMedia, gastosBasicos:gastosBasicosMediaMes, gastosOtros:gastosMediaMes-gastosBasicosMediaMes, amortizaciones:amortizacionesMediaMes };
+    const _metSaludMedia = { ingresos:ingresosMediaMes, cuotas:cuotasMediaMes, cuotasHipoteca:cuotasHipotecaMedia, gastosBasicos:gastosBasicosMediaMes, gastosOtros:gastosDeseoMediaMes, amortizaciones:amortizacionesMediaMes };
     const saludMes   = FinanceMath.calcSaludFinanciera(_metSaludMes, config);
     const saludMedia = FinanceMath.calcSaludFinanciera(_metSaludMedia, config);
 
@@ -670,11 +673,11 @@ const DashboardModule = (() => {
         <div class="card">
           <div class="card-title mb-8">Distribución media mensual (periodo)</div>
           ${(()=>{
-            const otrosGastosMed = Math.max(0, gastosMediaMes - gastosBasicosMediaMes - totalTagPromoMediaMes);
-            const ahorroMed      = Math.max(0, ingresosMediaMes - cuotasMediaMes - gastosMediaMes - amortizacionesMediaMes);
-            const totalRef       = ingresosMediaMes > 0 ? ingresosMediaMes : (cuotasMediaMes + gastosMediaMes + amortizacionesMediaMes + 0.01);
+            const deseosMed      = Math.max(0, gastosDeseoMediaMes - totalTagPromoMediaMes);
+            const ahorroMed      = Math.max(0, ingresosMediaMes - cuotasMediaMes - gastosBasicosMediaMes - gastosDeseoMediaMes - amortizacionesMediaMes);
+            const totalRef       = ingresosMediaMes > 0 ? ingresosMediaMes : (cuotasMediaMes + gastosBasicosMediaMes + gastosDeseoMediaMes + amortizacionesMediaMes + 0.01);
             const pctBasicos = (gastosBasicosMediaMes / totalRef * 100).toFixed(1);
-            const pctOtros   = (otrosGastosMed / totalRef * 100).toFixed(1);
+            const pctOtros   = (deseosMed / totalRef * 100).toFixed(1);
             const pctDeuda   = (cuotasMediaMes / totalRef * 100).toFixed(1);
             const pctAmort   = (amortizacionesMediaMes / totalRef * 100).toFixed(1);
             const pctAhorro  = (ahorroMed / totalRef * 100).toFixed(1);
@@ -688,13 +691,13 @@ const DashboardModule = (() => {
             <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
               <div style="position:relative;width:140px;height:140px;flex-shrink:0"><canvas id="chart-expense-donut"></canvas></div>
               <div style="flex:1;min-width:130px;display:flex;flex-direction:column;gap:7px">
-                ${legendRow('#4d9fff','Básicos',gastosBasicosMediaMes,pctBasicos)}
+                ${legendRow('#4d9fff','Necesidades',gastosBasicosMediaMes,pctBasicos)}
                 ${tagCategorias.map((t,i)=>{
                   const v=_tagPromoMediaMes[t]||0; if(v<0.01)return '';
                   const c=_TAG_PROMO_PALETTE[i%_TAG_PROMO_PALETTE.length];
                   return legendRow(c,t,v,(v/totalRef*100).toFixed(1));
                 }).join('')}
-                ${legendRow('#ff4d6d','Otros gastos',otrosGastosMed,pctOtros)}
+                ${deseosMed > 0.01 ? legendRow('#ffd166','Deseos',deseosMed,pctOtros) : ''}
                 ${legendRow('#a855f7','Deuda',cuotasMediaMes,pctDeuda)}
                 ${amortizacionesMediaMes > 0.01 ? legendRow('#fb923c','Amortizaciones',amortizacionesMediaMes,pctAmort) : ''}
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;border-top:1px solid var(--border);padding-top:6px">
@@ -1527,9 +1530,9 @@ const DashboardModule = (() => {
       .map((t, i) => ({ label: t, value: tagPromoMediaMes[t] || 0, color: _TAG_PROMO_PALETTE[i % _TAG_PROMO_PALETTE.length] }))
       .filter(s => s.value > 0.01);
     const segments = [
-      { label:'Básicos',         value: gastosBasicosMediaMes, color:'#4d9fff' },
+      { label:'Necesidades',     value: gastosBasicosMediaMes, color:'#4d9fff' },
       ...promoSegments,
-      { label:'Otros gastos',    value: otrosGastos,           color:'#ff4d6d' },
+      { label:'Deseos',          value: otrosGastos,           color:'#ffd166' },
       { label:'Deuda',           value: cuotasMediaMes,        color:'#a855f7' },
       { label:'Amortizaciones',  value: amortizacionesMediaMes,color:'#fb923c' },
       { label:'Ahorro est.',     value: ahorro,                color:'#00e5a0' },
