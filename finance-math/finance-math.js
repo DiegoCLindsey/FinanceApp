@@ -121,7 +121,7 @@ const FinanceMath = (() => {
   const _resumenCache = new Map();
   function resumenPrestamo(loan) {
     const amorts = loan.amortizaciones || [];
-    const key = `${loan.capital}|${loan.tin}|${loan.meses}|${loan.fechaInicio}|${loan.comisionAmort||0}|${loan.comisionApertura||0}|${loan.diaPago||''}|${amorts.slice().sort((a,b)=>(a.fecha+a.cantidad+a.tipo).localeCompare(b.fecha+b.cantidad+b.tipo)).map(a=>`${a.fecha}:${a.cantidad}:${a.tipo||''}`).join(';')}`;
+    const key = `${loan.capital}|${loan.tin}|${loan.meses}|${loan.fechaInicio}|${loan.comisionAmort||0}|${loan.comisionApertura||0}|${loan.diaPago||''}|${amorts.slice().sort((a,b)=>`${a.fecha}|${a.cantidad}|${a.tipo||''}`.localeCompare(`${b.fecha}|${b.cantidad}|${b.tipo||''}`)).map(a=>`${a.fecha}:${a.cantidad}:${a.tipo||''}`).join(';')}`;
     if (_resumenCache.has(key)) return _resumenCache.get(key);
     const { capital, tin, meses, fechaInicio, comisionAmort, comisionApertura } = loan;
     const tabla = tablaAmortizacion(capital, tin, meses, fechaInicio, comisionAmort||0, amorts, loan);
