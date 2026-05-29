@@ -132,6 +132,8 @@ const ExpensesModule = (() => {
       <div class="text-sm exp-col-hide">${cuentaLabel}</div>
       <div class="flex gap-8 items-center exp-col-hide">
         <label class="toggle"><input type="checkbox" data-tog-exp="${exp._id}" ${exp.activo?'checked':''}/><span class="toggle-slider"></span></label>
+        ${exp.tipo==='gasto'&&exp.clasificacion==='deseo'?'<span class="badge" style="background:rgba(255,209,102,0.15);color:#ffd166" title="Gasto clasificado como deseo">deseo</span>':''}
+        ${exp.tipo==='gasto'&&exp.clasificacion===null?'<span class="badge badge-inactive" title="Excluido del análisis de distribución">sin clasificar</span>':''}
         ${exp.basico?'<span class="badge badge-orange" title="Gasto básico">⚑ básico</span>':''}
         ${expirado?'<span class="badge badge-inactive">Exp.</span>':''}
       </div>
@@ -178,6 +180,9 @@ const ExpensesModule = (() => {
           <div class="mt-8">${UI.input('ef-fecha-fin','Fecha fin (opcional)','date',exp?.fechaFin||'')}</div>
           <div class="mt-8">${UI.diaPagoWidget('exp', exp?.diaPago||'')}</div>
           <div id="ef-basico-wrap" style="${isTransfer?'display:none':''}">
+            <div class="mt-8" id="ef-clasificacion-wrap" style="${exp?.tipo==='ingreso'?'display:none':''}">
+              ${UI.select('ef-clasificacion','Clasificación del gasto',[['necesidad','Necesidad'],['deseo','Deseo'],['','Sin clasificar (excluido del análisis)']],exp?.clasificacion??'necesidad')}
+            </div>
             <div class="form-group mt-8"><label class="form-label">Etiquetas (separadas por coma)</label><input class="form-input" type="text" id="ef-tags" value="${(exp?.tags||[]).join(', ')}" placeholder="alquiler, vivienda"/></div>
             <div class="form-row mt-8">
               <label class="form-label">Gasto básico</label>
@@ -215,6 +220,8 @@ const ExpensesModule = (() => {
         document.getElementById('ef-varianza-wrap').style.display  = t==='transferencia' ? 'none' : '';
         const irpfWrap = document.getElementById('ef-irpf-wrap');
         if(irpfWrap) irpfWrap.style.display = t==='ingreso' ? '' : 'none';
+        const clasificWrap = document.getElementById('ef-clasificacion-wrap');
+        if(clasificWrap) clasificWrap.style.display = t==='gasto' ? '' : 'none';
       };
     }, 50);
   }
@@ -244,6 +251,7 @@ const ExpensesModule = (() => {
       varianza:      isTransfer ? 0 : (parseFloat(document.getElementById('ef-varianza')?.value)||0),
       inflacion:     isTransfer ? 0 : (parseFloat(document.getElementById('ef-inflacion')?.value)||0),
       sujetoIRPF:    !isTransfer && (document.getElementById('ef-sujetoIRPF')?.checked||false),
+      clasificacion: tipo==='gasto' ? (document.getElementById('ef-clasificacion')?.value||null) : undefined,
       tags:          isTransfer ? ['transferencia'] : (document.getElementById('ef-tags')?.value||'').split(',').map(t=>t.trim()).filter(Boolean),
       escenarioIds:  EscenariosModule.readCheckedEscenarios(),
     };
