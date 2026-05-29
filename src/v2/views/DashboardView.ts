@@ -8,12 +8,14 @@ import {
   calculateFinancialScore,
   calculateEmergencyFundStatus,
   detectCriticalPoints,
+  calculateDistribucionNecesidadDeseo,
 } from '@/finance-math/finance-math';
 import type {
   StatementEntry,
   CriticalPoint,
   FinancialScore,
   EmergencyFundStatus,
+  DistribucionNecesidadDeseo,
 } from '@/types/domain';
 
 const eur = (n: number) =>
@@ -53,6 +55,7 @@ export class DashboardView extends BaseComponent {
     const score = calculateFinancialScore(statement, loans, expenses, accounts, config);
     const ef = calculateEmergencyFundStatus(expenses, accounts, config);
     const criticals = detectCriticalPoints(statement, cushion);
+    const dist = calculateDistribucionNecesidadDeseo(expenses, accounts, config);
 
     const today = new Date().toISOString().slice(0, 10);
     const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
@@ -81,6 +84,8 @@ export class DashboardView extends BaseComponent {
             <div class="kpi-card__badge" style="color:${scoreColor}">${score.label}</div>
           </div>
         </div>
+
+        ${dist.ingresosBrutos > 0 ? distribucionWidget(dist) : ''}
 
         ${score.ingresosMes > 0 ? scoreDetail(score) : ''}
 
@@ -299,6 +304,99 @@ function eventRow(ev: StatementEntry): string {
       <span class="ev-row__label">${ev.concepto}</span>
       <span class="ev-row__delta ev-row__delta--${cls}">${sign}${eur2(ev.delta)}</span>
       <span class="ev-row__balance">${eur2(ev.saldoAcum)}</span>
+    </div>`;
+}
+
+// ── Distribution widget helpers ───────────────────────────────────────────────
+
+function distLegendItem(color: string, label: string, amount: number, pct: number): string {
+  return `
+    <div class="db__dist-legend-item">
+      <span class="db__dist-dot" style="background:${color}"></span>
+      <span class="db__dist-legend-label">${label}</span>
+      <span class="db__dist-legend-amount">${eur(amount)}/mes</span>
+      <span class="db__dist-legend-pct" style="color:${color}">${pct.toFixed(1)}%</span>
+    </div>`;
+}
+
+function distribucionWidget(dist: DistribucionNecesidadDeseo): string {
+  const {
+    ingresoNeto,
+    ingresosBrutos,
+    irpfMensual,
+    modoSimplificado,
+    gastoNecesidad,
+    gastoDeseo,
+    gastoNoClasificado,
+    ahorro,
+    pctNecesidad,
+    pctDeseo,
+    pctAhorro,
+  } = dist;
+
+  const isDeficit = ahorro < 0;
+
+  // Bar segment widths — always relative to ingresoNeto (100%)
+  let wNecesidad = 0;
+  let wDeseo = 0;
+  let wAhorro = 0;
+  if (ingresoNeto > 0) {
+    if (!isDeficit) {
+      wNecesidad = pctNecesidad;
+      wDeseo = pctDeseo;
+      wAhorro = pctAhorro;
+    } else {
+      // Scale necesidad + deseo to fill 100% when in deficit
+      const total = pctNecesidad + pctDeseo;
+      const scale = total > 0 ? 100 / total : 0;
+      wNecesidad = pctNecesidad * scale;
+      wDeseo = pctDeseo * scale;
+    }
+  }
+
+  const irpfRow = modoSimplificado
+    ? `<span class="db__dist-mode">Sin retención IRPF (modo simplificado)</span>`
+    : `<span class="db__dist-irpf">Bruto ${eur(ingresosBrutos)}/mes · IRPF estimado ${eur(irpfMensual)}/mes</span>`;
+
+  const ahorroColor = ahorro >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+  const ahorroLabel = ahorro >= 0 ? 'Ahorro estimado' : 'Déficit';
+
+  const ahorroRow = `
+    <div class="db__dist-legend-item">
+      <span class="db__dist-dot" style="background:${ahorroColor}"></span>
+      <span class="db__dist-legend-label">${ahorroLabel}</span>
+      <span class="db__dist-legend-amount" style="color:${ahorroColor}">${ahorro >= 0 ? '' : '−'}${eur(Math.abs(ahorro))}/mes</span>
+      <span class="db__dist-legend-pct" style="color:${ahorroColor}">${Math.abs(pctAhorro).toFixed(1)}%</span>
+    </div>`;
+
+  const unclassifiedNote =
+    gastoNoClasificado > 0
+      ? `<div class="db__dist-unclassified">
+          ⚠ ${eur(gastoNoClasificado)}/mes en gastos sin clasificar — no se incluyen en el cómputo
+        </div>`
+      : '';
+
+  return `
+    <div class="db__dist-widget">
+      <div class="db__dist-header">
+        <h2 class="db__section-title">Distribución de ingresos</h2>
+        <span class="db__dist-net">${eur(ingresoNeto)}<span class="db__dist-net-unit">/mes neto</span></span>
+      </div>
+      <div class="db__dist-irpf-row">${irpfRow}</div>
+
+      <div class="db__dist-bar${isDeficit ? ' db__dist-bar--deficit' : ''}">
+        <div class="db__dist-seg db__dist-seg--necesidad" style="width:${wNecesidad.toFixed(1)}%"></div>
+        <div class="db__dist-seg db__dist-seg--deseo" style="width:${wDeseo.toFixed(1)}%"></div>
+        ${!isDeficit && wAhorro > 0.1 ? `<div class="db__dist-seg db__dist-seg--ahorro" style="width:${wAhorro.toFixed(1)}%"></div>` : ''}
+      </div>
+
+      <div class="db__dist-legend">
+        ${distLegendItem('var(--accent-blue)', 'Necesidades', gastoNecesidad, pctNecesidad)}
+        ${distLegendItem('var(--accent-yellow)', 'Deseos', gastoDeseo, pctDeseo)}
+        ${ahorroRow}
+      </div>
+
+      ${unclassifiedNote}
     </div>`;
 }
 

@@ -51,6 +51,7 @@ export function expenseFactory(overrides: Partial<Expense> = {}): Expense {
     varianza: 0,
     inflacion: 0,
     sujetoIRPF: false,
+    clasificacion: null,
     tags: [],
     ...overrides,
   };

@@ -14,6 +14,7 @@ import type {
   EmergencyFundStatus,
   BudgetProgress,
   FiscalProjection,
+  DistribucionNecesidadDeseo,
   ScenarioParams,
   ScenarioPoint,
 } from '@/types/domain';
@@ -1201,6 +1202,68 @@ export function calculateFiscalProjection(
     pensionContribuidoAnyo,
     margenDeduccionPension,
     ahorroFiscalPension,
+  };
+}
+
+// ── Income distribution: necesidad / deseo ────────────────────────────────────
+
+/**
+ * Calculates the distribution of net income into necesidad, deseo and ahorro.
+ * Net income = gross monthly income − monthly IRPF (or gross if no brackets).
+ * Expenses without clasificacion are excluded from the computation.
+ */
+export function calculateDistribucionNecesidadDeseo(
+  expenses: Expense[],
+  accounts: Account[],
+  config: AppConfig
+): DistribucionNecesidadDeseo {
+  const modoSimplificado = !config.tramos_irpf?.length;
+
+  const ingresosBrutos = expenses
+    .filter((e) => e.activo && e.tipo === 'ingreso' && e.tipoFrecuencia === 'mensual')
+    .reduce((s, e) => s + e.cuantia, 0);
+
+  let irpfMensual = 0;
+  if (!modoSimplificado) {
+    const fiscal = calculateFiscalProjection(expenses, accounts, config);
+    irpfMensual = fiscal.cuotaIRPF / 12;
+  }
+
+  const ingresoNeto = Math.max(0, ingresosBrutos - irpfMensual);
+
+  const gastosActivos = expenses.filter(
+    (e) => e.activo && e.tipo === 'gasto' && e.tipoFrecuencia === 'mensual'
+  );
+
+  const gastoNecesidad = gastosActivos
+    .filter((e) => e.clasificacion === 'necesidad')
+    .reduce((s, e) => s + e.cuantia, 0);
+
+  const gastoDeseo = gastosActivos
+    .filter((e) => e.clasificacion === 'deseo')
+    .reduce((s, e) => s + e.cuantia, 0);
+
+  const gastoNoClasificado = gastosActivos
+    .filter((e) => !e.clasificacion)
+    .reduce((s, e) => s + e.cuantia, 0);
+
+  const ahorro = ingresoNeto - gastoNecesidad - gastoDeseo;
+  const pctNecesidad = ingresoNeto > 0 ? (gastoNecesidad / ingresoNeto) * 100 : 0;
+  const pctDeseo = ingresoNeto > 0 ? (gastoDeseo / ingresoNeto) * 100 : 0;
+  const pctAhorro = ingresoNeto > 0 ? (ahorro / ingresoNeto) * 100 : 0;
+
+  return {
+    ingresosBrutos,
+    irpfMensual,
+    ingresoNeto,
+    modoSimplificado,
+    gastoNecesidad,
+    gastoDeseo,
+    gastoNoClasificado,
+    ahorro,
+    pctNecesidad,
+    pctDeseo,
+    pctAhorro,
   };
 }
 
