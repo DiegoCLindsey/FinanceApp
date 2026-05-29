@@ -668,15 +668,22 @@ body {
   overflow: hidden;
 }
 
+.exp-entry {
+  border-bottom: 1px solid var(--border);
+}
+
+.exp-entry:last-child {
+  border-bottom: none;
+}
+
+.exp-entry--open .exp-row {
+  background: var(--bg-elevated);
+}
+
 .exp-row {
   display: flex;
   align-items: stretch;
-  border-bottom: 1px solid var(--border);
   transition: background var(--transition);
-}
-
-.exp-row:last-child {
-  border-bottom: none;
 }
 
 .exp-row:hover {
@@ -684,7 +691,7 @@ body {
 }
 
 .exp-row__type {
-  width: 90px;
+  width: 84px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -698,15 +705,17 @@ body {
 
 .exp-row__body {
   flex: 1;
-  padding: 10px 14px;
+  padding: 10px 12px;
   min-width: 0;
 }
 
 .exp-row__top {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: baseline;
+  gap: 8px;
   margin-bottom: 4px;
+  min-width: 0;
 }
 
 .exp-row__name {
@@ -716,32 +725,122 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-right: 12px;
+  min-width: 0;
 }
 
 .exp-row__amount {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   font-family: var(--font-mono);
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .exp-row__meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
+  row-gap: 4px;
 }
 
 .exp-row__freq,
 .exp-row__account {
   font-size: 11px;
   color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .exp-row__account::before {
   content: '·';
-  margin-right: 8px;
+  margin-right: 6px;
+}
+
+.exp-row__menu-btn {
+  width: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border);
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  transition: background var(--transition), color var(--transition);
+  padding: 0;
+}
+
+.exp-row__menu-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.exp-entry--open .exp-row__menu-btn {
+  color: var(--accent-blue);
+  background: color-mix(in srgb, var(--accent-blue) 10%, transparent);
+}
+
+/* ── Expense context menu ─────────────────────────────────────────────────── */
+
+.exp-menu {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px 8px 84px;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.exp-menu__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.exp-menu__actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.exp-menu__btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.exp-menu__btn:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.exp-menu__btn--active {
+  border-color: currentColor;
+}
+
+.exp-menu__btn--necesidad {
+  background: color-mix(in srgb, var(--accent-blue) 15%, transparent);
+  color: var(--accent-blue);
+}
+
+.exp-menu__btn--deseo {
+  background: color-mix(in srgb, var(--accent-yellow) 15%, transparent);
+  color: var(--accent-yellow);
 }
 
 .exp-badge {
@@ -774,8 +873,38 @@ body {
     grid-template-columns: repeat(2, 1fr);
   }
   .exp-row__type {
-    width: 70px;
+    width: 60px;
     font-size: 10px;
+  }
+  .exp-menu {
+    padding-left: 60px;
+  }
+  .exp-row__body {
+    padding: 8px 8px;
+  }
+  .exp-row__name {
+    font-size: 13px;
+  }
+  .exp-row__amount {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .exp-row__type {
+    width: 48px;
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+  .exp-menu {
+    padding-left: 48px;
+  }
+  .exp-row__top {
+    flex-wrap: wrap;
+  }
+  .exp-row__amount {
+    flex-basis: 100%;
+    font-size: 13px;
   }
 }
 
