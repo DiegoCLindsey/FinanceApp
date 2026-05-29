@@ -1,5 +1,7 @@
 // Depends on: State, FinanceMath, UI
 const ExpensesModule = (() => {
+  const _debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
   // Sort/filter state
   let showExpired=false, sortKey='concepto', sortDir=1;
   let filterTipo='', filterCuenta='', filterFechaMin='', filterFechaMax='', filterSearch='', filterTags=new Set();
@@ -60,7 +62,7 @@ const ExpensesModule = (() => {
 
     document.getElementById('btn-new-exp').onclick=()=>openForm();
     document.getElementById('toggle-expired').onchange=e=>{showExpired=e.target.checked;render();};
-    document.getElementById('flt-search').oninput=e=>{filterSearch=e.target.value;render();};
+    document.getElementById('flt-search').oninput=_debounce(e=>{filterSearch=e.target.value;render();},250);
     document.getElementById('flt-tipo').onchange=e=>{filterTipo=e.target.value;render();};
     document.getElementById('flt-cuenta').onchange=e=>{filterCuenta=e.target.value;render();};
     document.getElementById('flt-fecha-min').onchange=e=>{filterFechaMin=e.target.value;render();};

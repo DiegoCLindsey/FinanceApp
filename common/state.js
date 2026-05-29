@@ -1,6 +1,7 @@
 // ==================== STATE_MANAGER ====================
 // Depends on: StorageAdapter (common/storage.js)
 const State = (() => {
+  const SCHEMA_VERSION = 4;
   // Cuenta Default siempre presente
   // saldo        = saldo actual (para intereses)
   // saldoInicial = saldo en fechaInicialSaldo (punto de arranque del extracto)
@@ -52,6 +53,11 @@ const State = (() => {
   async function load() {
     const _stateKeys = Object.keys(DEFAULT_STATE);
     for (const k of _stateKeys) { const val = StorageAdapter.get(`state_${k}`); if (val !== null) state[k] = val; }
+    // Skip migration if schema is already at current version
+    if (StorageAdapter.get('state__schemaVersion') === SCHEMA_VERSION) {
+      ensureDefaultAccount();
+      return;
+    }
     // Migrate: ensure accounts have new fields
     state.accounts = (state.accounts || []).map(a => {
       const base = {
@@ -154,6 +160,9 @@ const State = (() => {
     };
     state.loans    = (state.loans    || []).map(l => ({ ...l, diaPago: _migDia(l.diaPago) }));
     state.expenses = (state.expenses || []).map(e => ({ ...e, diaPago: _migDia(e.diaPago||'') }));
+    // Persist migrated collections and mark schema version complete
+    for (const k of Object.keys(DEFAULT_STATE)) { _persist(k); }
+    StorageAdapter.set('state__schemaVersion', SCHEMA_VERSION);
     // Garantizar que siempre existe Default
     ensureDefaultAccount();
   }

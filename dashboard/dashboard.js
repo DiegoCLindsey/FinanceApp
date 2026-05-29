@@ -27,11 +27,6 @@ const DashboardModule = (() => {
         </div>
         <div style="font-family:var(--font-mono);font-size:24px;font-weight:700;color:${_SEM_COLOR[s.semAhorro]};line-height:1">${_pct(s.tasaAhorro)}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:3px">${e(s.ahorroReal)}/mes</div>
-        ${s.amortizaciones > 0.01 ? `
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text3)">
-          Ahorro bruto: ${e(s.ahorroBruto)}/mes<br>
-          <span style="color:var(--accent)">+ ${e(s.amortizaciones)}/mes amortizaciones</span>
-        </div>` : ''}
         <div style="margin-top:8px;font-size:10px;color:var(--text3)">🟢 ≥${s.umbralAhorroVerde}% &nbsp;🟡 ≥${s.umbralAhorroAmarillo}% &nbsp;🔴 debajo</div>
       </div>
 
@@ -1535,7 +1530,17 @@ const DashboardModule = (() => {
       { label:'Ahorro est.',     value: ahorro,                color:'#00e5a0' },
     ].filter(s => s.value > 0);
     if (!segments.length) return;
-    if (charts['chart-expense-donut']) { try { charts['chart-expense-donut'].destroy(); } catch{} }
+    const existing = charts['chart-expense-donut'];
+    if (existing && existing.data.labels.length === segments.length) {
+      // Update in place — avoids canvas teardown on every period change
+      existing.data.labels = segments.map(s=>s.label);
+      existing.data.datasets[0].data = segments.map(s=>s.value);
+      existing.data.datasets[0].backgroundColor = segments.map(s=>s.color);
+      existing.update('none');
+      return;
+    }
+    if (existing) { try { existing.destroy(); } catch{} }
+    const total = segments.reduce((s,x)=>s+x.value,0);
     charts['chart-expense-donut'] = new Chart(ctx, {
       type: 'doughnut',
       data: {
@@ -1549,7 +1554,7 @@ const DashboardModule = (() => {
           tooltip: {
             backgroundColor:'#13161e', borderColor:'#252a38', borderWidth:1,
             titleColor:'#8b92a8', bodyColor:'#e8eaf2',
-            callbacks: { label: c => { const total=segments.reduce((s,x)=>s+x.value,0); return ` ${c.label}: ${FinanceMath.eur(c.parsed)} (${(c.parsed/(total||c.parsed)*100).toFixed(1)}%)`; } }
+            callbacks: { label: c => { const t=segments.reduce((s,x)=>s+x.value,0); return ` ${c.label}: ${FinanceMath.eur(c.parsed)} (${(c.parsed/(t||c.parsed)*100).toFixed(1)}%)`; } }
           }
         }
       }
