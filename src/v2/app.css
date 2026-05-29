@@ -1704,3 +1704,149 @@ body {
   text-align: right;
   white-space: nowrap;
 }
+
+/* ── Income distribution widget ───────────────────────────────────────────── */
+
+.db__dist-widget {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.db__dist-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.db__dist-header .db__section-title {
+  margin-bottom: 0;
+}
+
+.db__dist-net {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.db__dist-net-unit {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-left: 4px;
+}
+
+.db__dist-irpf-row {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.db__dist-mode {
+  font-style: italic;
+}
+
+.db__dist-bar {
+  display: flex;
+  height: 14px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  gap: 2px;
+}
+
+.db__dist-bar--deficit {
+  outline: 2px solid var(--accent-red);
+  outline-offset: 1px;
+}
+
+.db__dist-seg {
+  height: 100%;
+  transition: width 0.4s ease;
+  min-width: 2px;
+}
+
+.db__dist-seg--necesidad {
+  background: var(--accent-blue);
+  border-radius: 7px 0 0 7px;
+}
+
+.db__dist-seg--deseo {
+  background: var(--accent-yellow);
+}
+
+.db__dist-seg--ahorro {
+  background: var(--accent-green);
+  border-radius: 0 7px 7px 0;
+  flex: 1;
+}
+
+.db__dist-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.db__dist-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.db__dist-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.db__dist-legend-label {
+  flex: 1;
+  color: var(--text-primary);
+}
+
+.db__dist-legend-amount {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.db__dist-legend-pct {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 46px;
+  text-align: right;
+}
+
+.db__dist-unclassified {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border-radius: 6px;
+  border-left: 3px solid var(--accent-yellow);
+}
+
+/* ── Clasificación badges ──────────────────────────────────────────────────── */
+
+.exp-badge--necesidad {
+  background: color-mix(in srgb, var(--accent-blue) 18%, transparent);
+  color: var(--accent-blue);
+}
+
+.exp-badge--deseo {
+  background: color-mix(in srgb, var(--accent-yellow) 18%, transparent);
+  color: var(--accent-yellow);
+}
+
+.exp-badge--sin-clasificar {
+  background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
+  color: var(--text-secondary);
+}

@@ -146,6 +146,14 @@ export class ExpenseListView extends BaseComponent {
       : '';
     const basicBadge = exp.basico ? '<span class="exp-badge exp-badge--basic">básico</span>' : '';
     const irpfBadge = exp.sujetoIRPF ? '<span class="exp-badge exp-badge--irpf">IRPF</span>' : '';
+    const clasificacionBadge =
+      exp.tipo === 'gasto'
+        ? exp.clasificacion === 'necesidad'
+          ? '<span class="exp-badge exp-badge--necesidad">necesidad</span>'
+          : exp.clasificacion === 'deseo'
+            ? '<span class="exp-badge exp-badge--deseo">deseo</span>'
+            : '<span class="exp-badge exp-badge--sin-clasificar">sin clasificar</span>'
+        : '';
 
     return `
       <div class="exp-row">
@@ -160,7 +168,7 @@ export class ExpenseListView extends BaseComponent {
           <div class="exp-row__meta">
             <span class="exp-row__freq">${freqLabel}${freqN}</span>
             <span class="exp-row__account">${accountName(exp.cuenta)}</span>
-            ${basicBadge}${irpfBadge}${tags}
+            ${basicBadge}${irpfBadge}${clasificacionBadge}${tags}
           </div>
         </div>
       </div>`;

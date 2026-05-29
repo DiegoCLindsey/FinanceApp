@@ -36,6 +36,8 @@ export interface Loan {
 }
 
 // ── Expense / Income / Transfer ─────────────────────────────────────────────
+export type ClasificacionGasto = 'necesidad' | 'deseo' | null;
+
 export interface Expense {
   _id: string;
   concepto: string;
@@ -53,6 +55,7 @@ export interface Expense {
   varianza: number; // % variance for Monte Carlo (0 = deterministic)
   inflacion: number; // Annual inflation % (0 = use global config)
   sujetoIRPF: boolean;
+  clasificacion: ClasificacionGasto; // null = unclassified (excluded from distribution)
   tags: string[];
 }
 
@@ -293,6 +296,21 @@ export interface FiscalProjection {
   pensionContribuidoAnyo: number; // sum of pension contributions this year
   margenDeduccionPension: number; // limiteDeduccionPension - pensionContribuidoAnyo
   ahorroFiscalPension: number; // margen × tipoMarginal / 100
+}
+
+// ── Income distribution (necesidad / deseo) ──────────────────────────────────
+export interface DistribucionNecesidadDeseo {
+  ingresosBrutos: number; // sum of active monthly income
+  irpfMensual: number; // monthly IRPF (0 when modoSimplificado)
+  ingresoNeto: number; // ingresosBrutos - irpfMensual
+  modoSimplificado: boolean; // true when no IRPF brackets configured
+  gastoNecesidad: number; // monthly spend classified as necesidad
+  gastoDeseo: number; // monthly spend classified as deseo
+  gastoNoClasificado: number; // monthly spend without classification (excluded)
+  ahorro: number; // ingresoNeto - gastoNecesidad - gastoDeseo
+  pctNecesidad: number; // % of ingresoNeto
+  pctDeseo: number; // % of ingresoNeto
+  pctAhorro: number; // % of ingresoNeto (negative = deficit)
 }
 
 // ── Multi-scenario forecast (#25) ─────────────────────────────────────────────
