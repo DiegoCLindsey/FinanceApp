@@ -1,7 +1,7 @@
 import { BaseComponent } from '@/core/BaseComponent';
-import { appStore } from '@/core/store';
+import { appStore, upsertExpense } from '@/core/store';
 import { calculateBudgetProgress } from '@/finance-math/finance-math';
-import type { Expense, TipoMovimiento, BudgetProgress } from '@/types/domain';
+import type { Expense, TipoMovimiento, BudgetProgress, ClasificacionGasto } from '@/types/domain';
 
 const eur = (n: number) =>
   new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(n);
@@ -25,9 +25,49 @@ const TYPE_COLOR: Record<TipoMovimiento, string> = {
 };
 
 export class ExpenseListView extends BaseComponent {
+  private _openMenuId: string | null = null;
+
   override connectedCallback(): void {
     this.connectStore(appStore);
     super.connectedCallback();
+    this.on('click', (e: MouseEvent) => this._handleClick(e));
+  }
+
+  private _handleClick(e: MouseEvent): void {
+    const target = e.target as HTMLElement;
+
+    // Classification button inside the context menu
+    const classBtn = target.closest<HTMLElement>('[data-classify]');
+    if (classBtn) {
+      e.stopPropagation();
+      const id = classBtn.dataset.expId!;
+      const raw = classBtn.dataset.classify!;
+      const clasificacion: ClasificacionGasto =
+        raw === 'necesidad' ? 'necesidad' : raw === 'deseo' ? 'deseo' : null;
+      const exp = appStore.getState().expenses.find((ex) => ex._id === id);
+      if (exp) {
+        upsertExpense({ ...exp, clasificacion });
+        this._openMenuId = null;
+        // store update triggers invalidate() via subscription
+      }
+      return;
+    }
+
+    // Menu toggle button (⋮)
+    const toggleBtn = target.closest<HTMLElement>('[data-menu-toggle]');
+    if (toggleBtn) {
+      e.stopPropagation();
+      const id = toggleBtn.dataset.menuToggle!;
+      this._openMenuId = this._openMenuId === id ? null : id;
+      this.invalidate();
+      return;
+    }
+
+    // Click outside any open menu → close
+    if (this._openMenuId !== null && !target.closest('[data-exp-menu]')) {
+      this._openMenuId = null;
+      this.invalidate();
+    }
   }
 
   protected template(): string {
@@ -132,9 +172,18 @@ export class ExpenseListView extends BaseComponent {
       <section class="exp-group${muted ? ' exp-group--muted' : ''}">
         <h2 class="exp-group__title">${title} <span class="exp-group__count">${list.length}</span></h2>
         <div class="exp-table">
-          ${list.map((e) => this._row(e, accountName)).join('')}
+          ${list.map((e) => this._entry(e, accountName)).join('')}
         </div>
       </section>`;
+  }
+
+  private _entry(exp: Expense, accountName: (id: string) => string): string {
+    const isOpen = this._openMenuId === exp._id;
+    return `
+      <div class="exp-entry${isOpen ? ' exp-entry--open' : ''}">
+        ${this._row(exp, accountName)}
+        ${isOpen ? this._menu(exp) : ''}
+      </div>`;
   }
 
   private _row(exp: Expense, accountName: (id: string) => string): string {
@@ -154,6 +203,10 @@ export class ExpenseListView extends BaseComponent {
             ? '<span class="exp-badge exp-badge--deseo">deseo</span>'
             : '<span class="exp-badge exp-badge--sin-clasificar">sin clasificar</span>'
         : '';
+    const menuBtn =
+      exp.tipo === 'gasto'
+        ? `<button class="exp-row__menu-btn" data-menu-toggle="${exp._id}" aria-label="Opciones de clasificación">⋮</button>`
+        : '';
 
     return `
       <div class="exp-row">
@@ -170,6 +223,23 @@ export class ExpenseListView extends BaseComponent {
             <span class="exp-row__account">${accountName(exp.cuenta)}</span>
             ${basicBadge}${irpfBadge}${clasificacionBadge}${tags}
           </div>
+        </div>
+        ${menuBtn}
+      </div>`;
+  }
+
+  private _menu(exp: Expense): string {
+    const c = exp.clasificacion;
+    return `
+      <div class="exp-menu" data-exp-menu>
+        <span class="exp-menu__label">Clasificar como</span>
+        <div class="exp-menu__actions">
+          <button class="exp-menu__btn${c === 'necesidad' ? ' exp-menu__btn--active exp-menu__btn--necesidad' : ''}"
+            data-classify="necesidad" data-exp-id="${exp._id}">Necesidad</button>
+          <button class="exp-menu__btn${c === 'deseo' ? ' exp-menu__btn--active exp-menu__btn--deseo' : ''}"
+            data-classify="deseo" data-exp-id="${exp._id}">Deseo</button>
+          <button class="exp-menu__btn${!c ? ' exp-menu__btn--active' : ''}"
+            data-classify="" data-exp-id="${exp._id}">Sin clasificar</button>
         </div>
       </div>`;
   }
