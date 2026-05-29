@@ -1298,15 +1298,15 @@ const FinanceMath = (() => {
     const { ingresos=0, cuotas=0, cuotasHipoteca=0, gastosBasicos=0, gastosOtros=0, amortizaciones=0 } = met;
 
     // Derivados
-    const ahorroBruto = ingresos - cuotas - gastosBasicos - gastosOtros;
-    const ahorroReal  = ahorroBruto + amortizaciones;
+    const ahorroBruto = ingresos - cuotas - amortizaciones - gastosBasicos - gastosOtros;
+    const ahorroReal  = ahorroBruto;
     const tasaAhorro  = ingresos > 0 ? ahorroReal / ingresos * 100 : null;
 
     const cuotasDTI = exclHip ? cuotas - cuotasHipoteca : cuotas;
     const dti       = ingresos > 0 ? cuotasDTI / ingresos * 100 : null;
     const dtiTotal  = ingresos > 0 ? cuotas / ingresos * 100 : null;
 
-    const pctNecesidades = ingresos > 0 ? (gastosBasicos + cuotas) / ingresos * 100 : null;
+    const pctNecesidades = ingresos > 0 ? (gastosBasicos + cuotas + amortizaciones) / ingresos * 100 : null;
     const pctDeseos      = ingresos > 0 ? gastosOtros / ingresos * 100 : null;
 
     // Semáforo: 'verde' | 'amarillo' | 'rojo' | 'neutral'

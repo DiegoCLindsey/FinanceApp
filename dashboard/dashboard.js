@@ -678,8 +678,7 @@ const DashboardModule = (() => {
             const totalRef       = ingresosMediaMes > 0 ? ingresosMediaMes : (cuotasMediaMes + gastosBasicosMediaMes + gastosDeseoMediaMes + amortizacionesMediaMes + 0.01);
             const pctBasicos = (gastosBasicosMediaMes / totalRef * 100).toFixed(1);
             const pctOtros   = (deseosMed / totalRef * 100).toFixed(1);
-            const pctDeuda   = (cuotasMediaMes / totalRef * 100).toFixed(1);
-            const pctAmort   = (amortizacionesMediaMes / totalRef * 100).toFixed(1);
+            const pctDeuda   = ((cuotasMediaMes + amortizacionesMediaMes) / totalRef * 100).toFixed(1);
             const pctAhorro  = (ahorroMed / totalRef * 100).toFixed(1);
             const ahorroColor = ahorroMed > 0 ? 'var(--accent)' : 'var(--text3)';
             const legendRow = (color, label, amount, pct) =>
@@ -698,8 +697,7 @@ const DashboardModule = (() => {
                   return legendRow(c,t,v,(v/totalRef*100).toFixed(1));
                 }).join('')}
                 ${deseosMed > 0.01 ? legendRow('#ffd166','Deseos',deseosMed,pctOtros) : ''}
-                ${legendRow('#a855f7','Deuda',cuotasMediaMes,pctDeuda)}
-                ${amortizacionesMediaMes > 0.01 ? legendRow('#fb923c','Amortizaciones',amortizacionesMediaMes,pctAmort) : ''}
+                ${legendRow('#a855f7','Deuda',cuotasMediaMes + amortizacionesMediaMes,pctDeuda)}
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;border-top:1px solid var(--border);padding-top:6px">
                   <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#00e5a0;display:inline-block"></span><span style="color:var(--text2)">Ahorro est.</span></span>
                   <span style="font-family:var(--font-mono);font-weight:700;color:${ahorroColor}">${FinanceMath.eur(ahorroMed)}<span style="margin-left:4px">${pctAhorro}%</span></span>
@@ -1533,8 +1531,7 @@ const DashboardModule = (() => {
       { label:'Necesidades',     value: gastosBasicosMediaMes, color:'#4d9fff' },
       ...promoSegments,
       { label:'Deseos',          value: otrosGastos,           color:'#ffd166' },
-      { label:'Deuda',           value: cuotasMediaMes,        color:'#a855f7' },
-      { label:'Amortizaciones',  value: amortizacionesMediaMes,color:'#fb923c' },
+      { label:'Deuda',           value: cuotasMediaMes + amortizacionesMediaMes, color:'#a855f7' },
       { label:'Ahorro est.',     value: ahorro,                color:'#00e5a0' },
     ].filter(s => s.value > 0);
     if (!segments.length) return;
