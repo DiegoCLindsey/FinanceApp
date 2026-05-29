@@ -968,7 +968,7 @@ const DashboardModule = (() => {
 
     // Pass computed metrics to chart functions
     const _metricasGraficos = { loans, expenses, config, numMeses, extracto, tagCategorias };
-    const _donutMetrics = { gastosBasicosMediaMes, gastosMediaMes, cuotasMediaMes, ingresosMediaMes, amortizacionesMediaMes, tagPromoMediaMes: _tagPromoMediaMes };
+    const _donutMetrics = { gastosBasicosMediaMes, gastosDeseoMediaMes, gastosMediaMes, cuotasMediaMes, ingresosMediaMes, amortizacionesMediaMes, tagPromoMediaMes: _tagPromoMediaMes };
     // Breakdown "otros gastos" por tag (media mensual del periodo), excluding promoted tags
     const _otrosTagMap = {};
     evSinTransf.filter(e => e.tipo === 'gasto' && e.sourceType === 'expense').forEach(e => {
@@ -1520,12 +1520,12 @@ const DashboardModule = (() => {
     });
   }
 
-  function renderChartExpenseDonut({ gastosBasicosMediaMes, gastosMediaMes, cuotasMediaMes, ingresosMediaMes, amortizacionesMediaMes=0, tagPromoMediaMes={} }) {
+  function renderChartExpenseDonut({ gastosBasicosMediaMes, gastosDeseoMediaMes=0, gastosMediaMes, cuotasMediaMes, ingresosMediaMes, amortizacionesMediaMes=0, tagPromoMediaMes={} }) {
     const ctx = document.getElementById('chart-expense-donut'); if (!ctx) return;
     const tagCategorias = State.get('config').tagCategorias || [];
     const totalTagPromo = tagCategorias.reduce((s, t) => s + (tagPromoMediaMes[t] || 0), 0);
-    const otrosGastos = Math.max(0, gastosMediaMes - gastosBasicosMediaMes - totalTagPromo);
-    const ahorro      = Math.max(0, ingresosMediaMes - cuotasMediaMes - gastosMediaMes - amortizacionesMediaMes);
+    const otrosGastos = Math.max(0, gastosDeseoMediaMes - totalTagPromo);
+    const ahorro      = Math.max(0, ingresosMediaMes - cuotasMediaMes - gastosBasicosMediaMes - gastosDeseoMediaMes - amortizacionesMediaMes);
     const promoSegments = tagCategorias
       .map((t, i) => ({ label: t, value: tagPromoMediaMes[t] || 0, color: _TAG_PROMO_PALETTE[i % _TAG_PROMO_PALETTE.length] }))
       .filter(s => s.value > 0.01);
