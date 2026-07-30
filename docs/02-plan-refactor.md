@@ -33,7 +33,7 @@ fase, las tareas marcadas ∥ son paralelizables.
       salud financiera, prestación por desempleo, extracto de integración.
       CA: `npm test` verde; cubren las ramas principales de cada función pura.
 - [x] **0.4 Actualizar scripts npm y eslint** a las rutas reales del repo.
-- [ ] **0.5 CI** — GitHub Action que ejecute `npm test` en cada PR.
+- [x] **0.5 CI** — GitHub Action (`.github/workflows/test.yml`) que ejecuta lint + tests en cada PR.
 
 ## Fase 1 — Refactor SOLID + modularización (TypeScript, ESM)
 
