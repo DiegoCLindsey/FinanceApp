@@ -70,15 +70,23 @@ src/
 └── app/             # shell, router, period bar, bootstrap
 ```
 
-- [ ] **1.1 Bootstrap del paquete** — `src/` + Vite build que emite la app; `index.html`
-      pasa a cargar el bundle. CA: la app arranca con datos existentes de localStorage
-      (misma clave de storage, migración transparente).
-- [ ] **1.2 `core/dates` + `core/money`** ∥ — helpers únicos; corrigen el bug de
-      `toISOString` (riesgo §5.1 del análisis) y fijan la política de redondeo
-      (céntimos en dominio). CA: tests unitarios propios + tests F0 siguen verdes vía
-      capa de compatibilidad.
-- [ ] **1.3 Portar `core/` fiscal y préstamos** ∥ — mover funciones de FinanceMath a
-      módulos tipados. CA: paridad numérica exacta con tests F0 (tolerancia 0).
+- [ ] **1.1 Bootstrap del paquete (re-alcance)** — el switch de `index.html` al bundle
+      de Vite se pospone hasta que el core esté completo, para que la app estática siga
+      funcionando sin build entretanto. `src/` + typecheck/lint/tests ya están cableados
+      (hecho); queda: entry `src/main.ts`, publicación de módulos legacy en `globalThis`
+      y build de Vite. CA: la app arranca con datos existentes de localStorage.
+- [x] **1.2 `core/dates` + `core/money`** — `src/core/dates.ts` (formatLocalDate
+      corrige el bug de `toISOString`, parseLocalDate, clampedDate, día efectivo) y
+      `src/core/money.ts` (céntimos, roundMoney, formatEUR). Política de precisión
+      documentada en money.ts: cálculo interno en float por paridad con legacy;
+      céntimos en bordes (persistencia/presentación).
+- [ ] **1.3 Portar `core/` fiscal y préstamos** ∥ — EN CURSO. Portados con paridad
+      exacta verificada (`tests/core/parity.test.ts`, igualdad estricta): loan.ts
+      (cuota, TAE, tabla, resumen con caché), tax/irpf.ts, tax/ahorro.ts,
+      inflation.ts, health.ts. Pendiente: tax/pension.ts (calcFondosPension,
+      calcImpuestoPension, calcTipoMarginal*; requieren inyectar 'hoy' y tramos en
+      lugar de leer State), calcFondoInversion, saldoRealCuenta/saldoEnFecha (irán a
+      engine/ o a un core/accounts.ts). CA: paridad exacta (tolerancia 0).
 - [ ] **1.4 Motor de proyección como providers** — interfaz
       `EventProvider { id; project(range, ctx): CashEvent[] }`; `statement.ts` compone
       los providers registrados (OCP: contabilidad/supuestos se enchufarán aquí).
