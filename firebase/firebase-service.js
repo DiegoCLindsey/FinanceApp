@@ -225,6 +225,51 @@ const FirebaseService = (() => {
     return _user;
   }
 
+  // ── Reanudar sesión sin interacción ──────────────────────────────────────────
+  // El SDK de Firebase persiste la sesión (IndexedDB) y refresca el ID token
+  // solo. Al recargar, `currentUser` se resuelve de forma asíncrona, así que hay
+  // que esperar al primer evento de onAuthStateChanged.
+  //
+  // Devuelve el usuario si el token sigue siendo válido, o null si no hay sesión
+  // o ha dejado de serlo — en cuyo caso el llamante debe echar al usuario.
+  async function restoreSession(config, { timeoutMs = 8000 } = {}) {
+    if (!config) return null;
+    try { _initApp(config); } catch { return null; }
+
+    const user = await new Promise(resolve => {
+      let resuelto = false;
+      const finalizar = (u) => { if (!resuelto) { resuelto = true; resolve(u); } };
+      const unsub = _auth.onAuthStateChanged(
+        u => { unsub(); finalizar(u); },
+        () => { unsub(); finalizar(null); }
+      );
+      // Si el SDK no contesta (offline con IndexedDB bloqueado), no colgamos el arranque
+      setTimeout(() => finalizar(null), timeoutMs);
+    });
+    if (!user) return null;
+
+    // El token puede estar caducado o revocado: forzar refresco lo comprueba
+    // contra el servidor, que es lo que hace válida a la sesión.
+    try {
+      await user.getIdToken(true);
+    } catch {
+      await _auth.signOut().catch(() => {});
+      return null;
+    }
+
+    _user = user;
+    try {
+      await _checkWhitelist(user.email);   // el acceso puede haberse revocado
+    } catch {
+      await _auth.signOut().catch(() => {});
+      _user = null;
+      return null;
+    }
+    localStorage.setItem(LS_EMAIL, user.email);
+    await _loadAdminStatus(user.email);
+    return _user;
+  }
+
   // ── Cierre de sesión ─────────────────────────────────────────────────────────
   async function logout() {
     if (_auth) await _auth.signOut().catch(() => {});
@@ -335,7 +380,7 @@ const FirebaseService = (() => {
   return {
     isConfigured, getConfig, hasInjectedConfig, hasSavedSession, savedEmail,
     isConnected, currentUserEmail, isAdmin,
-    login, register, loginWithGoogle, logout, forget,
+    login, register, loginWithGoogle, restoreSession, logout, forget,
     uploadBackup, downloadBackup, setPassphrase,
     listWhitelist, addToWhitelist, removeFromWhitelist, setUserAdmin,
   };

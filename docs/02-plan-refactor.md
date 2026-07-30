@@ -36,6 +36,61 @@ fase, las tareas marcadas ∥ son paralelizables.
 - [x] **0.4 Actualizar scripts npm y eslint** a las rutas reales del repo.
 - [x] **0.5 CI** — GitHub Action (`.github/workflows/test.yml`) que ejecuta lint + tests en cada PR.
 
+## Incidencias de producción resueltas
+
+> Reportadas por el usuario sobre el despliegue real. Se documentan porque las
+> tres tienen trampas que conviene no repetir.
+
+- [x] **P.1 El store nuevo no veía los datos del usuario** — `createLocalStorageAdapter`
+      leía y escribía `state_<colección>`, pero el `StorageAdapter` legacy
+      (`common/storage.js`) antepone `financeapp_` a **todo**. Resultado: el store
+      del paquete nuevo arrancaba con el estado por defecto y sus escrituras iban
+      a un juego de claves paralelo invisible para la app legacy y para la
+      exportación. Las vistas ya portadas (Márgenes, Inflación, Contabilidad)
+      aparecían vacías.
+      **Regla:** la clave lógica sigue siendo `state_<colección>` (así la nombra
+      el store); el **espacio de nombres físico** `financeapp_` lo pone el adapter
+      de localStorage y solo él. Todo test que toque localStorage directamente
+      debe usar `NAMESPACE` de `src/state/storage/local.ts`.
+      `adoptarClavesHuerfanas()` recupera lo que escribieron las compilaciones con
+      el bug (manda el dato canónico; las huérfanas se borran siempre → idempotente).
+      Se ejecuta una vez en `bootstrap()`; puede retirarse cuando haya pasado
+      tiempo suficiente desde el 2026-07-30.
+- [x] **P.2 "Ejecuta npm run build para habilitar esta ventana"** — el botón de
+      Funcionalidades llevaba un `alert` de desarrollador en un `onclick` inline.
+      Ahora lo cablea `router.js` y, si `window.FinanceApp` no está, abre un modal
+      que explica qué ha pasado y ofrece recargar sin caché.
+      Dos causas posibles se han cerrado de raíz:
+      · `bootstrap()` va en `try/catch` y deja el motivo en `window.FinanceAppError`
+        en vez de dejar el namespace sin definir y sin pista alguna;
+      · el despliegue publica `index.html` con `?v=<sha>` en la etiqueta del bundle,
+        porque la CDN cachea `index.html` y `assets/financeapp-core.js` por separado
+        y un index nuevo podía quedar emparejado con un bundle viejo o con un 404.
+      **Aviso para quien depure el bundle en local:** contiene identificadores no
+      ASCII (`año`). Si se carga desde una página **sin `<meta charset>`**, el
+      navegador lo decodifica como latin-1 y falla con `SyntaxError: missing )
+      after argument list`. `index.html` declara UTF-8, así que en la app real no
+      ocurre; en páginas de prueba hay que declararlo.
+- [x] **P.3 Cada recarga volvía a pedir método de acceso y contraseña** —
+      `src/auth/session.ts` guarda un registro de sesión (`financeapp_session`) y
+      `AuthModule._reanudar()` la reanuda **antes** de mostrar nada, comprobando
+      que el acceso sigue siendo válido:
+      · Firebase → `restoreSession()` espera a `onAuthStateChanged`, fuerza un
+        refresco del ID token contra el servidor y revalida la lista blanca;
+      · Dropbox → `restore()` descifra el token guardado y lo verifica contra la
+        API (los tokens de acceso caducan a las 4 h);
+      · local → arranca directamente.
+      Si la validación falla se cierra la sesión y se pide acceso otra vez. La
+      sesión **no caduca sola** salvo que se configure `config.autoLogoutMinutos`
+      (0 = nunca, por defecto), que la UI ofrece en Administrar datos → Sesión
+      junto al cierre manual. Mientras la pestaña está abierta,
+      `vigilarInactividad()` aplica el límite sin esperar a la recarga.
+      **Compromiso conocido:** reanudar sin preguntar exige guardar la clave de
+      cifrado en localStorage. No añade exposición local (el estado completo ya
+      está ahí en claro); lo que protege es la copia en la nube frente al
+      proveedor. Para equipos compartidos, `autoLogoutMinutos` acota la ventana.
+      Si el bundle no carga, `auth.js` usa un stub inerte y se comporta como antes.
+
 ## Fase 1 — Refactor SOLID + modularización (TypeScript, ESM)
 
 > Objetivo: migrar a `src/` con módulos ES tipados y build de Vite, manteniendo paridad

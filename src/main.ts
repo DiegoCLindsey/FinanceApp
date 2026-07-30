@@ -38,6 +38,7 @@ import { createLedger, type Ledger } from './accounting/ledger';
 import { createTagService, type TagService } from './accounting/tags';
 import { createPrecisionAnalyzer, type PrecisionAnalyzer } from './accounting/precision';
 import { createAdjuster, sugerirAjuste, type Adjuster } from './accounting/adjust';
+import { createSessionService, vigilarInactividad, OPCIONES_AUTOLOGOUT, type SessionService } from './auth/session';
 
 export interface FinanceAppNamespace {
   version: number;
@@ -75,6 +76,12 @@ export interface FinanceAppNamespace {
   };
   /** Registro de vistas del paquete nuevo; lo consulta el router del shell. */
   app: FeatureRegistry;
+  /** Sesión persistente entre recargas; la consume auth/auth.js. */
+  session: SessionService & {
+    /** Arranca la vigilancia de inactividad; devuelve el `detener`. */
+    vigilar: (onCaducada: () => void) => () => void;
+    opciones: typeof OPCIONES_AUTOLOGOUT;
+  };
   /** Contabilidad real (F4): ledger, etiquetas compartidas y precisión. */
   accounting: {
     ledger: Ledger;
@@ -100,6 +107,16 @@ function bootstrap(): FinanceAppNamespace {
     console.info(`[FinanceApp] Migraciones aplicadas: ${applied.join(', ')} (esquema v${SCHEMA_VERSION})`);
   }
   const flags = createFlags(store);
+  // El límite se lee en cada comprobación, no se captura: mientras el modal de
+  // datos siga siendo legacy, es `State` quien tiene la copia recién escrita y
+  // la del store se queda atrás hasta la siguiente recarga. Puente temporal,
+  // como `refrescarLegacy` (se retira al portar el modal de datos, tarea 1.7).
+  const sesion = createSessionService({
+    autoLogoutMinutos: () => {
+      const legacy = (globalThis as { State?: { get?: (k: string) => { autoLogoutMinutos?: number } | undefined } }).State?.get?.('config');
+      return Number(legacy?.autoLogoutMinutos ?? store.get('config').autoLogoutMinutos ?? 0);
+    },
+  });
   const ledger = createLedger(store);
   const tags = createTagService(store);
   const precision = createPrecisionAnalyzer(ledger);
@@ -168,6 +185,10 @@ function bootstrap(): FinanceAppNamespace {
     featureRegistry: { all: FEATURES, porGrupo: featuresPorGrupo },
     ui: { openFeatures: featuresModal.open, applyGating: gating.apply },
     app,
+    session: Object.assign(sesion, {
+      vigilar: (onCaducada: () => void) => vigilarInactividad({ sesion, onCaducada }),
+      opciones: OPCIONES_AUTOLOGOUT,
+    }),
     accounting: { ledger, tags, precision, adjuster, sugerirAjuste },
   };
 }
