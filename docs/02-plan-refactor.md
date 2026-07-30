@@ -156,15 +156,25 @@ src/
 > Objetivo: activar/desactivar funcionalidades desde la propia interfaz, con
 > configuración salvable/cargable por usuario.
 
-- [ ] **2.1 Registro de flags** — `flags/registry.ts`: cada feature declara
-      `{ id, nombre, descripcion, grupo, porDefecto, dependencias[] }`. Granularidad
-      inicial: cada vista + subfeatures de nicho (inflación, optimizador, márgenes,
-      salud financiera, escenarios/supuestos, contabilidad). Nota: Monte Carlo, OHLC
-      y el simulador de paro fueron eliminados (2026-07-30), no necesitan flag.
-- [ ] **2.2 Estado y persistencia** — `config.features: Record<flagId, boolean>` viaja
-      con el estado del usuario (localStorage + backups nube + export/import JSON).
-      Además, **perfiles exportables**: guardar/cargar la configuración de flags como
-      JSON independiente. CA: roundtrip export→import conserva flags.
+- [x] **2.1 Registro de flags** — COMPLETADA. `src/flags/registry.ts` con 22
+      features declaradas en 5 grupos (Esenciales, Mi dinero, Planificación,
+      Análisis del dashboard, Datos), cada una con `{ id, nombre, descripcion,
+      grupo, porDefecto, dependencias[], nucleo? }`. El dashboard es `nucleo`
+      (no desactivable). Lo de nicho arranca apagado (inflación, fiscalidad,
+      márgenes, optimizador, comparador, autoguardado). Tests de integridad del
+      catálogo: ids únicos, dependencias existentes, grafo sin ciclos, cobertura
+      de grupos. Nota: Monte Carlo, OHLC y el simulador de paro fueron eliminados
+      (2026-07-30), no necesitan flag.
+- [x] **2.2 Estado y persistencia** — COMPLETADA. `src/flags/service.ts` sobre
+      `config.features` del store, así que la configuración viaja con los datos del
+      usuario (localStorage, backups en la nube y export/import JSON) sin trabajo
+      extra. Integridad de dependencias en ambos sentidos: activar arrastra
+      dependencias transitivas, desactivar apaga en cascada, e `isEnabled`
+      revalida en lectura para que un perfil inconsistente no deje una feature
+      encendida sin lo que necesita (`bloqueadaPor` lo reporta a la UI).
+      Perfiles exportables (`exportProfile`/`importProfile`) que ignoran ids
+      desconocidos y completan ausentes con su defecto.
+      CA cumplido: roundtrip export→import conserva los flags (test).
 - [ ] **2.3 Ventana de configuración** — modal "Funcionalidades" accesible desde el
       sidebar: toggles agrupados, descripción por feature, aviso de dependencias
       (desactivar Inflación desactiva las vistas que dependen de ella), botones
