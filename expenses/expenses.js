@@ -197,10 +197,6 @@ const ExpensesModule = (() => {
               <span class="text-sm" style="margin-left:6px">Calcula y proyecta la retención mensual</span>
             </div>
           </div>
-          <div id="ef-varianza-wrap" class="grid-2 mt-8" style="${isTransfer?'display:none':''}">
-            <div class="form-group"><label class="form-label">Varianza ± %</label><input class="form-input" type="number" id="ef-varianza" value="${exp?.varianza||0}" min="0" max="100" placeholder="0"/></div>
-            <div class="form-group"><label class="form-label">Inflación anual % (0 = global)</label><input class="form-input" type="number" id="ef-inflacion" value="${exp?.inflacion||0}" min="0" max="30" placeholder="0"/></div>
-          </div>
           ${escenarios.length > 0 ? EscenariosModule.checkboxesHtml(exp?.escenarioIds||[]) : ''}
         </div>
       </details>
@@ -219,7 +215,6 @@ const ExpensesModule = (() => {
         const t = sel.value;
         document.getElementById('ef-destino-wrap').style.display   = t==='transferencia' ? '' : 'none';
         document.getElementById('ef-basico-wrap').style.display    = t==='transferencia' ? 'none' : '';
-        document.getElementById('ef-varianza-wrap').style.display  = t==='transferencia' ? 'none' : '';
         const irpfWrap = document.getElementById('ef-irpf-wrap');
         if(irpfWrap) irpfWrap.style.display = t==='ingreso' ? '' : 'none';
         const clasificWrap = document.getElementById('ef-clasificacion-wrap');
@@ -250,8 +245,6 @@ const ExpensesModule = (() => {
       cuentaDestino: isTransfer ? document.getElementById('ef-cuenta-dest')?.value||'default' : null,
       activo:        document.getElementById('ef-activo').checked,
       basico:        !isTransfer && (document.getElementById('ef-basico')?.checked||false),
-      varianza:      isTransfer ? 0 : (parseFloat(document.getElementById('ef-varianza')?.value)||0),
-      inflacion:     isTransfer ? 0 : (parseFloat(document.getElementById('ef-inflacion')?.value)||0),
       sujetoIRPF:    !isTransfer && (document.getElementById('ef-sujetoIRPF')?.checked||false),
       clasificacion: tipo==='gasto' ? (document.getElementById('ef-clasificacion')?.value||null) : undefined,
       tags:          isTransfer ? ['transferencia'] : (document.getElementById('ef-tags')?.value||'').split(',').map(t=>t.trim()).filter(Boolean),

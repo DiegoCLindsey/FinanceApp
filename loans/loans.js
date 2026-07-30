@@ -114,17 +114,16 @@ const LoansModule = (() => {
     const config       = State.get('config');
     const periodos     = State.get('inflacion') || [];
     const conInflac    = config.usarInflacion && periodos.length > 0;
-    const inflGlobal   = config.inflacionGlobal || 0;
     const hoyStr       = new Date().toISOString().slice(0, 10);
 
     // ── Tipo de interés real (Fisher) ─────────────────────────────────────────
-    // Usamos periodos de inflación + fallback a inflacionGlobal, independientemente
-    // de si el módulo de inflación está activo para gastos (usarInflacion).
-    const hasInflData  = periodos.length > 0 || inflGlobal > 0;
+    // Usa los periodos de inflación, independientemente de si el módulo está
+    // activo para gastos (usarInflacion).
+    const hasInflData  = periodos.length > 0;
     const fechaInicioLoan = loan.fechaInicio || hoyStr;
     const fechaFinLoan    = res.fechaFin || hoyStr;
     const inflMedia    = hasInflData
-      ? FinanceMath.calcInflacionMediaAnual(periodos, fechaInicioLoan, fechaFinLoan, inflGlobal)
+      ? FinanceMath.calcInflacionMediaAnual(periodos, fechaInicioLoan, fechaFinLoan, 0)
       : 0;
     const tinReal      = hasInflData
       ? FinanceMath.calcTipoRealFisher(loan.tin || 0, inflMedia)
@@ -156,22 +155,6 @@ const LoansModule = (() => {
         const realSaving = interesesPV(tBase) - interesesPV(tWith);
         amortizacionesSavings.push({ nominalSaving: nomSaving, realSaving });
       }
-    } else if (tieneAmorts && hasInflData && inflGlobal > 0) {
-      // Solo inflacionGlobal sin periodos: usar factor promedio desde hoy hasta fechaFin
-      const factorTotal = FinanceMath.calcFactorInflacion(
-        [{ year: new Date().getFullYear(), tasa: inflGlobal }], hoyStr, fechaFinLoan
-      );
-      ahorroRealIntereses = factorTotal > 0 ? res.ahorroIntereses / factorTotal : res.ahorroIntereses;
-      ahorroRealNeto = ahorroRealIntereses - res.costeTotalAmort;
-      const amorts = loan.amortizaciones || [];
-      amorts.forEach((_, idx) => {
-        const loanBase   = { ...loan, amortizaciones: amorts.slice(0, idx) };
-        const loanWith   = { ...loan, amortizaciones: amorts.slice(0, idx + 1) };
-        const nomSaving  = FinanceMath.resumenPrestamo(loanBase).totalIntereses
-                         - FinanceMath.resumenPrestamo(loanWith).totalIntereses;
-        const realSaving = factorTotal > 0 ? nomSaving / factorTotal : nomSaving;
-        amortizacionesSavings.push({ nominalSaving: nomSaving, realSaving });
-      });
     }
 
     let costoRealTotal = null;

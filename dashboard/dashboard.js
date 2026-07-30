@@ -1,6 +1,6 @@
 // Depends on: State, FinanceMath, UI
 const DashboardModule = (() => {
-  let charts={}, ventana='mes', activeTags=new Set(), filtroAccounts=[], chartMode='summed', tagGroupsMode='desglosado', saludView='mes';
+  let charts={}, activeTags=new Set(), filtroAccounts=[], chartMode='summed', tagGroupsMode='desglosado', saludView='mes';
   // Stable color palette for promoted tags (index 0 reserved for base categories)
   const _TAG_PROMO_PALETTE = ['#f97316','#eab308','#22d3ee','#a78bfa','#34d399','#fb7185','#60a5fa','#c084fc','#4ade80','#f472b6'];
   // colchon + historial toggles driven from config, no local state needed
@@ -148,23 +148,9 @@ const DashboardModule = (() => {
     // Use filtered accounts for projection (scenario accounts only appear when active)
     const accountsForExtracto = escenarioActivo ? filtered.accounts : accounts;
 
-    // Apply inflation on top of base extracto
-    const inflGlobal    = config.inflacionGlobal||0;
     const usarInflacion = config.usarInflacion||false;
     const inflPeriodos  = State.get('inflacion') || [];
-    // When usarInflacion is active, generarExtracto already includes inflation events;
-    // only apply the legacy per-expense inflation factor when the module is NOT active.
-    let extracto=FinanceMath.generarExtracto(loans,expenses,accountsForExtracto,config, filtroAccounts.length>0?filtroAccounts:null, nominas, inflPeriodos);
-    if (!usarInflacion) {
-      const debeInflar = inflGlobal > 0 || expenses.some(e=>e.inflacion>0);
-      if (debeInflar) {
-        const allExpEvents = extracto.filter(e=>e.sourceType==='expense');
-        const inflated = FinanceMath.aplicarInflacion(allExpEvents, expenses, inflGlobal, null, false);
-        const inflMap = new Map(inflated.map(e=>[e.sourceId+'_'+e.fecha, e.cuantia]));
-        extracto = extracto.map(e => e.sourceType==='expense' ? {...e, cuantia: inflMap.get(e.sourceId+'_'+e.fecha)||e.cuantia} : e);
-        extracto = FinanceMath.recomputarSaldoAcum(extracto, accounts, config, filtroAccounts.length>0?filtroAccounts:null);
-      }
-    }
+    const extracto=FinanceMath.generarExtracto(loans,expenses,accountsForExtracto,config, filtroAccounts.length>0?filtroAccounts:null, nominas, inflPeriodos);
     const cuentasActivas=accountsForExtracto.filter(a=>a.activo&&(filtroAccounts.length===0||filtroAccounts.includes(a._id)));
     const saldoBase=cuentasActivas.reduce((s,a)=>s+FinanceMath.saldoRealCuenta(a),0);
     const saldoFinal=extracto.length>0?extracto[extracto.length-1].saldoAcum:saldoBase;
@@ -425,10 +411,6 @@ const DashboardModule = (() => {
           ${accPills}
           <button class="btn-secondary btn-sm" onclick="DashboardModule.clearAccFilter()">Todas</button>
           <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;row-gap:6px">
-            <label class="form-inline gap-8" style="font-size:12px;color:var(--text2)">
-              <label class="toggle"><input type="checkbox" id="cfg-show-mc" ${config.showMC?'checked':''}/><span class="toggle-slider"></span></label>
-              Monte Carlo
-            </label>
             <button class="btn-primary btn-sm" onclick="DashboardModule.applyConfig()">Actualizar</button>
           </div>
         </div>
@@ -835,17 +817,6 @@ const DashboardModule = (() => {
           <div class="card-title">Media mensual de gastos por etiqueta <span style="font-size:11px;color:var(--text3);font-weight:400">(${tagGroupsMode==='porgrupos'?'por grupos':'desglosado'})</span></div>
           <div class="chart-wrap"><canvas id="chart-media-mensual"></canvas></div>
         </div>
-        <div class="card">
-          <div class="card-title">Velas OHLC</div>
-          <div class="flex justify-between items-center mb-8" style="flex-wrap:wrap;gap:8px">
-            <div class="period-selector">
-              <button class="period-btn ${ventana==='semana'?'active':''}" onclick="DashboardModule.setVentana('semana')">Sem</button>
-              <button class="period-btn ${ventana==='mes'?'active':''}" onclick="DashboardModule.setVentana('mes')">Mes</button>
-              <button class="period-btn ${ventana==='año'?'active':''}" onclick="DashboardModule.setVentana('año')">Año</button>
-            </div>
-          </div>
-          <div class="chart-wrap-lg"><canvas id="chart-velas"></canvas></div>
-        </div>
       </div>
 
       <!-- Extracto -->
@@ -976,7 +947,6 @@ const DashboardModule = (() => {
       .sort((a, b) => b.value - a.value);
     setTimeout(()=>{
       renderChartSaldo(extracto);
-      renderChartVelas(extracto);
       renderChartTags(extracto, activeTags, grupoTags, tagGroupsMode);
       renderChartBreakdown(_metricasGraficos);
       renderChartExpenseDonut(_donutMetrics);
@@ -1073,21 +1043,6 @@ const DashboardModule = (() => {
       }
     }
 
-    // Monte Carlo bands
-    let mcDatasets = [];
-    if (config.showMC && (expenses.some(e=>e.varianza>0) || nominas.some(n=>n.activo&&(n.varianza||0)>0))) {
-      const mcResult = FinanceMath.monteCarlo(loans, expenses, accounts, config, config.mcIteraciones||300, nominas);
-      if (mcResult && mcResult.length > 0) {
-        mcDatasets = [
-          { label:'MC p10', data:mcResult.map(r=>({x:r.x,y:r.p10})), borderColor:'transparent', backgroundColor:'rgba(77,159,255,0.05)', fill:'+1', borderWidth:0, pointRadius:0, tension:0.3, order:11 },
-          { label:'MC p25', data:mcResult.map(r=>({x:r.x,y:r.p25})), borderColor:'rgba(77,159,255,0.15)', backgroundColor:'rgba(77,159,255,0.10)', fill:'+2', borderWidth:0.5, pointRadius:0, tension:0.3, order:10 },
-          { label:'MC mediana', data:mcResult.map(r=>({x:r.x,y:r.p50})), borderColor:'rgba(77,159,255,0.7)', backgroundColor:'transparent', borderWidth:1.5, borderDash:[5,3], pointRadius:0, tension:0.3, fill:false, order:7 },
-          { label:'MC p75', data:mcResult.map(r=>({x:r.x,y:r.p75})), borderColor:'rgba(77,159,255,0.15)', backgroundColor:'rgba(77,159,255,0.10)', fill:'-1', borderWidth:0.5, pointRadius:0, tension:0.3, order:10 },
-          { label:'MC p90', data:mcResult.map(r=>({x:r.x,y:r.p90})), borderColor:'transparent', backgroundColor:'rgba(77,159,255,0.05)', fill:'-1', borderWidth:0, pointRadius:0, tension:0.3, order:11 },
-        ];
-      }
-    }
-
     // Per-account running saldo for margen crossing detection
     const margenesSeguridad = (config.margenesSeguridad || []).filter(m => m.activo !== false);
     const saldosPorCuenta = FinanceMath.saldosPorCuentaEnExtracto(extracto, accounts);
@@ -1159,7 +1114,6 @@ const DashboardModule = (() => {
 
     const isStacked = chartMode === 'stacked' || chartMode === 'stacked-rev';
     const datasets = [
-      ...mcDatasets,
       ...(isStacked
         ? stackedDatasets
         : chartMode === 'lines'
@@ -1247,7 +1201,7 @@ const DashboardModule = (() => {
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: {
-            display: isStacked || (histDataset != null) || margenDatasets.length>0 || mcDatasets.length>0 || criticoDatasets.length>0 || datasets.some(d=>d.label?.startsWith('🏁')),
+            display: isStacked || (histDataset != null) || margenDatasets.length>0 || criticoDatasets.length>0 || datasets.some(d=>d.label?.startsWith('🏁')),
             labels: { color:'#8b92a8', font:{size:11}, boxWidth:12, filter: i => !['MC p25','MC p10','MC p75','MC p90'].includes(i.text) }
           },
           tooltip: {
@@ -1294,64 +1248,6 @@ const DashboardModule = (() => {
         }
       }
     });
-  }
-
-  function renderChartVelas(extracto) {
-    const ctx=document.getElementById('chart-velas'); if(!ctx)return;
-    const ohlc=FinanceMath.agruparOHLC(extracto, ventana);
-    if (ohlc.length===0) { ctx.parentElement.innerHTML='<div class="text-sm" style="text-align:center;padding:40px">Sin datos suficientes.</div>'; return; }
-
-    // Convertir keys a timestamps numéricos
-    const candleData=ohlc.map(d=>{
-      let ts;
-      if (d.key.length===4) ts=new Date(d.key+'-01-01').getTime();
-      else if (d.key.length===7) ts=new Date(d.key+'-01').getTime();
-      else ts=new Date(d.key).getTime();
-      return { x:ts, o:d.open, h:d.high, l:d.low, c:d.close };
-    });
-
-    charts.velas=new Chart(ctx,{
-      type:'candlestick',
-      data:{ datasets:[{ data:candleData, color:{ up:'#00e5a0', down:'#ff4d6d', unchanged:'#8b92a8' } }] },
-      options:{
-        responsive:true, maintainAspectRatio:false,
-        plugins:{
-          legend:{display:false},
-          tooltip:{
-            backgroundColor:'#13161e', borderColor:'#252a38', borderWidth:1,
-            titleColor:'#8b92a8', bodyColor:'#e8eaf2',
-            callbacks:{ label:ctx=>{ const d=ctx.raw; return [`O: ${FinanceMath.eur(d.o)}`, `H: ${FinanceMath.eur(d.h)}`, `L: ${FinanceMath.eur(d.l)}`, `C: ${FinanceMath.eur(d.c)}`]; } }
-          }
-        },
-        scales:{
-          x:{ type:'time', time:{ unit: ventana==='semana'?'week':ventana==='año'?'year':'month' }, ticks:{color:'#555d77'}, grid:{color:'#252a38'} },
-          y:{ ticks:{color:'#555d77', callback:v=>FinanceMath.eur(v)}, grid:{color:'#252a38'} }
-        }
-      }
-    });
-  }
-
-  // Builds a tag→total map from extracto applying the group mode.
-  // 'desglosado': group tags are stripped; expense appears under its remaining tags.
-  // 'porgrupos' : if an expense has ≥1 group tag, it counts only under that/those group tags;
-  //               otherwise it counts under its regular tags (same as desglosado for ungrouped).
-  function _tagMapConGrupos(extracto, grupoTags, mode) {
-    if (!grupoTags || grupoTags.size === 0) return FinanceMath.sumarPorTags(extracto, 'gasto');
-    const map = new Map();
-    for (const ev of extracto) {
-      if (ev.tipo !== 'gasto') continue;
-      const tags = ev.tags || [];
-      const grp  = tags.filter(t => grupoTags.has(t));
-      let effective;
-      if (mode === 'porgrupos') {
-        effective = grp.length > 0 ? grp : tags.filter(t => !grupoTags.has(t));
-      } else {
-        // desglosado: remove group tags; if all tags were group tags skip entirely
-        effective = tags.filter(t => !grupoTags.has(t));
-      }
-      for (const tag of effective) map.set(tag, (map.get(tag) || 0) + Math.abs(ev.cuantia));
-    }
-    return map;
   }
 
   function renderChartTags(extracto, activeTags, grupoTags=new Set(), mode='desglosado') {
@@ -1653,12 +1549,10 @@ const DashboardModule = (() => {
       ...existing,
       fechaReferencia: document.getElementById('cfg-ref')?.value || existing.fechaReferencia || new Date().toISOString().slice(0,10),
       showHistorico:   document.getElementById('cfg-show-hist')?.checked??true,
-      showMC:          document.getElementById('cfg-show-mc')?.checked??false,
     };
     State.set('config',config); render();
   }
   function applyPreset(preset) { PeriodBar.applyPreset(preset); }
-  function setVentana(v) { ventana=v; render(); }
   function setChartMode(m) { chartMode=m; render(); }
   function setTagGroupsMode(m) { tagGroupsMode=m; render(); }
   function toggleTagGrupo(tag) {
@@ -1726,5 +1620,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, applyConfig, applyPreset, setVentana, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis, setSaludView, toggleSaludConfig, applySaludConfig, resetSaludConfig };
+  return { render, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis, setSaludView, toggleSaludConfig, applySaludConfig, resetSaludConfig };
 })();

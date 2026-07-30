@@ -975,19 +975,6 @@ const FinanceMath = (() => {
     return past[past.length-1].saldoAcum;
   }
 
-  function agruparOHLC(extracto, ventana) {
-    const groups = new Map();
-    for (const ev of extracto) {
-      const d=new Date(ev.fecha+'T00:00:00'); let key;
-      if (ventana==='semana') { const sw=new Date(d); sw.setDate(d.getDate()-d.getDay()); key=sw.toISOString().slice(0,10); }
-      else if (ventana==='mes') key=ev.fecha.slice(0,7);
-      else key=ev.fecha.slice(0,4);
-      if (!groups.has(key)) groups.set(key,[]);
-      groups.get(key).push(ev.saldoAcum);
-    }
-    return Array.from(groups.entries()).map(([k,v])=>({ key:k, open:v[0], close:v[v.length-1], high:Math.max(...v), low:Math.min(...v) }));
-  }
-
   function sumarPorTags(extracto, tipo) {
     const m=new Map();
     for (const ev of extracto) {
@@ -1100,30 +1087,6 @@ const FinanceMath = (() => {
     return factor > 0 ? importe / factor : importe;
   }
 
-  function aplicarInflacion(events, expenses, inflacionGlobal, inflacionPeriodos=null, usarInflacion=false) {
-    const now = new Date();
-    const hoyStr = now.toISOString().slice(0, 10);
-    return events.map(ev => {
-      const exp = expenses.find(e => e._id === ev.sourceId);
-      if (!exp) return ev;
-
-      let factor;
-      if (usarInflacion && inflacionPeriodos && inflacionPeriodos.length > 0) {
-        const base = exp.fechaInicio || hoyStr;
-        factor = calcFactorInflacion(inflacionPeriodos, base, ev.fecha);
-      } else {
-        const inf = (exp.inflacion > 0 ? exp.inflacion : inflacionGlobal) / 100;
-        if (inf === 0) return ev;
-        const base    = new Date((exp.fechaInicio || hoyStr) + 'T00:00:00');
-        const evDate  = new Date(ev.fecha + 'T00:00:00');
-        const años    = Math.max(0, (evDate - base) / (365.25 * 86400000));
-        factor = Math.pow(1 + inf, años);
-      }
-
-      return { ...ev, cuantia: ev.tipo === 'gasto' ? ev.cuantia * factor : ev.cuantia };
-    });
-  }
-
   // ── IRPF ────────────────────────────────────────────────────────────────────
   // Base imponible de rendimientos del trabajo tras aplicar SS, Art.19.2 y Art.20 LIRPF
   function calcBaseImponibleTrabajo(bruto, flexAnual) {
@@ -1188,100 +1151,6 @@ const FinanceMath = (() => {
       }
     }
     return pts;
-  }
-
-  // ── Monte Carlo ──────────────────────────────────────────────────────────────
-  function monteCarlo(loans, expenses, accounts, config, iteraciones=300, nominas=[]) {
-    const varExpenses = expenses.filter(e => e.varianza > 0);
-    const varNominas  = (nominas || []).filter(n => n.activo && (n.varianza || 0) > 0);
-    if (varExpenses.length === 0 && varNominas.length === 0) return null;
-
-    // MC sólo cubre el futuro (>= fechaReferencia) — el pasado es determinista
-    const raw = config.fechaReferencia || config.dashboardStart;
-    const fechaRef = raw < config.dashboardStart ? config.dashboardStart
-      : raw > config.dashboardEnd   ? config.dashboardEnd : raw;
-    const cuentasActivas = accounts.filter(a => a.activo);
-    const saldoRef = cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, fechaRef), 0);
-
-    const transferencias = expenses.filter(e => e.tipo === 'transferencia');
-    const loanEvents      = proyectarPrestamos(loans, fechaRef, config.dashboardEnd);
-    const transferEvents  = proyectarTransferencias(transferencias, fechaRef, config.dashboardEnd);
-    const varMap = new Map(varExpenses.map(e => [e._id, { varianza: e.varianza, tipo: e.tipo }]));
-    const gastos = expenses.filter(e => e.tipo !== 'transferencia');
-    const baseGastoEvents = proyectarGastos(gastos, fechaRef, config.dashboardEnd);
-    const baseNominaEvents = proyectarNominas(nominas, config, fechaRef, config.dashboardEnd);
-    const nominaVarMap = new Map(varNominas.map(n => [n._id, n.varianza]));
-
-    const allBaseEvents = [...baseGastoEvents, ...baseNominaEvents, ...loanEvents, ...transferEvents]
-      .sort((a,b) => a.fecha.localeCompare(b.fecha));
-    if (allBaseEvents.length === 0) return null;
-
-    const fechas = [...new Set(allBaseEvents.map(e=>e.fecha))].sort();
-    const n = fechas.length;
-    const samples = Array.from({length:n}, ()=>[]);
-
-    const rand_normal = () => {
-      const u1 = Math.random(), u2 = Math.random();
-      return Math.sqrt(-2*Math.log(u1)) * Math.cos(2*Math.PI*u2);
-    };
-
-    for (let iter=0; iter<iteraciones; iter++) {
-      const pertGastoEvents = baseGastoEvents.map(ev => {
-        const v = varMap.get(ev.sourceId);
-        if (!v) return ev;
-        const sigma = Math.abs(ev.cuantia) * (v.varianza / 100);
-        const delta = rand_normal() * sigma;
-        return { ...ev, cuantia: v.tipo === 'gasto' ? ev.cuantia + delta : ev.cuantia - delta };
-      });
-
-      // Perturb nómina income events by their varianza
-      const pertNominaEvents = baseNominaEvents.map(ev => {
-        if (ev.sourceType !== 'nomina') return ev;
-        // sourceId for IRPF events ends with '_irpf'; extract base nómina id
-        const nomId = ev.sourceId.replace(/_irpf$/, '');
-        const vPct  = nominaVarMap.get(nomId);
-        if (!vPct) return ev;
-        const sigma = Math.abs(ev.cuantia) * (vPct / 100);
-        const delta = rand_normal() * sigma;
-        // IRPF is a gasto (negative), nómina is ingreso; perturb in opposite directions
-        return { ...ev, cuantia: ev.tipo === 'ingreso' ? ev.cuantia + delta : ev.cuantia - delta };
-      });
-
-      const allEvents = [...pertGastoEvents, ...pertNominaEvents, ...loanEvents, ...transferEvents]
-        .sort((a,b) => a.fecha.localeCompare(b.fecha));
-
-      let saldo = saldoRef;
-      const saldoPorFecha = new Map();
-      for (const ev of allEvents) {
-        saldo += ev.tipo === 'ingreso' ? Math.abs(ev.cuantia) : -Math.abs(ev.cuantia);
-        saldoPorFecha.set(ev.fecha, saldo);
-      }
-
-      let lastSaldo = saldoRef;
-      for (let i=0; i<n; i++) {
-        const s = saldoPorFecha.get(fechas[i]);
-        if (s !== undefined) lastSaldo = s;
-        samples[i].push(lastSaldo);
-      }
-    }
-
-    const pct_fn = (arr, p) => {
-      const sorted = [...arr].sort((a,b)=>a-b);
-      const idx = (p/100) * (sorted.length - 1);
-      const lo = Math.floor(idx), hi = Math.ceil(idx);
-      if (lo === hi) return sorted[lo];
-      return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
-    };
-
-    return fechas.map((fecha, i) => {
-      const s = samples[i];
-      if (s.length === 0) return null;
-      return {
-        x: new Date(fecha+'T00:00:00').getTime(),
-        p10: pct_fn(s,10), p25: pct_fn(s,25), p50: pct_fn(s,50),
-        p75: pct_fn(s,75), p90: pct_fn(s,90)
-      };
-    }).filter(Boolean);
   }
 
   // Analiza la salud financiera del usuario a partir de métricas pre-calculadas.
@@ -1694,58 +1563,6 @@ const FinanceMath = (() => {
     };
   }
 
-  // Proyecta inversiones de un escenario como eventos de ingresos/gastos.
-  // inv.tipo: 'capital_inicial' (capital fijo que genera intereses)
-  //           'aportacion_periodica' (aportación mensual + interés compuesto sobre acumulado)
-  function proyectarInversiones(inversiones, dateStart, dateEnd) {
-    const events = [];
-    for (const inv of (inversiones || [])) {
-      const cuenta = inv.cuenta || 'default';
-      const effStart = (inv.inicio && inv.inicio > dateStart) ? inv.inicio : dateStart;
-      const effEnd   = (inv.fin   && inv.fin   < dateEnd)    ? inv.fin   : dateEnd;
-      if (effStart > effEnd) continue;
-      const tirMensual = Math.pow(1 + (inv.tir || 0) / 100, 1 / 12) - 1;
-      let d = new Date(effStart + 'T00:00:00');
-      d = new Date(d.getFullYear(), d.getMonth(), 15);
-      const dFin = new Date(effEnd + 'T00:00:00');
-
-      if (inv.tipo === 'capital_inicial') {
-        let saldo = inv.importe || 0;
-        while (d <= dFin) {
-          const interes = saldo * tirMensual;
-          saldo += interes;
-          if (interes >= 0.01) events.push({
-            fecha: d.toISOString().slice(0,10),
-            concepto: inv.nombre || 'Rendimiento inversión',
-            cuantia: interes, tipo: 'ingreso', tags: ['inversion'],
-            cuenta, sourceType: 'inversion', sourceId: inv._id,
-          });
-          d = new Date(d.getFullYear(), d.getMonth()+1, 15);
-        }
-      } else if (inv.tipo === 'aportacion_periodica') {
-        let saldo = 0;
-        while (d <= dFin) {
-          const fechaStr = d.toISOString().slice(0,10);
-          events.push({
-            fecha: fechaStr, concepto: inv.nombre || 'Aportación periódica',
-            cuantia: inv.importe || 0, tipo: 'gasto', tags: ['inversion'],
-            cuenta, sourceType: 'inversion-aportacion', sourceId: inv._id,
-          });
-          saldo += inv.importe || 0;
-          const interes = saldo * tirMensual;
-          saldo += interes;
-          if (interes >= 0.01) events.push({
-            fecha: fechaStr, concepto: (inv.nombre || 'Inversión') + ' – rendimiento',
-            cuantia: interes, tipo: 'ingreso', tags: ['inversion'],
-            cuenta, sourceType: 'inversion-rendimiento', sourceId: inv._id,
-          });
-          d = new Date(d.getFullYear(), d.getMonth()+1, 15);
-        }
-      }
-    }
-    return events;
-  }
-
   function calcDesviacion(extracto, accounts) {
     const today = new Date().toISOString().slice(0,10);
 
@@ -1791,57 +1608,14 @@ const FinanceMath = (() => {
     return rows;
   }
 
-  // ── Prestación por desempleo (SEPE) ─────────────────────────────────────────
-  // diasCotizados: días cotizados en los últimos 6 años (máx relevante: 2160)
-  // salarioBrutoAnual: bruto anual de la nómina (€) — usado para base reguladora
-  // hijos: número de hijos a cargo (afecta a topes IPREM)
-  function calcPrestacionParo({ diasCotizados, salarioBrutoAnual, hijos = 0 }) {
-    const IPREM_MES = 603.34; // IPREM 2025 (mensual, referencia 14 pagas)
-
-    // Tabla oficial: días cotizados → días de prestación
-    const TABLA = [
-      [360,  539,  120],
-      [540,  719,  180],
-      [720,  899,  240],
-      [900,  1079, 300],
-      [1080, 1259, 360],
-      [1260, 1439, 420],
-      [1440, 1619, 480],
-      [1620, 1799, 540],
-      [1800, 1979, 600],
-      [1980, 2159, 660],
-      [2160, Infinity, 720],
-    ];
-
-    if (diasCotizados < 360) return { elegible: false, diasCotizados, minDias: 360 };
-
-    const row = TABLA.find(([min, max]) => diasCotizados >= min && diasCotizados <= max);
-    const diasPrestacion = row ? row[2] : 720;
-    const mesesPrestacion = Math.round(diasPrestacion / 30);
-
-    // Base reguladora: promedio de cotización base en últimos 6 meses (≈ bruto mensual)
-    const baseReguladora = (salarioBrutoAnual || 0) / 12;
-
-    // Topes IPREM por hijos a cargo
-    const minMes = hijos > 0 ? IPREM_MES * 1.07 : IPREM_MES * 0.80;
-    const maxMes = hijos >= 2 ? IPREM_MES * 2.25 : (hijos === 1 ? IPREM_MES * 2.00 : IPREM_MES * 1.75);
-    const clamp  = v => Math.max(minMes, Math.min(maxMes, v));
-
-    const cuota70 = clamp(baseReguladora * 0.70); // primeros 180 días
-    const cuota50 = clamp(baseReguladora * 0.50); // resto
-
-    const dias70  = Math.min(diasPrestacion, 180);
-    const dias50  = Math.max(0, diasPrestacion - 180);
-    const meses70 = Math.ceil(dias70 / 30);
-    const meses50 = Math.ceil(dias50 / 30);
-    const importeTotal = cuota70 * meses70 + cuota50 * meses50;
-
-    return { elegible: true, diasCotizados, diasPrestacion, mesesPrestacion, baseReguladora, cuota70, cuota50, dias70, dias50, meses70, meses50, minMes, maxMes, importeTotal, IPREM_MES };
-  }
-
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct, calcPrestacionParo };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, ajustarPrecioReal, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 
+
+// Export dual (Fase 0, tarea 0.2): en navegador este fichero es un script clasico y
+// `FinanceMath` ya es visible globalmente; bajo Node ("type":"module") se evalua como
+// ESM, asi que lo publicamos en globalThis para que los tests usen el codigo real.
+globalThis.FinanceMath = FinanceMath;

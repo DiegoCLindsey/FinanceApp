@@ -1,0 +1,194 @@
+// @vitest-environment happy-dom
+// Ventana de configuración de funcionalidades y gating del shell (F2, 2.3 y 2.4).
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createFeaturesModal } from '@/ui/features-modal';
+import { createGating, VISTA_POR_FEATURE } from '@/ui/gating';
+import { createFlags } from '@/flags/service';
+import { createStore } from '@/state/store';
+import { createMemoryAdapter } from '@/state/storage/local';
+import { FEATURES } from '@/flags/registry';
+
+const HOY = new Date(2026, 6, 30);
+
+function nuevoEntorno() {
+  const store = createStore({ adapter: createMemoryAdapter(), hoy: HOY });
+  store.load();
+  const flags = createFlags(store);
+  return { store, flags };
+}
+
+function montarShell() {
+  document.body.innerHTML = `
+    <nav class="sidebar"><ul class="nav-list">
+      <li class="nav-section"><button class="nav-btn active" data-view="dashboard"></button></li>
+      <li class="nav-section">
+        <button class="nav-btn" data-view="expenses"></button>
+        <button class="nav-btn" data-view="loans"></button>
+        <button class="nav-btn" data-view="nominas"></button>
+        <button class="nav-btn" data-view="accounts"></button>
+      </li>
+      <li class="nav-section">
+        <button class="nav-btn" data-view="escenarios"></button>
+        <button class="nav-btn" data-view="inflacion"></button>
+        <button class="nav-btn" data-view="rentas"></button>
+        <button class="nav-btn" data-view="margenes"></button>
+      </li>
+    </ul></nav>
+    <div id="modal-overlay" class="modal-overlay hidden"><div id="modal-content"></div></div>`;
+}
+
+const visible = (view: string): boolean => {
+  const btn = document.querySelector<HTMLElement>(`.nav-btn[data-view="${view}"]`);
+  return !!btn && btn.style.display !== 'none';
+};
+
+describe('ventana de funcionalidades', () => {
+  beforeEach(() => montarShell());
+
+  it('reutiliza el modal legacy y pinta una fila por feature', () => {
+    const { flags } = nuevoEntorno();
+    createFeaturesModal({ flags, notify: () => {} }).open();
+
+    expect(document.getElementById('modal-overlay')?.classList.contains('hidden')).toBe(false);
+    expect(document.querySelectorAll('[data-feature-toggle]')).toHaveLength(FEATURES.length);
+    expect(document.querySelector('.modal-title')?.textContent).toBe('Funcionalidades');
+    // Agrupada en secciones con título
+    expect(document.querySelectorAll('.card-title').length).toBeGreaterThan(1);
+  });
+
+  it('crea su propio modal si el legacy no está en el DOM', () => {
+    document.body.innerHTML = '';
+    const { flags } = nuevoEntorno();
+    createFeaturesModal({ flags, notify: () => {} }).open();
+    expect(document.getElementById('fa-features-overlay')).not.toBeNull();
+    expect(document.querySelectorAll('[data-feature-toggle]')).toHaveLength(FEATURES.length);
+  });
+
+  it('el toggle refleja el estado y la feature núcleo está deshabilitada', () => {
+    const { flags } = nuevoEntorno();
+    createFeaturesModal({ flags, notify: () => {} }).open();
+    const dashboard = document.querySelector<HTMLInputElement>('[data-feature-toggle="dashboard"]');
+    expect(dashboard?.disabled).toBe(true);
+    expect(dashboard?.checked).toBe(true);
+    expect(document.querySelector<HTMLInputElement>('[data-feature-toggle="inflacion"]')?.checked).toBe(false);
+    expect(document.querySelector<HTMLInputElement>('[data-feature-toggle="expenses"]')?.checked).toBe(true);
+  });
+
+  it('cambiar un toggle persiste el flag y avisa a onChange', () => {
+    const { store, flags } = nuevoEntorno();
+    const onChange = vi.fn();
+    createFeaturesModal({ flags, onChange, notify: () => {} }).open();
+
+    const input = document.querySelector<HTMLInputElement>('[data-feature-toggle="inflacion"]') as HTMLInputElement;
+    input.checked = true;
+    input.dispatchEvent(new Event('change'));
+
+    expect(flags.isEnabled('inflacion')).toBe(true);
+    expect(store.get('config').features.inflacion).toBe(true);
+    expect(onChange).toHaveBeenCalledWith(expect.arrayContaining(['inflacion']));
+  });
+
+  it('la cascada de apagado se refleja en el re-render y se avisa al usuario', () => {
+    const { flags } = nuevoEntorno();
+    const notify = vi.fn();
+    createFeaturesModal({ flags, notify }).open();
+
+    const accounts = document.querySelector<HTMLInputElement>('[data-feature-toggle="accounts"]') as HTMLInputElement;
+    accounts.checked = false;
+    accounts.dispatchEvent(new Event('change'));
+
+    expect(flags.isEnabled('goals')).toBe(false);
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining('dependían'), 'warn');
+    // Tras el re-render el toggle de goals aparece apagado
+    expect(document.querySelector<HTMLInputElement>('[data-feature-toggle="goals"]')?.checked).toBe(false);
+  });
+
+  it('muestra qué dependencia bloquea una feature activa', () => {
+    const { store, flags } = nuevoEntorno();
+    store.patchConfig({ features: { ...store.get('config').features, accounts: false, goals: true } });
+    createFeaturesModal({ flags, notify: () => {} }).open();
+    expect(document.body.innerHTML).toContain('Requiere: accounts');
+  });
+
+  it('restablecer vuelve a los valores por defecto', () => {
+    const { flags } = nuevoEntorno();
+    flags.setEnabled('inflacion', true);
+    const notify = vi.fn();
+    createFeaturesModal({ flags, notify }).open();
+
+    document.querySelector<HTMLElement>('[data-feature-action="reset"]')?.click();
+    expect(flags.isEnabled('inflacion')).toBe(false);
+    expect(notify).toHaveBeenCalledWith('Funcionalidades restablecidas', 'ok');
+  });
+
+  it('escapa el contenido de texto para no inyectar HTML', () => {
+    const { flags } = nuevoEntorno();
+    createFeaturesModal({ flags, notify: () => {} }).open();
+    // Ninguna descripción del catálogo introduce etiquetas sin escapar
+    expect(document.querySelectorAll('[data-feature-toggle] script')).toHaveLength(0);
+    expect(document.body.innerHTML).not.toContain('<script>');
+  });
+});
+
+describe('gating del shell', () => {
+  beforeEach(() => montarShell());
+
+  it('oculta las vistas de las features desactivadas y muestra las activas', () => {
+    const { flags } = nuevoEntorno();
+    createGating({ flags }).apply();
+
+    expect(visible('expenses')).toBe(true);
+    expect(visible('loans')).toBe(true);
+    expect(visible('inflacion')).toBe(false); // off por defecto
+    expect(visible('rentas')).toBe(false);
+    expect(visible('margenes')).toBe(false);
+    expect(visible('dashboard')).toBe(true); // no está en el mapa: nunca se toca
+  });
+
+  it('al activar una feature su vista reaparece', () => {
+    const { flags } = nuevoEntorno();
+    const gating = createGating({ flags });
+    gating.apply();
+    expect(visible('inflacion')).toBe(false);
+
+    flags.setEnabled('inflacion', true);
+    gating.apply();
+    expect(visible('inflacion')).toBe(true);
+  });
+
+  it('oculta la sección entera del sidebar si ninguna de sus vistas está activa', () => {
+    const { flags } = nuevoEntorno();
+    for (const id of ['supuestos', 'inflacion', 'fiscalidad', 'margenes']) flags.setEnabled(id, false);
+    createGating({ flags }).apply();
+
+    const secciones = document.querySelectorAll<HTMLElement>('.nav-section');
+    expect(secciones[2].style.display).toBe('none'); // Planificación
+    expect(secciones[1].style.display).not.toBe('none'); // Mi dinero sigue activa
+  });
+
+  it('redirige al dashboard si se desactiva la vista abierta', () => {
+    const { flags } = nuevoEntorno();
+    const router = { navigate: vi.fn() };
+    // Simula estar en la vista de préstamos
+    document.querySelector('.nav-btn[data-view="dashboard"]')?.classList.remove('active');
+    document.querySelector('.nav-btn[data-view="loans"]')?.classList.add('active');
+
+    flags.setEnabled('loans', false);
+    createGating({ flags, router }).apply();
+
+    expect(router.navigate).toHaveBeenCalledWith('dashboard');
+  });
+
+  it('no redirige si la vista abierta sigue activa', () => {
+    const { flags } = nuevoEntorno();
+    const router = { navigate: vi.fn() };
+    createGating({ flags, router }).apply();
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
+
+  it('el mapa de vistas solo referencia features del catálogo', () => {
+    for (const featureId of Object.keys(VISTA_POR_FEATURE)) {
+      expect(FEATURES.map((f) => f.id)).toContain(featureId);
+    }
+  });
+});

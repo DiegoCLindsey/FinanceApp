@@ -5,14 +5,17 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   prettierConfig,
   {
-    files: ['src/v2/**/*.ts'],
+    files: ['src/**/*.ts', 'tests/**/*.{ts,js}'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      // ignoreRestSiblings permite el patrón `const { drop: _x, ...rest } = obj`
+      // que usan las migraciones para omitir campos legados.
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true }],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**', '_site/**', '*.config.js'],
+    // tests/nomina.test.cjs es legado y se retira en F3 (docs/02-plan-refactor.md, 3.5)
+    ignores: ['dist/**', 'node_modules/**', 'coverage/**', '_site/**', '*.config.js', 'tests/nomina.test.cjs'],
   }
 );
