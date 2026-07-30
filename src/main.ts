@@ -28,6 +28,8 @@ import { createLocalStorageAdapter } from './state/storage/local';
 import { SCHEMA_VERSION } from './state/schema';
 import { createFlags, type Flags } from './flags/service';
 import { FEATURES, featuresPorGrupo } from './flags/registry';
+import { createFeaturesModal } from './ui/features-modal';
+import { createGating } from './ui/gating';
 
 export interface FinanceAppNamespace {
   version: number;
@@ -57,6 +59,12 @@ export interface FinanceAppNamespace {
   /** Servicio de feature flags sobre el store. */
   flags: Flags;
   featureRegistry: { all: typeof FEATURES; porGrupo: typeof featuresPorGrupo };
+  ui: {
+    /** Abre la ventana de configuración de funcionalidades. */
+    openFeatures: () => void;
+    /** Re-aplica el gating de los flags al shell (sidebar y vista activa). */
+    applyGating: () => void;
+  };
 }
 
 function bootstrap(): FinanceAppNamespace {
@@ -66,6 +74,15 @@ function bootstrap(): FinanceAppNamespace {
     console.info(`[FinanceApp] Migraciones aplicadas: ${applied.join(', ')} (esquema v${SCHEMA_VERSION})`);
   }
   const flags = createFlags(store);
+  const gating = createGating({ flags });
+  const featuresModal = createFeaturesModal({
+    flags,
+    onChange: () => {
+      gating.apply();
+      // Re-render de la vista activa para que refleje el cambio de inmediato
+      (globalThis as { Router?: { rerender?: () => void } }).Router?.rerender?.();
+    },
+  });
 
   return {
     version: SCHEMA_VERSION,
@@ -93,6 +110,7 @@ function bootstrap(): FinanceAppNamespace {
     store,
     flags,
     featureRegistry: { all: FEATURES, porGrupo: featuresPorGrupo },
+    ui: { openFeatures: featuresModal.open, applyGating: gating.apply },
   };
 }
 
@@ -104,7 +122,22 @@ declare global {
 
 // El bundle se carga como script clásico: publicar en window es intencionado.
 if (typeof window !== 'undefined') {
-  window.FinanceApp = bootstrap();
+  const app = bootstrap();
+  window.FinanceApp = app;
+
+  // El shell legacy se monta después de este script (y el sidebar se revela al
+  // pasar la autenticación), así que el gating se aplica cuando el DOM está listo
+  // y de nuevo tras cada navegación.
+  const aplicarGating = () => app.ui.applyGating();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', aplicarGating, { once: true });
+  } else {
+    aplicarGating();
+  }
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('.nav-btn[data-view]')) setTimeout(aplicarGating, 0);
+  });
 }
 
 export { bootstrap };

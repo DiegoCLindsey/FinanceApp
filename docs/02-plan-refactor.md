@@ -193,14 +193,27 @@ src/
       Perfiles exportables (`exportProfile`/`importProfile`) que ignoran ids
       desconocidos y completan ausentes con su defecto.
       CA cumplido: roundtrip export→import conserva los flags (test).
-- [ ] **2.3 Ventana de configuración** — modal "Funcionalidades" accesible desde el
-      sidebar: toggles agrupados, descripción por feature, aviso de dependencias
-      (desactivar Inflación desactiva las vistas que dependen de ella), botones
-      guardar/cargar perfil. CA: desactivar una feature oculta su entrada del sidebar,
-      sus tarjetas del dashboard y sus providers del motor **sin recargar**.
-- [ ] **2.4 Gating transversal** — Router, sidebar, secciones del dashboard y registro
-      de providers consultan `Flags.isEnabled(id)`. CA: con todas las flags off, la app
-      queda en dashboard mínimo (saldo + extracto) sin errores de consola.
+- [x] **2.3 Ventana de configuración** — COMPLETADA. `src/ui/features-modal.ts`:
+      modal "Funcionalidades" abierto desde el botón del sidebar, con toggles
+      agrupados por sección, descripción de cada feature, aviso "Requiere: X"
+      cuando una dependencia está apagada, y botones guardar/cargar perfil y
+      restablecer. Reutiliza el modal legacy (#modal-overlay) si existe y crea el
+      suyo si no, y usa las clases del design system (sin CSS nuevo). El HTML se
+      escapa. Verificado en Chromium real y con tests happy-dom.
+      CA parcial: el sidebar y la vista activa reaccionan al instante (ver 2.4);
+      el gating de las tarjetas del dashboard queda pendiente de portar esa vista
+      (1.7) — hoy el dashboard se regenera entero en cada render legacy.
+- [~] **2.4 Gating transversal** — PARCIAL. `src/ui/gating.ts` oculta las entradas
+      del sidebar de las features desactivadas (y la sección entera si se queda sin
+      vistas visibles), y redirige al dashboard si se desactiva la vista abierta. Se
+      aplica al cargar, tras cada navegación y tras cada cambio en la ventana de
+      funcionalidades. Mapa `VISTA_POR_FEATURE` con test que verifica que solo
+      referencia ids del catálogo.
+      Pendiente: (a) gating de las secciones del dashboard y (b) de los providers
+      del motor — ambos requieren que el dashboard y el statement se consuman desde
+      el paquete nuevo, es decir la tarea 1.7. Al portar cada vista, su manifest
+      declarará su flag y este módulo pasará a leer el registro de vistas en vez
+      del DOM.
 
 ## Fase 3 — QA: cobertura de tests completa
 
