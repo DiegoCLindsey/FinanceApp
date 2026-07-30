@@ -8,7 +8,7 @@ const State = (() => {
   // historicoSaldos = [{_id, fecha, saldo, nota}] puntos de control reales
   const DEFAULT_ACCOUNT = { _id: 'default', nombre: 'Default', saldo: 0, saldoInicial: 0, fechaInicialSaldo: new Date().toISOString().slice(0,10), interes: 0, periodoCobro: 'mensual', descripcion: 'Cuenta principal', activo: true, simulacion: false, historicoSaldos: [], esCuentaPrincipal: true };
   const DEFAULT_STATE = {
-    loans: [], expenses: [], accounts: [DEFAULT_ACCOUNT], history: [],
+    loans: [], expenses: [], accounts: [DEFAULT_ACCOUNT],
     nominas: [],    // [{_id,nombre,bruto,nPagas,irpfModo,irpfPct,representacion,fechaInicio,fechaFin,cuenta,activo,tags}]
     goals: [],      // [{_id,nombre,targetAmount,targetDate,cuentaId,color}]
     inflacion: [],  // [{_id, year, tasa}] — tasas anuales por periodo

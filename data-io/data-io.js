@@ -10,7 +10,6 @@ const DataIO = (() => {
       loans:      State.get('loans')      || [],
       expenses:   State.get('expenses')   || [],
       accounts:   State.get('accounts')   || [],
-      history:    State.get('history')    || [],
       goals:      State.get('goals')      || [],
       nominas:    State.get('nominas')    || [],
       inflacion:  State.get('inflacion')  || [],
@@ -49,7 +48,6 @@ const DataIO = (() => {
     const loans      = data.loans      || [];
     const expenses   = data.expenses   || [];
     const accounts   = data.accounts   || [];
-    const history    = data.history    || [];
     const goals      = data.goals      || [];
     const nominas    = data.nominas    || [];
     const inflacion  = data.inflacion  || [];
@@ -67,7 +65,6 @@ const DataIO = (() => {
     State.set('loans',      loans);
     State.set('expenses',   expenses);
     State.set('accounts',   accounts);
-    State.set('history',    history);
     State.set('goals',      goals);
     State.set('nominas',    nominas);
     State.set('inflacion',  inflacion);
@@ -301,9 +298,8 @@ const DataIO = (() => {
     const loans    = State.get('loans')    || [];
     const expenses = State.get('expenses') || [];
     const accounts = State.get('accounts') || [];
-    const history  = State.get('history')  || [];
     const realAccounts = accounts.filter(a => a._id !== 'default' || a.saldoInicial > 0 || (a.historicoSaldos||[]).length > 0);
-    return loans.length > 0 || expenses.length > 0 || realAccounts.length > 0 || history.length > 0;
+    return loans.length > 0 || expenses.length > 0 || realAccounts.length > 0;
   }
 
   function showWelcomeIfEmpty() {
