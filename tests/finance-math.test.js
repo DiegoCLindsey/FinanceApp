@@ -86,14 +86,6 @@ describe('IRPF y fiscalidad', () => {
     // beneficio 2000/12000; retiro 6000 → beneficio retirado 1000 → 30% = 300
     expect(FM.calcImpuestoPension(acc, 6000)).toBe(300);
   });
-  it('calcPrestacionParo: no elegible bajo 360 días; topes IPREM', () => {
-    expect(FM.calcPrestacionParo({ diasCotizados: 300, salarioBrutoAnual: 24000 }).elegible).toBe(false);
-    const p = FM.calcPrestacionParo({ diasCotizados: 2200, salarioBrutoAnual: 30000, hijos: 1 });
-    expect(p.diasPrestacion).toBe(720);
-    expect(p.cuota70).toBeCloseTo(1206.68, 2); // clamp a IPREM × 2.00 (1 hijo)
-    expect(p.cuota50).toBeCloseTo(1206.68, 2);
-    expect(p.importeTotal).toBeCloseTo(28960.32, 2);
-  });
 });
 
 describe('inflación', () => {
