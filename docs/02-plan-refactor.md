@@ -80,15 +80,19 @@ src/
       `src/core/money.ts` (céntimos, roundMoney, formatEUR). Política de precisión
       documentada en money.ts: cálculo interno en float por paridad con legacy;
       céntimos en bordes (persistencia/presentación).
-- [ ] **1.3 Portar `core/` fiscal y préstamos** ∥ — EN CURSO. Portados con paridad
+- [x] **1.3 Portar `core/` fiscal y préstamos** — COMPLETADA. Portados con paridad
       exacta verificada (`tests/core/parity.test.ts`, igualdad estricta): loan.ts
       (cuota, TAE, tabla, resumen con caché), tax/irpf.ts, tax/ahorro.ts,
       inflation.ts, health.ts, accounts.ts (saldoRealCuenta/saldoEnFecha) y
       tax/pension.ts (calcFondosPension con 'hoy' inyectable, calcImpuestoPension,
       calcTipoMarginalPension, calcFondoInversion con tramos explícitos).
-      Pendiente: calcTipoMarginalGrupo y los resolvers de tablas por ejercicio
-      (tramosIRPFParaAño/tramosGananciasParaAño) — están acoplados al State y se
-      portarán con la capa state/ (tarea 1.6). CA: paridad exacta (tolerancia 0).
+      Cerrado con `core/tax/tables.ts`: `resolverTablaAnual` /
+      `crearResolverTramos` sustituyen a tramosIRPFParaAño y
+      tramosGananciasParaAño como funciones puras (el histórico y el default
+      entran por parámetro), con paridad verificada; el store los cablea a sus
+      datos. `calcTipoMarginalGrupo` no se porta: solo lo usaba la vista de
+      nóminas, que lo recalcula inline; se resolverá al portar la vista (1.7).
+      CA cumplido: paridad exacta (tolerancia 0).
 - [x] **1.4 Motor de proyección como providers** — COMPLETADA. Contratos en
       `src/engine/types.ts` (CashEvent, DateRange, EventProvider) y primer provider
       portado con paridad exacta: `providers/expenses.ts` (proyectarGastos +
@@ -118,9 +122,19 @@ src/
       pendiente que no es paridad exacta (truncar un único extracto al horizonte
       cambia el prorrateo del interés del último periodo → requiere golden test,
       movida a 6.3). `aplicarInflacion` ya no existe (eliminada en 1.8).
-- [ ] **1.6 Store tipado + migraciones versionadas** — `state/` sustituye a
-      `common/state.js`; migración v4→v5 formaliza el esquema. CA: import de un backup
-      JSON v4 real produce estado válido.
+- [x] **1.6 Store tipado + migraciones versionadas** — COMPLETADA.
+      `state/schema.ts` (AppState tipado completo + defaults + SCHEMA_VERSION=5),
+      `state/migrations/` (cadena numerada; la 005 normaliza cualquier estado
+      previo: escenarioId→escenarioIds, diaPago legado, esFondoPension→modeloFondo,
+      cuentaId→cuentaIds, limpieza de los campos de las features retiradas en 1.8,
+      y `config.features` para F2), `state/store.ts` (get/set tipados, patchConfig,
+      subscribe por clave para re-render selectivo, CRUD, snapshot/replaceAll,
+      resolvers de tramos) y `state/storage/` (adapter localStorage con las MISMAS
+      claves que el legacy + adapter en memoria para tests).
+      CA cumplido: un backup v4 realista (con campos legados, arrays nulos y
+      basura) migra a estado válido; migración idempotente; sin excepciones ante
+      datos corruptos. NOTA: la clave `state_history` no se destruye — la
+      migración de Contabilidad (4.1) importará esos puntos al ledger.
 - [ ] **1.7 Portar vistas a `features/`** — una tarea por vista (dashboard, expenses,
       loans, accounts+goals, nominas, inflacion, escenarios, rentas, margenes), cada una
       con su manifest `{ id, nombre, flag, route?, render }`. ∥ entre vistas una vez
@@ -188,7 +202,9 @@ src/
 - [ ] **4.1 Modelo de datos** — nueva colección `transacciones`:
       `{ _id, fecha, cuentaId, importeCts (con signo), concepto, tags[],
       estimacionId?, tipo: 'gasto'|'ingreso'|'ajuste', origen: 'manual'|'importado' }`
-      y `puntosControl` (los `historicoSaldos` actuales migran aquí). Migración v5→v6.
+      y `puntosControl` (los `historicoSaldos` actuales migran aquí). Migración v5→v6
+      (`state/migrations/006-*.ts`), que además debe importar la clave huérfana
+      `state_history` del esquema antiguo si existe (se preservó a propósito en 1.6).
 - [ ] **4.2 TagService compartido** — servicio único de tags (crear, renombrar, fusionar,
       autocompletar) usado por estimaciones y contabilidad indistintamente; los tags se
       derivan del uso (sin registro separado) pero renombrar/fusionar actúa sobre ambas
