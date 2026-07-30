@@ -111,6 +111,25 @@ const DropboxService = (() => {
     return true;
   }
 
+  // ── Reanudar sesión sin interacción ──────────────────────────────────────────
+  // `unlock` solo descifra el token guardado; no dice nada de si Dropbox lo
+  // sigue aceptando (los tokens de acceso caducan a las 4 h). Aquí se comprueba
+  // contra la API, que es el criterio que pide el usuario: token válido → seguir,
+  // token inválido → fuera.
+  async function restore(passphrase) {
+    if (!hasSavedSession()) return false;
+    try {
+      await unlock(passphrase);
+      await _verifyToken(_token);
+      return true;
+    } catch {
+      _token = null;
+      _cryptoKey = null;
+      _passphrase = null;
+      return false;
+    }
+  }
+
   // ── Estado ────────────────────────────────────────────────────────────────────
   function hasSavedSession() { return !!localStorage.getItem(LS_TOKEN); }
   function isConnected()     { return !!_token && !!_cryptoKey; }
@@ -216,7 +235,7 @@ const DropboxService = (() => {
   }
 
   return {
-    setup, unlock, hasSavedSession, isConnected, forget,
+    setup, unlock, restore, hasSavedSession, isConnected, forget,
     uploadBackup, downloadBackup, tokenAgeHours, couldBeExpired,
   };
 })();
@@ -287,8 +306,77 @@ const AuthModule = (() => {
     UI.toast(`${modeName} conectado. Sin backup previo.`);
   }
 
+  // ── Sesión persistente ────────────────────────────────────────────────────────
+  // La sirve el paquete nuevo (src/auth/session.ts). Si el bundle no cargó, se
+  // devuelve un stub inerte: la app vuelve a pedir el acceso en cada recarga,
+  // como antes, pero sigue funcionando.
+  const _STUB_SESION = { leer: () => null, abrir: () => null, cerrar: () => {}, tocar: () => {}, vigilar: () => () => {} };
+  function _sesion() { return window.FinanceApp?.session ?? _STUB_SESION; }
+  let _detenerVigilancia = null;
+
+  /**
+   * Intenta reanudar la sesión guardada sin preguntar nada.
+   * @returns true si se ha arrancado la app; false si hay que pedir acceso.
+   */
+  async function _reanudar() {
+    const reg = _sesion().leer();   // devuelve null si ha caducado por inactividad
+    if (!reg) return false;
+
+    try {
+      if (reg.modo === 'local') {
+        await launch('local');
+        return true;
+      }
+
+      if (reg.modo === 'firebase') {
+        if (!reg.passphrase) return false;
+        const user = await FirebaseService.restoreSession(FirebaseService.getConfig());
+        if (!user) return false;              // token caducado/revocado → fuera
+        FirebaseService.setPassphrase(reg.passphrase);
+        await _sincronizarDesdeNube(FirebaseService, 'Firebase');
+        await launch('firebase');
+        return true;
+      }
+
+      if (reg.modo === 'dropbox') {
+        if (!reg.passphrase) return false;
+        if (!(await DropboxService.restore(reg.passphrase))) return false;
+        await _sincronizarDesdeNube(DropboxService, 'Dropbox');
+        await launch('dropbox');
+        return true;
+      }
+    } catch (err) {
+      console.error('[auth] No se pudo reanudar la sesión:', err);
+      return false;
+    }
+    return false;
+  }
+
+  /** Descarga el backup y lo vuelca al almacenamiento local, si existe. */
+  async function _sincronizarDesdeNube(service, nombre) {
+    const backup = await service.downloadBackup();
+    if (!backup) return;
+    for (const [k, v] of Object.entries(backup)) {
+      if (v !== undefined) StorageAdapter.set('state_' + k, v);
+    }
+    UI.toast(`Datos sincronizados desde ${nombre} ✓`);
+  }
+
+  /** Cierra la sesión y devuelve al usuario a la pantalla de inicio. */
+  async function logout({ olvidarCuenta = false } = {}) {
+    _sesion().cerrar();
+    if (FirebaseService.isConnected() || FirebaseService.hasSavedSession()) {
+      await (olvidarCuenta ? FirebaseService.forget() : FirebaseService.logout());
+    }
+    if (olvidarCuenta && DropboxService.hasSavedSession()) DropboxService.forget();
+    window.location.reload();
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────────
   async function init() {
+    // Reanudar antes de enseñar nada: evita el parpadeo de la pantalla de acceso
+    if (await _reanudar()) return;
+
     // Mostrar overlay de auth al arrancar
     document.getElementById('auth-overlay').classList.remove('hidden');
 
@@ -360,7 +448,7 @@ const AuthModule = (() => {
       try {
         await DropboxService.setup(token, pass);
         await _offerMigration(DropboxService, 'Dropbox');
-        await launch('dropbox');
+        await launch('dropbox', { passphrase: pass });
       } catch (err) {
         _err('dbx-error', err.message);
       } finally {
@@ -412,7 +500,7 @@ const AuthModule = (() => {
           UI.toast('Datos sincronizados desde Dropbox ✓');
         }
 
-        await launch('dropbox');
+        await launch('dropbox', { passphrase: pass });
       } catch (err) {
         _err('dbx-unlock-error', err.message);
       } finally {
@@ -476,9 +564,9 @@ const AuthModule = (() => {
     };
 
     // Post-auth (called once passphrase is set)
-    const _afterAuth = async () => {
+    const _afterAuth = async (passphrase) => {
       await _offerMigration(FirebaseService, 'Firebase');
-      await launch('firebase');
+      await launch('firebase', { passphrase });
     };
 
     // ── Fase 2: passphrase ────────────────────────────────────────────────────
@@ -501,7 +589,7 @@ const AuthModule = (() => {
       _setBusy('btn-fbx-passphrase-ok', true, 'Continuar');
       try {
         FirebaseService.setPassphrase(passphrase);
-        await _afterAuth();
+        await _afterAuth(passphrase);
       } catch (err) {
         _err('fbx-passphrase-error', err.message);
       } finally {
@@ -563,7 +651,7 @@ const AuthModule = (() => {
           }
           UI.toast('Datos sincronizados desde Firebase ✓');
         }
-        await launch('firebase');
+        await launch('firebase', { passphrase });
       } catch (err) {
         _err('fbx-unlock-passphrase-error', err.message);
       } finally {
@@ -603,7 +691,9 @@ const AuthModule = (() => {
 
   // ── Launch: arrancar la app ────────────────────────────────────────────────────
   // mode: 'local' | 'dropbox' | 'firebase'
-  async function launch(mode) {
+  // `passphrase` solo llega desde los flujos interactivos: al reanudar ya está
+  // guardada y no hay que reescribirla.
+  async function launch(mode, { passphrase } = {}) {
     await State.load();
 
     const cfg = State.get('config');
@@ -623,10 +713,33 @@ const AuthModule = (() => {
 
     document.getElementById('btn-fbx-whitelist')?.addEventListener('click', _openWhitelistModal);
 
+    _registrarSesion(mode, passphrase);
+
     DataIO.init();
     DataIO.initAutoSave();
     Router.init();
     DataIO.showWelcomeIfEmpty();
+  }
+
+  /**
+   * Deja constancia de la sesión para poder reanudarla en la próxima recarga y
+   * arranca la vigilancia de inactividad (solo hace algo si el usuario ha
+   * configurado un cierre automático).
+   */
+  function _registrarSesion(mode, passphrase) {
+    const sesion = _sesion();
+    const previa = sesion.leer();
+    // Reanudación (mismo modo y sin passphrase nueva) → basta con marcar uso.
+    // Cualquier otro caso reemplaza el registro: el usuario puede haber cambiado
+    // de método de acceso o de clave.
+    if (previa && previa.modo === mode && !passphrase) sesion.tocar();
+    else sesion.abrir({ modo: mode, passphrase, email: FirebaseService.currentUserEmail() || undefined });
+
+    _detenerVigilancia?.();
+    _detenerVigilancia = sesion.vigilar(() => {
+      UI.toast('Sesión cerrada por inactividad');
+      setTimeout(() => window.location.reload(), 1200);
+    });
   }
 
   // ── Modal de gestión de lista blanca ─────────────────────────────────────────
@@ -755,5 +868,5 @@ const AuthModule = (() => {
     }
   }
 
-  return { init, launch, connectCloud, _wlRemove: null, _wlSetAdmin: null };
+  return { init, launch, logout, connectCloud, _wlRemove: null, _wlSetAdmin: null };
 })();

@@ -145,6 +145,50 @@ const DataIO = (() => {
   }
 
   // ── Modal "Administrar datos" ─────────────────────────────────────────────────
+  // ── Sección "Sesión" del modal de datos ──────────────────────────────────────
+  // La sesión se mantiene entre recargas (ver src/auth/session.ts). Aquí el
+  // usuario decide si quiere además un cierre automático por inactividad, y
+  // puede cerrarla a mano — que es la única forma de salir si elige "Nunca".
+  function _sesionSection(cfg, { yaHayCierre = false } = {}) {
+    const opciones = window.FinanceApp?.session?.opciones;
+    if (!opciones) return '';   // sin el paquete nuevo no hay sesión persistente
+    const actual = cfg.autoLogoutMinutos ?? 0;
+    const items = opciones
+      .map(o => `<option value="${o.minutos}" ${o.minutos === actual ? 'selected' : ''}>${o.etiqueta}</option>`)
+      .join('');
+    return `
+      <div class="dm-section">
+        <div class="dm-section-head">
+          <span class="dm-badge dm-badge--local">Sesión</span>
+        </div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:10px">
+          Tu sesión se mantiene al recargar la página. Solo se cierra si la cierras
+          tú o si el acceso deja de ser válido.
+        </div>
+        <label class="form-label" style="font-size:11px">Cerrar sesión automáticamente</label>
+        <select id="dm-autologout" class="auth-input" style="margin-top:4px">${items}</select>
+        ${yaHayCierre ? '' : `
+        <div class="dm-logout-row" style="margin-top:12px">
+          <button class="btn-secondary dm-btn" id="dm-session-logout" style="color:var(--red)">Cerrar sesión ahora</button>
+        </div>`}
+      </div>`;
+  }
+
+  function _wireSesionSection() {
+    document.getElementById('dm-autologout')?.addEventListener('change', e => {
+      const cfg = State.get('config');
+      cfg.autoLogoutMinutos = parseInt(e.target.value, 10) || 0;
+      State.set('config', cfg);
+      UI.toast(cfg.autoLogoutMinutos ? 'Cierre automático actualizado' : 'La sesión ya no se cerrará sola');
+    });
+
+    document.getElementById('dm-session-logout')?.addEventListener('click', async () => {
+      if (!window.confirm('¿Cerrar la sesión? Volverás a la pantalla de acceso.')) return;
+      _stopAutoSave();
+      await AuthModule.logout();
+    });
+  }
+
   function openDataModal() {
     const fbx = FirebaseService.isConnected();
     const dbx = DropboxService.isConnected();
@@ -213,8 +257,10 @@ const DataIO = (() => {
             <button class="btn-secondary dm-btn" id="dm-import">↑ Importar JSON</button>
           </div>
         </div>
-        ${fbxSection}${dbxSection}${noCloud}
+        ${fbxSection}${dbxSection}${noCloud}${_sesionSection(cfg, { yaHayCierre: fbx || dbx })}
       </div>`, 'Administrar datos');
+
+    _wireSesionSection();
 
     // Upgrade to cloud (shown when no cloud connected)
     if (!fbx && !dbx) {
@@ -264,13 +310,10 @@ const DataIO = (() => {
       minsEl?.addEventListener('change', () => _saveAutoSaveCfg(toggle.checked, minsEl.value));
 
       document.getElementById('dm-fbx-logout')?.addEventListener('click', async () => {
-        if (!window.confirm('¿Cerrar sesión de Firebase?')) return;
+        if (!window.confirm('¿Cerrar sesión de Firebase?\nTendrás que volver a introducir tu clave de cifrado la próxima vez.')) return;
         _stopAutoSave();
-        await FirebaseService.logout();
-        document.getElementById('btn-fbx-whitelist')?.classList.add('hidden');
-        document.getElementById('fbx-user-email').textContent = '';
-        UI.closeModal();
-        UI.toast('Firebase: sesión cerrada');
+        // AuthModule.logout borra también la sesión persistida y recarga
+        await AuthModule.logout();
       });
     }
 
@@ -283,12 +326,10 @@ const DataIO = (() => {
         catch (e) { UI.toast('Error: ' + e.message, 'err'); btn.disabled = false; btn.textContent = 'Guardar ahora'; }
       });
 
-      document.getElementById('dm-dbx-logout')?.addEventListener('click', () => {
-        if (!window.confirm('¿Desconectar Dropbox?')) return;
+      document.getElementById('dm-dbx-logout')?.addEventListener('click', async () => {
+        if (!window.confirm('¿Desconectar Dropbox?\nSe olvidará el token guardado en este dispositivo.')) return;
         _stopAutoSave();
-        DropboxService.forget();
-        UI.closeModal();
-        UI.toast('Dropbox desconectado');
+        await AuthModule.logout({ olvidarCuenta: true });
       });
     }
   }

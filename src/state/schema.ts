@@ -221,6 +221,12 @@ export interface AppConfig {
   storageMode: 'local' | 'firebase' | 'dropbox';
   autoSave: boolean;
   autoSaveInterval: number;
+  /**
+   * Minutos de inactividad tras los que se cierra la sesión sola. 0 = nunca
+   * (por defecto): la sesión solo se cierra si el usuario lo pide o si el
+   * token deja de ser válido.
+   */
+  autoLogoutMinutos: number;
   onboardingDone: boolean;
   escenarioActivo: string | null;
   features: FeatureFlags;
@@ -313,6 +319,7 @@ export function defaultConfig(hoyISO: ISODate, finISO: ISODate): AppConfig {
     storageMode: 'local',
     autoSave: false,
     autoSaveInterval: 15,
+    autoLogoutMinutos: 0,
     onboardingDone: false,
     escenarioActivo: null,
     features: {},

@@ -127,6 +127,15 @@ jobs:
             exit 1
           fi
 
+          # Cache busting del bundle. index.html y assets/financeapp-core.js se
+          # despliegan juntos pero la CDN los cachea por separado: sin esto, un
+          # index.html nuevo puede quedar emparejado con un bundle viejo (o con
+          # un 404 cacheado) y window.FinanceApp no llega a existir.
+          sed -i "s|assets/financeapp-core.js\"|assets/financeapp-core.js?v=${GITHUB_SHA:0:8}\"|" _site/index.html
+          grep -q "financeapp-core.js?v=${GITHUB_SHA:0:8}" _site/index.html \
+            && echo "✅ bundle versionado como ?v=${GITHUB_SHA:0:8}" \
+            || { echo "::error::no se pudo versionar la etiqueta script del bundle"; exit 1; }
+
       # ── 8. Upload & deploy ────────────────────────────────────────────────────
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5

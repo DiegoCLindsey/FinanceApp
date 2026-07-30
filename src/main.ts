@@ -24,7 +24,7 @@ import { proyectarAportaciones } from './engine/providers/contributions';
 import { proyectarRetencionesFiscales } from './engine/providers/withholdings';
 import { proyectarInflacionGastos, proyectarPerdidaAhorro } from './engine/providers/inflation-events';
 import { createStore, type Store } from './state/store';
-import { createLocalStorageAdapter } from './state/storage/local';
+import { adoptarClavesHuerfanas, createLocalStorageAdapter } from './state/storage/local';
 import { SCHEMA_VERSION } from './state/schema';
 import { createFlags, type Flags } from './flags/service';
 import { FEATURES, featuresPorGrupo } from './flags/registry';
@@ -38,6 +38,7 @@ import { createLedger, type Ledger } from './accounting/ledger';
 import { createTagService, type TagService } from './accounting/tags';
 import { createPrecisionAnalyzer, type PrecisionAnalyzer } from './accounting/precision';
 import { createAdjuster, sugerirAjuste, type Adjuster } from './accounting/adjust';
+import { createSessionService, vigilarInactividad, OPCIONES_AUTOLOGOUT, type SessionService } from './auth/session';
 
 export interface FinanceAppNamespace {
   version: number;
@@ -75,6 +76,12 @@ export interface FinanceAppNamespace {
   };
   /** Registro de vistas del paquete nuevo; lo consulta el router del shell. */
   app: FeatureRegistry;
+  /** Sesión persistente entre recargas; la consume auth/auth.js. */
+  session: SessionService & {
+    /** Arranca la vigilancia de inactividad; devuelve el `detener`. */
+    vigilar: (onCaducada: () => void) => () => void;
+    opciones: typeof OPCIONES_AUTOLOGOUT;
+  };
   /** Contabilidad real (F4): ledger, etiquetas compartidas y precisión. */
   accounting: {
     ledger: Ledger;
@@ -86,12 +93,30 @@ export interface FinanceAppNamespace {
 }
 
 function bootstrap(): FinanceAppNamespace {
+  // Recupera lo que las compilaciones con el bug del espacio de nombres
+  // escribieron fuera de `financeapp_` (ver adoptarClavesHuerfanas).
+  if (typeof localStorage !== 'undefined') {
+    const adoptadas = adoptarClavesHuerfanas();
+    if (adoptadas.length > 0) {
+      console.info(`[FinanceApp] Recuperadas claves escritas fuera del espacio de nombres: ${adoptadas.join(', ')}`);
+    }
+  }
   const store = createStore({ adapter: createLocalStorageAdapter() });
   const { applied } = store.load();
   if (applied.length > 0) {
     console.info(`[FinanceApp] Migraciones aplicadas: ${applied.join(', ')} (esquema v${SCHEMA_VERSION})`);
   }
   const flags = createFlags(store);
+  // El límite se lee en cada comprobación, no se captura: mientras el modal de
+  // datos siga siendo legacy, es `State` quien tiene la copia recién escrita y
+  // la del store se queda atrás hasta la siguiente recarga. Puente temporal,
+  // como `refrescarLegacy` (se retira al portar el modal de datos, tarea 1.7).
+  const sesion = createSessionService({
+    autoLogoutMinutos: () => {
+      const legacy = (globalThis as { State?: { get?: (k: string) => { autoLogoutMinutos?: number } | undefined } }).State?.get?.('config');
+      return Number(legacy?.autoLogoutMinutos ?? store.get('config').autoLogoutMinutos ?? 0);
+    },
+  });
   const ledger = createLedger(store);
   const tags = createTagService(store);
   const precision = createPrecisionAnalyzer(ledger);
@@ -160,6 +185,10 @@ function bootstrap(): FinanceAppNamespace {
     featureRegistry: { all: FEATURES, porGrupo: featuresPorGrupo },
     ui: { openFeatures: featuresModal.open, applyGating: gating.apply },
     app,
+    session: Object.assign(sesion, {
+      vigilar: (onCaducada: () => void) => vigilarInactividad({ sesion, onCaducada }),
+      opciones: OPCIONES_AUTOLOGOUT,
+    }),
     accounting: { ledger, tags, precision, adjuster, sugerirAjuste },
   };
 }
@@ -167,14 +196,35 @@ function bootstrap(): FinanceAppNamespace {
 declare global {
   interface Window {
     FinanceApp?: FinanceAppNamespace;
+    /** Diagnóstico cuando el arranque falla; la UI lo consulta para explicarlo. */
+    FinanceAppError?: { mensaje: string; stack?: string };
+  }
+}
+
+/**
+ * Arranca y publica el namespace. Si algo falla, la app legacy tiene que seguir
+ * funcionando, así que el error se captura y se deja en `window.FinanceAppError`
+ * para que la UI pueda explicarlo en vez de comportarse como si el bundle no
+ * existiera (que era lo que ocurría antes: un fallo aquí dejaba
+ * `window.FinanceApp` sin definir y sin ninguna pista del motivo).
+ */
+function publicar(): FinanceAppNamespace | null {
+  try {
+    const app = bootstrap();
+    window.FinanceApp = app;
+    return app;
+  } catch (e) {
+    const err = e as Error;
+    window.FinanceAppError = { mensaje: err?.message ?? String(e), stack: err?.stack };
+    console.error('[FinanceApp] El paquete nuevo no pudo arrancar:', e);
+    return null;
   }
 }
 
 // El bundle se carga como script clásico: publicar en window es intencionado.
-if (typeof window !== 'undefined') {
-  const app = bootstrap();
-  window.FinanceApp = app;
+const app = typeof window !== 'undefined' ? publicar() : null;
 
+if (app) {
   // El shell legacy se monta después de este script (y el sidebar se revela al
   // pasar la autenticación), así que el gating se aplica cuando el DOM está listo
   // y de nuevo tras cada navegación.

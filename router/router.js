@@ -31,10 +31,41 @@ const Router = (() => {
     if (_esNueva(_current)) _nuevas().mount(_current);
     else mods[_current]?.render();
   }
+  // El botón de Funcionalidades vive en el shell legacy, pero la ventana la
+  // sirve el paquete nuevo. Si el paquete no está disponible hay que explicarle
+  // al usuario qué ha pasado — no darle instrucciones de compilación.
+  function _escapar(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function _abrirFuncionalidades() {
+    if (window.FinanceApp?.ui?.openFeatures) { window.FinanceApp.ui.openFeatures(); return; }
+    const detalle = window.FinanceAppError
+      ? `<p>El módulo se ha descargado pero no ha podido arrancar:</p>
+         <p style="font-family:var(--font-mono);font-size:12px;color:var(--red);word-break:break-word">${_escapar(window.FinanceAppError.mensaje)}</p>`
+      : `<p>El módulo no se ha podido descargar. Suele deberse a una copia antigua
+          guardada en el navegador o a una conexión interrumpida.</p>`;
+    UI.openModal(
+      `${detalle}
+       <p class="mt-12">Tus datos están intactos: el resto de la aplicación sigue funcionando con normalidad.</p>
+       <div class="flex gap-8 mt-12" style="justify-content:flex-end">
+         <button class="btn-secondary" onclick="UI.closeModal()">Cerrar</button>
+         <button class="btn-primary" id="btn-features-recargar">Recargar sin caché</button>
+       </div>`,
+      'Funcionalidades no disponibles'
+    );
+    document.getElementById('btn-features-recargar')?.addEventListener('click',()=>{
+      // Fuerza a revalidar index.html y el bundle en vez de servirlos de caché
+      const u = new URL(window.location.href);
+      u.searchParams.set('_r', Date.now().toString(36));
+      window.location.replace(u.toString());
+    });
+  }
+
   function init() {
     // Las vistas nuevas insertan su contenedor y su botón antes de cablear clicks
     _nuevas()?.attachToShell();
     document.querySelectorAll('.nav-btn[data-view]').forEach(btn=>btn.onclick=()=>navigate(btn.dataset.view));
+    document.getElementById('btn-features')?.addEventListener('click',_abrirFuncionalidades);
     // Mobile menu
     document.getElementById('mobile-menu-btn')?.addEventListener('click',()=>{
       const sb=document.getElementById('sidebar'), ov=document.getElementById('sidebar-overlay');
