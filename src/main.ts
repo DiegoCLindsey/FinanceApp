@@ -32,6 +32,7 @@ import { createFeaturesModal } from './ui/features-modal';
 import { createGating } from './ui/gating';
 import { createFeatureRegistry, type FeatureRegistry } from './app/feature-registry';
 import { createAccountingFeature } from './features/accounting';
+import { createMarginsFeature } from './features/margins';
 import { createLedger, type Ledger } from './accounting/ledger';
 import { createTagService, type TagService } from './accounting/tags';
 import { createPrecisionAnalyzer, type PrecisionAnalyzer } from './accounting/precision';
@@ -108,6 +109,15 @@ function bootstrap(): FinanceAppNamespace {
     },
   });
 
+  // Recarga del State legacy: comparte las claves de localStorage con el store
+  // nuevo, pero mantiene su propia copia en memoria. Hasta portar el dashboard
+  // (1.7), tras escribir desde una vista nueva hay que pedirle que relea.
+  const refrescarLegacy = () => {
+    (globalThis as { State?: { load?: () => unknown } }).State?.load?.();
+  };
+
+  app.register(createMarginsFeature({ store, onDatosCambiados: refrescarLegacy }));
+
   app.register(
     createAccountingFeature({
       ledger,
@@ -116,12 +126,7 @@ function bootstrap(): FinanceAppNamespace {
       adjuster,
       accounts: () => store.get('accounts'),
       estimaciones: () => store.get('expenses'),
-      onDatosCambiados: () => {
-        // El dashboard legacy lee del State legacy, que comparte las claves de
-        // localStorage con el store nuevo pero mantiene su copia en memoria.
-        // Hasta portar el dashboard (1.7), se recarga desde storage.
-        (globalThis as { State?: { load?: () => unknown } }).State?.load?.();
-      },
+      onDatosCambiados: refrescarLegacy,
     }),
   );
 

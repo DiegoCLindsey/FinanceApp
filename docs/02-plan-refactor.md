@@ -159,7 +159,10 @@ src/
       seccion, iconoPath, mount, unmount? }`, con el router legacy delegando en el
       registro. Pendiente: portar las 9 vistas legacy (dashboard, expenses, loans,
       accounts+goals, nominas, inflacion, escenarios→supuestos, rentas, margenes),
-      ∥ entre ellas. Al portar cada una se retiran sus puentes temporales (el de
+      ∥ entre ellas. **Portadas hasta ahora: `margenes` → `src/features/margins`**
+      (se retiró `margenes/margenes.js` y su entrada del router legacy; el botón y
+      el contenedor que ya existían en index.html se reutilizan).
+      Al portar cada una se retiran sus puentes temporales (el de
       `historicoSaldos` del ledger con la de cuentas, y el `State.load()` que la
       vista de contabilidad hace para que el dashboard legacy vea los datos
       nuevos). CA: paridad funcional razonable; sin `onclick=` global inline
