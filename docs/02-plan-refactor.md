@@ -89,7 +89,7 @@ src/
       Pendiente: calcTipoMarginalGrupo y los resolvers de tablas por ejercicio
       (tramosIRPFParaAño/tramosGananciasParaAño) — están acoplados al State y se
       portarán con la capa state/ (tarea 1.6). CA: paridad exacta (tolerancia 0).
-- [ ] **1.4 Motor de proyección como providers** — EN CURSO. Hecho: contratos en
+- [x] **1.4 Motor de proyección como providers** — COMPLETADA. Contratos en
       `src/engine/types.ts` (CashEvent, DateRange, EventProvider) y primer provider
       portado con paridad exacta: `providers/expenses.ts` (proyectarGastos +
       cuantiaEfectiva), loans, interests (verificado vía generarExtracto: la
@@ -100,11 +100,12 @@ src/
       rescates; deps inyectadas) y `statement.ts` (generarExtracto con ancla
       bidireccional, recomputarSaldoAcum, saldoHoy, sumarPorTags) — paridad del
       extracto COMPLETO verificada en tests/core/engine-statement.test.ts con
-      mock de State para el legacy. Pendiente para cerrar 1.4: análisis
-      (detectarPuntosCriticos, calcColchon*/calcMargenEnFecha,
-      detectarCrucesMargenes, saldosPorCuentaEnExtracto, mediaMensualGastos,
-      calcDesviacion, calcGastoBasicoMensual); optimizer va en 1.5.
-      CA: extracto idéntico al actual para los fixtures golden de F0.
+      mock de State para el legacy. Cerrado también el análisis: `margins.ts`
+      (calcGastoBasicoMensual con 'hoy' inyectable, calcColchon, calcColchonEnFecha,
+      calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes) y
+      `analysis.ts` (detectarPuntosCriticos, mediaMensualGastos, calcDesviacion).
+      El optimizador va en 1.5. CA cumplido: extracto y análisis idénticos al
+      actual, verificado con igualdad estricta.
 - [ ] **1.5 Optimización de cálculo** — memoizar extracto por hash de inputs;
       `optimizer.ts` reutiliza proyecciones incrementales en vez de regenerar todo por
       mes; `aplicarInflacion` O(n·m) → Map. CA: mismos resultados, benchmark en test
