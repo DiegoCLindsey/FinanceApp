@@ -96,11 +96,14 @@ src/
       función legacy es interna), contributions y withholdings (retenciones, con
       tramos explícitos), salaries (nóminas: grupos IRPF, IPC, flex, con resolver
       de tramos inyectado) e inflation-events (coste de vida + erosión del ahorro).
-      Pendiente, siguiendo el mismo patrón: transfers (acoplado a State.accountName
-      y cuentas — inyectar accounts/nominas; en tests montar mock de State para
-      ejecutar el legacy); después `statement.ts` (generarExtracto +
-      _aplicarSaldoRef + saldoHoy + sumarPorTags + detectarPuntosCriticos +
-      calcColchon*/calcMargenEnFecha) y por último optimizer/desviación.
+      Hecho también: transfers.ts (traspasos, retención de reembolsos, IRPF de
+      rescates; deps inyectadas) y `statement.ts` (generarExtracto con ancla
+      bidireccional, recomputarSaldoAcum, saldoHoy, sumarPorTags) — paridad del
+      extracto COMPLETO verificada en tests/core/engine-statement.test.ts con
+      mock de State para el legacy. Pendiente para cerrar 1.4: análisis
+      (detectarPuntosCriticos, calcColchon*/calcMargenEnFecha,
+      detectarCrucesMargenes, saldosPorCuentaEnExtracto, mediaMensualGastos,
+      calcDesviacion, calcGastoBasicoMensual); optimizer va en 1.5.
       CA: extracto idéntico al actual para los fixtures golden de F0.
 - [ ] **1.5 Optimización de cálculo** — memoizar extracto por hash de inputs;
       `optimizer.ts` reutiliza proyecciones incrementales en vez de regenerar todo por
