@@ -8,7 +8,12 @@ import type { ISODate } from '@/core/dates';
 export interface CashEvent {
   fecha: ISODate;
   concepto: string;
-  /** Importe SIN signo; el signo lo codifica `tipo` (paridad con el legacy). */
+  /**
+   * Importe. Quirk heredado del legacy (se normalizará con un golden test
+   * dedicado): los providers de gastos/nóminas emiten cuantía positiva con el
+   * signo codificado en `tipo`; el de préstamos emite cuantía negativa. El
+   * ancla de saldo usa siempre |cuantia| + tipo, así que ambos convergen.
+   */
   cuantia: number;
   tipo: 'gasto' | 'ingreso';
   tags: string[];

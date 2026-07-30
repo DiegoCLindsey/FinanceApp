@@ -92,11 +92,15 @@ src/
 - [ ] **1.4 Motor de proyección como providers** — EN CURSO. Hecho: contratos en
       `src/engine/types.ts` (CashEvent, DateRange, EventProvider) y primer provider
       portado con paridad exacta: `providers/expenses.ts` (proyectarGastos +
-      cuantiaEfectiva). Pendiente, siguiendo el mismo patrón (portar + test de
-      paridad estricta en tests/core/engine.test.ts): loans, transfers (ojo:
-      acoplado a State.accountName y cuentas — inyectar accounts), salaries
-      (nóminas), interests, contributions (aportaciones), inflation-events,
-      retenciones; después `statement.ts` (generarExtracto + _aplicarSaldoRef).
+      cuantiaEfectiva), loans, interests (verificado vía generarExtracto: la
+      función legacy es interna), contributions y withholdings (retenciones, con
+      tramos explícitos). Pendiente, siguiendo el mismo patrón (portar + test de
+      paridad estricta en tests/core/engine*.test.ts): salaries (nóminas — usar
+      resolver de tramos inyectado), transfers (acoplado a State.accountName y
+      cuentas — inyectar accounts/nominas; en tests montar mock de State para
+      ejecutar el legacy), inflation-events (proyectarInflacionGastos y
+      proyectarPerdidaAhorro); después `statement.ts` (generarExtracto +
+      _aplicarSaldoRef + saldoHoy + sumarPorTags + puntos críticos).
       CA: extracto idéntico al actual para los fixtures golden de F0.
 - [ ] **1.5 Optimización de cálculo** — memoizar extracto por hash de inputs;
       `optimizer.ts` reutiliza proyecciones incrementales en vez de regenerar todo por
