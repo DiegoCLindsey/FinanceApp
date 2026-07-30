@@ -10,7 +10,7 @@ import { formatLocalDate, todayISO, type ISODate } from '@/core/dates';
 import { crearResolverTramos } from '@/core/tax/tables';
 import type { Tramos } from '@/core/tax/irpf';
 import { defaultAccount, defaultState, SCHEMA_VERSION, type AppConfig, type AppState, type CollectionKey } from './schema';
-import { runMigrations } from './migrations';
+import { LEGACY_KEYS, runMigrations } from './migrations';
 import { KEY_PREFIX, VERSION_KEY } from './storage/local';
 import type { StorageAdapter } from './storage/types';
 
@@ -46,6 +46,11 @@ export function createStore({ adapter, hoy = new Date() }: StoreOptions) {
   function load(): { applied: number[] } {
     const raw: Record<string, unknown> = {};
     for (const k of Object.keys(state) as StateKey[]) {
+      const val = adapter.get(`${KEY_PREFIX}${k}`);
+      if (val !== null) raw[k] = val;
+    }
+    // Colecciones retiradas del esquema que alguna migración aún necesita leer
+    for (const k of LEGACY_KEYS) {
       const val = adapter.get(`${KEY_PREFIX}${k}`);
       if (val !== null) raw[k] = val;
     }

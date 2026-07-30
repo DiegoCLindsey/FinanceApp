@@ -6,8 +6,8 @@
 //   · normaliza el formato antiguo de `diaPago`
 //   · deriva `modeloFondo` de `esFondoPension`
 //   · elimina los restos de las features retiradas en 1.8: `varianza`,
-//     `inflacion` por gasto, `config.inflacionGlobal`, `showMC`,
-//     `mcIteraciones` y la colección `history`
+//     `inflacion` por gasto, `config.inflacionGlobal`, `showMC` y `mcIteraciones`
+//     (la colección `history` se preserva aquí y la consume la migración 006)
 //   · garantiza una cuenta `default` y exactamente una cuenta principal
 //   · añade `config.features` (feature flags, F2)
 
@@ -45,7 +45,11 @@ function limpiarCamposRetirados(item: Obj): Obj {
 
 export function migrateTo5(raw: RawState, ctx: MigrationContext): RawState {
   const { hoyISO, finISO } = ctx;
-  const out: Obj = {};
+  // Se parte del estado recibido y solo se sobrescribe lo que esta migración
+  // normaliza. Es deliberado: construirlo desde cero descartaría colecciones que
+  // esta versión no conoce (las de migraciones posteriores), y entonces importar
+  // un backup nuevo declarándolo como v4 borraría datos del usuario.
+  const out: Obj = { ...raw };
 
   // ── config ──────────────────────────────────────────────────────────────────
   const cfgIn = asObj(raw.config);
@@ -172,8 +176,9 @@ export function migrateTo5(raw: RawState, ctx: MigrationContext): RawState {
   // Escenarios: se descarta `inversiones` (modelo retirado, migrado a cuentas)
   out.escenarios = asArray(raw.escenarios).map(({ inversiones: _drop, ...e }) => e);
 
-  // `history` no se copia: la colección fue retirada en 1.8 y su función la
-  // asume el módulo de Contabilidad (F4).
+  // `history` sale del esquema (la colección se retiró en 1.8) pero sobrevive
+  // aquí por el spread inicial, para que la migración 006 pueda importar esos
+  // puntos al ledger de contabilidad; es ella la que finalmente la elimina.
 
   return out;
 }

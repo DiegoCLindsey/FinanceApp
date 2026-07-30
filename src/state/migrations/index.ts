@@ -6,11 +6,23 @@
 
 import { SCHEMA_VERSION, type AppState } from '../schema';
 import { migrateTo5 } from './005-normalize';
+import { migrateTo6 } from './006-accounting';
 import type { Migration, MigrationContext, RawState } from './types';
 
 const MIGRATIONS: Migration[] = [
   { version: 5, describe: 'Formaliza el esquema; limpia restos de features eliminadas; añade config.features', migrate: migrateTo5 },
+  {
+    version: 6,
+    describe: 'Contabilidad real: crea transacciones y puntosControl (importa historicoSaldos y la clave history)',
+    migrate: migrateTo6,
+  },
 ];
+
+/**
+ * Claves de localStorage que ya no forman parte de AppState pero que las
+ * migraciones necesitan leer. El store las carga además de las del esquema.
+ */
+export const LEGACY_KEYS = ['history'] as const;
 
 /**
  * Aplica las migraciones pendientes en orden. `fromVersion` puede ser null/0

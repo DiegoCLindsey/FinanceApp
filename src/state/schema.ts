@@ -14,10 +14,13 @@ import type { MargenSeguridad, PuntoReserva } from '@/engine/margins';
 
 /**
  * v5 (2026-07): formaliza el esquema y limpia los restos de las features
- * eliminadas (Monte Carlo, inflación legacy, colección `history`); añade
- * `config.features` para los feature flags de F2.
+ *   eliminadas (Monte Carlo, inflación legacy, colección `history`); añade
+ *   `config.features` para los feature flags de F2.
+ * v6 (2026-07): módulo de contabilidad real (F4) — colecciones `transacciones`
+ *   y `puntosControl`. El histórico de saldos pasa a ser de contabilidad y es el
+ *   source of truth del pasado.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export interface Loan {
   _id: string;
@@ -63,6 +66,10 @@ export interface Expense {
   /** Se retira en F4 cuando Contabilidad lo sustituya (docs/03, B4). */
   historialPrecios?: { fecha: ISODate; cuantia: number }[];
   escenarioIds: string[];
+  /** Estimación de la que proviene por un ajuste automático (F4, tarea 4.6). */
+  ajustadaDesdeId?: string;
+  /** Fecha en la que se aplicó el ajuste que la creó. */
+  ajustadaEn?: ISODate;
 }
 
 export interface Account {
@@ -126,6 +133,44 @@ export interface TablaFiscalAnual {
   tramos: Tramos;
 }
 
+// ── Contabilidad real (F4) ────────────────────────────────────────────────────
+
+export type TipoTransaccion = 'gasto' | 'ingreso' | 'ajuste';
+
+/**
+ * Movimiento REAL de una cuenta. Los importes van en céntimos enteros con
+ * signo (negativo = salida) para que las sumas del ledger no arrastren error de
+ * coma flotante; el tipo se guarda además de forma explícita porque un 'ajuste'
+ * puede ser de cualquier signo.
+ */
+export interface Transaccion {
+  _id: string;
+  fecha: ISODate;
+  cuentaId: string;
+  importeCts: number;
+  concepto: string;
+  tags: string[];
+  /** Estimación (Expense) con la que se relaciona, para el análisis de precisión. */
+  estimacionId?: string | null;
+  tipo: TipoTransaccion;
+  origen: 'manual' | 'importado';
+  nota?: string;
+}
+
+/**
+ * Saldo real conocido de una cuenta en una fecha (lo que antes eran los
+ * `historicoSaldos` de la cuenta y la colección `history`). Ancla el ledger:
+ * el saldo en cualquier fecha es el último punto de control más las
+ * transacciones posteriores.
+ */
+export interface PuntoControl {
+  _id: string;
+  fecha: ISODate;
+  cuentaId: string;
+  saldoCts: number;
+  nota?: string;
+}
+
 /** Sustituido por Supuestos en F5 (diffs sobre el canónico). */
 export interface Escenario {
   _id: string;
@@ -187,6 +232,8 @@ export interface AppState {
   accounts: Account[];
   nominas: Nomina[];
   goals: Goal[];
+  transacciones: Transaccion[];
+  puntosControl: PuntoControl[];
   inflacion: PeriodoInflacion[];
   tramosIRPFHistorico: TablaFiscalAnual[];
   tramosGananciasCapitalHistorico: TablaFiscalAnual[];
@@ -279,6 +326,8 @@ export function defaultState(hoyISO: ISODate, finISO: ISODate): AppState {
     accounts: [defaultAccount(hoyISO)],
     nominas: [],
     goals: [],
+    transacciones: [],
+    puntosControl: [],
     inflacion: [],
     tramosIRPFHistorico: [],
     tramosGananciasCapitalHistorico: [],

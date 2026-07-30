@@ -240,40 +240,79 @@ src/
 > estimaciones y compartiendo el mismo sistema de tags. El histórico pasa a pertenecer a
 > contabilidad y es el *source of truth* del pasado.
 
-- [ ] **4.1 Modelo de datos** — nueva colección `transacciones`:
+- [x] **4.1 Modelo de datos** — COMPLETADA. `state/schema.ts` v6 con `transacciones`
+      (importes en **céntimos enteros con signo**, para que sumar miles de
+      movimientos no arrastre error) y `puntosControl`. Migración
+      `006-accounting.ts` que importa los `historicoSaldos` de cada cuenta y la
+      clave huérfana `state_history` (preservada a propósito en la v5), ignorando
+      entradas con fecha o importe inválidos y sin duplicar al re-migrar.
+      BUG ENCONTRADO Y CORREGIDO: la migración 005 construía el estado desde cero
+      y descartaba las colecciones que no conocía, de modo que importar un backup
+      v6 declarándolo como v4 **borraba la contabilidad del usuario**. Ahora parte
+      de `{...raw}` y solo sobrescribe lo que normaliza; hay test de regresión.
+      Diseño original de la tarea, ya cumplido: nueva colección `transacciones`:
       `{ _id, fecha, cuentaId, importeCts (con signo), concepto, tags[],
       estimacionId?, tipo: 'gasto'|'ingreso'|'ajuste', origen: 'manual'|'importado' }`
-      y `puntosControl` (los `historicoSaldos` actuales migran aquí). Migración v5→v6
-      (`state/migrations/006-*.ts`), que además debe importar la clave huérfana
-      `state_history` del esquema antiguo si existe (se preservó a propósito en 1.6).
-- [ ] **4.2 TagService compartido** — servicio único de tags (crear, renombrar, fusionar,
-      autocompletar) usado por estimaciones y contabilidad indistintamente; los tags se
-      derivan del uso (sin registro separado) pero renombrar/fusionar actúa sobre ambas
-      colecciones. CA: crear un tag en contabilidad lo ofrece el autocompletado de gastos
-      estimados y viceversa.
-- [ ] **4.3 Vista Contabilidad** — tabla mensual por cuenta: columnas de gasto/ingreso
+      y `puntosControl` (los `historicoSaldos` actuales migran aquí).
+- [x] **4.2 TagService compartido** — COMPLETADA. `accounting/tags.ts`: los tags se
+      derivan del uso (sin registro aparte) y `uso()` los agrega de estimaciones y
+      transacciones en el mismo espacio de nombres; `renombrar`/`fusionar`/`eliminar`
+      actúan sobre gastos, transacciones, préstamos, nóminas Y las agrupaciones de
+      config (tagCategorias, tagGrupos, activeTagsFilter), deduplicando (renombrar
+      sobre un tag existente = fusionar). `soloEn()` detecta descuadres entre lo
+      estimado y lo real. CA verificado en test y en navegador.
+- [ ] **4.3 Vista Contabilidad** — PENDIENTE (es lo único que falta de F4; requiere
+      decidir si se escribe ya en `src/features/` con el shell nuevo o como vista
+      legacy transitoria). El servicio ya está expuesto en
+      `window.FinanceApp.accounting` (ledger, tags, precision, adjuster).
+      Diseño: tabla mensual por cuenta: columnas de gasto/ingreso
       real, alta rápida, edición inline, filtros por tag/cuenta/periodo, asignación de
       cada transacción a una estimación relacionada (selector "este gasto tiene que ver
       con la estimación X / tag A").
-- [ ] **4.4 Histórico como source of truth** — el saldo real en fecha se deriva de
-      puntos de control + transacciones (`saldoEnFecha` del engine pasa a leer de
-      contabilidad para el pasado; las estimaciones solo proyectan futuro desde
-      `fechaReferencia`). La vista de histórico/desviación del dashboard se alimenta de
-      aquí. CA: golden tests del extracto pasado con ledger.
-- [ ] **4.5 Análisis de precisión** — por estimación y agregado por tag:
+- [~] **4.4 Histórico como source of truth** — PARCIAL (motor listo, cableado
+      pendiente). `accounting/ledger.ts` deriva el saldo real de cualquier fecha como
+      "último punto de control + transacciones posteriores", con la regla de que un
+      punto de control posterior manda sobre las transacciones anteriores (si el banco
+      dice otra cosa, el banco gana). Todo en céntimos: 1000 sumas de 0,01 € dan
+      exactamente 10 € (test).
+      PUENTE TEMPORAL: `registrarPuntoControl` replica en
+      `accounts[].historicoSaldos`, que es lo que leen el motor y la vista legacy; se
+      retira al portar la vista de cuentas (1.7).
+      Pendiente: que `saldoEnFecha` del engine lea del ledger para el pasado y que la
+      vista de desviación se alimente de aquí — ambos requieren 1.7.
+- [x] **4.5 Análisis de precisión** — COMPLETADA. `accounting/precision.ts` con las
+      decisiones de cálculo documentadas en el propio módulo: solo se comparan meses
+      CERRADOS que tengan dato real (un mes sin datos es un hueco, no un 0 % de
+      acierto, así una estimación nueva no aparece como fallida); el estimado de cada
+      mes es lo que **proyecta el motor** (respeta frecuencias, día de pago y
+      vigencia), no la cuantía nominal; la precisión agregada se pondera por importe
+      estimado para que un mes marginal no domine. Relaciona por `estimacionId` y, si
+      no hay ninguna asignada, por etiqueta compartida. `analizarPorTag` da la
+      precisión conjunta por etiqueta. Diseño original:
       `precision = 100 − |real − estimado| / estimado × 100` sobre el periodo comparable
       (solo meses con datos reales). Vista "Precisión de estimaciones": fila por
       estimación con su(s) tag(s), estimado vs real mensual, % de precisión, y precisión
       conjunta por etiqueta.
-- [ ] **4.6 Sugerir ajuste** — botón por fila: propone la cuantía ajustada (media real
-      de los últimos N meses comparables, N configurable, por defecto 3). Al aceptar:
+- [x] **4.6 Sugerir ajuste** — COMPLETADA (lógica; el botón va con la vista, 4.3).
+      `accounting/adjust.ts`: `sugerirAjuste` propone la media real de los últimos N
+      meses comparables (N configurable, 3 por defecto) y devuelve `null` si no hay
+      datos, si la precisión ya es buena (umbral 90 %) o si la variación es
+      insignificante (<5 %), para no generar ruido. `aplicar` hace exactamente lo
+      pedido: cierra la original con `fechaFin = hoy` y crea la copia con
+      `fechaInicio = hoy`, heredando el `fechaFin` original si lo tenía y la cuantía
+      ajustada, enlazadas por `ajustadaDesdeId` (+ `cadena()` para auditar el
+      historial de ajustes). No sobrescribe: así los meses pasados se siguen
+      proyectando con lo que se estimó entonces y la desviación histórica sigue
+      siendo comparable. Diseño original:
       1) la estimación original recibe `fechaFin = hoy`;
       2) se crea una copia con `fechaInicio = hoy`, `fechaFin` = la original (si tenía)
       y la cuantía ajustada;
       3) ambas quedan enlazadas (`ajustadaDesdeId`) para trazabilidad.
       CA: test de flujo completo del ajuste, incluyendo estimaciones sin fechaFin.
-- [ ] **4.7 "Ajustar automáticamente todas"** — aplica 4.6 a todas las filas con
-      precisión < umbral configurable, con modal de confirmación que lista los cambios.
+- [x] **4.7 "Ajustar automáticamente todas"** — COMPLETADA (lógica).
+      `aplicarTodas(sugerencias)` ajusta en bloque y devuelve `{aplicadas, errores}`
+      para que la UI liste los cambios en la confirmación. El modal de confirmación
+      va con la vista (4.3).
 - [ ] **4.8 Retirar `historialPrecios`** (aprobado 2026-07-30) — una vez la
       contabilidad alimente el análisis de precisión, migrar los historiales de
       precios existentes a transacciones reales y eliminar `_cuantiaEfectivaExp` y la

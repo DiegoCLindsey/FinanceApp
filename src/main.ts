@@ -30,6 +30,10 @@ import { createFlags, type Flags } from './flags/service';
 import { FEATURES, featuresPorGrupo } from './flags/registry';
 import { createFeaturesModal } from './ui/features-modal';
 import { createGating } from './ui/gating';
+import { createLedger, type Ledger } from './accounting/ledger';
+import { createTagService, type TagService } from './accounting/tags';
+import { createPrecisionAnalyzer, type PrecisionAnalyzer } from './accounting/precision';
+import { createAdjuster, sugerirAjuste, type Adjuster } from './accounting/adjust';
 
 export interface FinanceAppNamespace {
   version: number;
@@ -65,6 +69,14 @@ export interface FinanceAppNamespace {
     /** Re-aplica el gating de los flags al shell (sidebar y vista activa). */
     applyGating: () => void;
   };
+  /** Contabilidad real (F4): ledger, etiquetas compartidas y precisión. */
+  accounting: {
+    ledger: Ledger;
+    tags: TagService;
+    precision: PrecisionAnalyzer;
+    adjuster: Adjuster;
+    sugerirAjuste: typeof sugerirAjuste;
+  };
 }
 
 function bootstrap(): FinanceAppNamespace {
@@ -74,6 +86,7 @@ function bootstrap(): FinanceAppNamespace {
     console.info(`[FinanceApp] Migraciones aplicadas: ${applied.join(', ')} (esquema v${SCHEMA_VERSION})`);
   }
   const flags = createFlags(store);
+  const ledger = createLedger(store);
   const gating = createGating({ flags });
   const featuresModal = createFeaturesModal({
     flags,
@@ -111,6 +124,13 @@ function bootstrap(): FinanceAppNamespace {
     flags,
     featureRegistry: { all: FEATURES, porGrupo: featuresPorGrupo },
     ui: { openFeatures: featuresModal.open, applyGating: gating.apply },
+    accounting: {
+      ledger,
+      tags: createTagService(store),
+      precision: createPrecisionAnalyzer(ledger),
+      adjuster: createAdjuster(store),
+      sugerirAjuste,
+    },
   };
 }
 

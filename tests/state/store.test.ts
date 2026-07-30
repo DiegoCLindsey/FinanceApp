@@ -78,7 +78,7 @@ describe('migración a v5', () => {
 
   it('normaliza un backup v4 completo', () => {
     const { state, applied } = runMigrations(structuredClone(backupV4), 4, ctx);
-    expect(applied).toEqual([5]);
+    expect(applied).toEqual([5, 6]); // la 6 (contabilidad) va encadenada
 
     // escenarioId → escenarioIds (también en amortizaciones anidadas)
     expect(state.loans[0].escenarioIds).toEqual(['esc1']);
@@ -128,7 +128,10 @@ describe('migración a v5', () => {
   it('es idempotente: migrar dos veces da el mismo resultado', () => {
     const una = runMigrations(structuredClone(backupV4), 4, ctx).state;
     const dos = runMigrations(structuredClone(una) as any, 4, ctx).state;
-    expect(dos).toEqual(una);
+    // Los _id de los puntos de control se generan por contador en cada pasada,
+    // así que se comparan sin ellos.
+    const sinIds = (s: typeof una) => ({ ...s, puntosControl: s.puntosControl.map(({ _id: _drop, ...p }) => p) });
+    expect(sinIds(dos)).toEqual(sinIds(una));
   });
 
   it('no lanza con estado vacío ni con basura', () => {
@@ -167,7 +170,7 @@ describe('store', () => {
     const store = createStore({ adapter, hoy: HOY });
     const { applied } = store.load();
 
-    expect(applied).toEqual([5]);
+    expect(applied).toEqual([5, 6]);
     expect(adapter.get(VERSION_KEY)).toBe(SCHEMA_VERSION);
     expect(store.get('loans')[0].diaPago).toBe('dia:ultimo');
     expect(store.get('config').colchonMeses).toBe(8);
@@ -265,7 +268,7 @@ describe('store', () => {
     expect(store.get('config').colchonMeses).not.toBe(999);
 
     const { applied } = store.replaceAll(structuredClone(backupV4), 4);
-    expect(applied).toEqual([5]);
+    expect(applied).toEqual([5, 6]);
     expect(store.get('loans')).toHaveLength(1);
     expect(store.get('loans')[0].diaPago).toBe('dia:ultimo');
   });
