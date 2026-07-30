@@ -163,9 +163,17 @@ src/
       seccion, iconoPath, mount, unmount? }`, con el router legacy delegando en el
       registro. Pendiente: portar las 9 vistas legacy (dashboard, expenses, loans,
       accounts+goals, nominas, inflacion, escenarios→supuestos, rentas, margenes),
-      ∥ entre ellas. **Portadas hasta ahora: `margenes` → `src/features/margins`**
-      (se retiró `margenes/margenes.js` y su entrada del router legacy; el botón y
-      el contenedor que ya existían en index.html se reutilizan).
+      ∥ entre ellas. **Portadas hasta ahora (2/9): `margenes` →
+      `src/features/margins` e `inflacion` → `src/features/inflation`.** En cada
+      una se retira su fichero legacy y su entrada del router; el botón y el
+      contenedor que ya existían en index.html se reutilizan, así que la
+      navegación no cambia para el usuario.
+      En inflación, la descarga del IPC se aisló en `ipc-source.ts` con `fetch`
+      inyectable, de modo que el parseo de la respuesta del Banco Mundial y el
+      manejo de fallos se testean sin red. OJO: la API real
+      (api.worldbank.org) NO es alcanzable desde el contenedor de desarrollo,
+      así que el camino de éxito solo está verificado con la respuesta real
+      simulada; el de fallo sí se comprobó en navegador.
       Al portar cada una se retiran sus puentes temporales (el de
       `historicoSaldos` del ledger con la de cuentas, y el `State.load()` que la
       vista de contabilidad hace para que el dashboard legacy vea los datos
