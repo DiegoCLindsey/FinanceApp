@@ -94,13 +94,13 @@ src/
       portado con paridad exacta: `providers/expenses.ts` (proyectarGastos +
       cuantiaEfectiva), loans, interests (verificado vía generarExtracto: la
       función legacy es interna), contributions y withholdings (retenciones, con
-      tramos explícitos). Pendiente, siguiendo el mismo patrón (portar + test de
-      paridad estricta en tests/core/engine*.test.ts): salaries (nóminas — usar
-      resolver de tramos inyectado), transfers (acoplado a State.accountName y
-      cuentas — inyectar accounts/nominas; en tests montar mock de State para
-      ejecutar el legacy), inflation-events (proyectarInflacionGastos y
-      proyectarPerdidaAhorro); después `statement.ts` (generarExtracto +
-      _aplicarSaldoRef + saldoHoy + sumarPorTags + puntos críticos).
+      tramos explícitos), salaries (nóminas: grupos IRPF, IPC, flex, con resolver
+      de tramos inyectado) e inflation-events (coste de vida + erosión del ahorro).
+      Pendiente, siguiendo el mismo patrón: transfers (acoplado a State.accountName
+      y cuentas — inyectar accounts/nominas; en tests montar mock de State para
+      ejecutar el legacy); después `statement.ts` (generarExtracto +
+      _aplicarSaldoRef + saldoHoy + sumarPorTags + detectarPuntosCriticos +
+      calcColchon*/calcMargenEnFecha) y por último optimizer/desviación.
       CA: extracto idéntico al actual para los fixtures golden de F0.
 - [ ] **1.5 Optimización de cálculo** — memoizar extracto por hash de inputs;
       `optimizer.ts` reutiliza proyecciones incrementales en vez de regenerar todo por
