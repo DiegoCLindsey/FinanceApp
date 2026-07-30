@@ -1845,3 +1845,8 @@ const FinanceMath = (() => {
   return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, proyectarInversiones, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct, calcPrestacionParo };
 })();
 
+
+// Export dual (Fase 0, tarea 0.2): en navegador este fichero es un script clasico y
+// `FinanceMath` ya es visible globalmente; bajo Node ("type":"module") se evalua como
+// ESM, asi que lo publicamos en globalThis para que los tests usen el codigo real.
+globalThis.FinanceMath = FinanceMath;
