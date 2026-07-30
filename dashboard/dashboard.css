@@ -32,12 +32,6 @@
 .extr-row { border-bottom: 1px solid var(--border); }
 .extr-row:hover { background: var(--bg3); }
 
-/* ── OHLC table ── */
-.ohlc-head, .ohlc-row { display: grid; grid-template-columns: 140px 70px 50px 90px 90px 90px 90px auto; gap: 6px; padding: 7px 10px; align-items: center; font-size: 12px; }
-@media (max-width: 700px) { .ohlc-head, .ohlc-row { grid-template-columns: 110px 60px 60px 80px auto; } }
-.ohlc-head { color: var(--text3); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; border-bottom: 1px solid var(--border2); }
-.ohlc-row { border-bottom: 1px solid var(--border); }
-.ohlc-row:hover { background: var(--bg3); }
 
 /* ── Exec summary strip ── */
 .exec-summary { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius-lg); padding:14px 20px; display:flex; gap:28px; align-items:center; flex-wrap:wrap; }

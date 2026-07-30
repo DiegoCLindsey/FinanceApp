@@ -1,6 +1,6 @@
 // Depends on: State, FinanceMath, UI
 const DashboardModule = (() => {
-  let charts={}, ventana='mes', activeTags=new Set(), filtroAccounts=[], chartMode='summed', tagGroupsMode='desglosado', saludView='mes';
+  let charts={}, activeTags=new Set(), filtroAccounts=[], chartMode='summed', tagGroupsMode='desglosado', saludView='mes';
   // Stable color palette for promoted tags (index 0 reserved for base categories)
   const _TAG_PROMO_PALETTE = ['#f97316','#eab308','#22d3ee','#a78bfa','#34d399','#fb7185','#60a5fa','#c084fc','#4ade80','#f472b6'];
   // colchon + historial toggles driven from config, no local state needed
@@ -835,17 +835,6 @@ const DashboardModule = (() => {
           <div class="card-title">Media mensual de gastos por etiqueta <span style="font-size:11px;color:var(--text3);font-weight:400">(${tagGroupsMode==='porgrupos'?'por grupos':'desglosado'})</span></div>
           <div class="chart-wrap"><canvas id="chart-media-mensual"></canvas></div>
         </div>
-        <div class="card">
-          <div class="card-title">Velas OHLC</div>
-          <div class="flex justify-between items-center mb-8" style="flex-wrap:wrap;gap:8px">
-            <div class="period-selector">
-              <button class="period-btn ${ventana==='semana'?'active':''}" onclick="DashboardModule.setVentana('semana')">Sem</button>
-              <button class="period-btn ${ventana==='mes'?'active':''}" onclick="DashboardModule.setVentana('mes')">Mes</button>
-              <button class="period-btn ${ventana==='año'?'active':''}" onclick="DashboardModule.setVentana('año')">Año</button>
-            </div>
-          </div>
-          <div class="chart-wrap-lg"><canvas id="chart-velas"></canvas></div>
-        </div>
       </div>
 
       <!-- Extracto -->
@@ -976,7 +965,6 @@ const DashboardModule = (() => {
       .sort((a, b) => b.value - a.value);
     setTimeout(()=>{
       renderChartSaldo(extracto);
-      renderChartVelas(extracto);
       renderChartTags(extracto, activeTags, grupoTags, tagGroupsMode);
       renderChartBreakdown(_metricasGraficos);
       renderChartExpenseDonut(_donutMetrics);
@@ -1296,64 +1284,6 @@ const DashboardModule = (() => {
     });
   }
 
-  function renderChartVelas(extracto) {
-    const ctx=document.getElementById('chart-velas'); if(!ctx)return;
-    const ohlc=FinanceMath.agruparOHLC(extracto, ventana);
-    if (ohlc.length===0) { ctx.parentElement.innerHTML='<div class="text-sm" style="text-align:center;padding:40px">Sin datos suficientes.</div>'; return; }
-
-    // Convertir keys a timestamps numéricos
-    const candleData=ohlc.map(d=>{
-      let ts;
-      if (d.key.length===4) ts=new Date(d.key+'-01-01').getTime();
-      else if (d.key.length===7) ts=new Date(d.key+'-01').getTime();
-      else ts=new Date(d.key).getTime();
-      return { x:ts, o:d.open, h:d.high, l:d.low, c:d.close };
-    });
-
-    charts.velas=new Chart(ctx,{
-      type:'candlestick',
-      data:{ datasets:[{ data:candleData, color:{ up:'#00e5a0', down:'#ff4d6d', unchanged:'#8b92a8' } }] },
-      options:{
-        responsive:true, maintainAspectRatio:false,
-        plugins:{
-          legend:{display:false},
-          tooltip:{
-            backgroundColor:'#13161e', borderColor:'#252a38', borderWidth:1,
-            titleColor:'#8b92a8', bodyColor:'#e8eaf2',
-            callbacks:{ label:ctx=>{ const d=ctx.raw; return [`O: ${FinanceMath.eur(d.o)}`, `H: ${FinanceMath.eur(d.h)}`, `L: ${FinanceMath.eur(d.l)}`, `C: ${FinanceMath.eur(d.c)}`]; } }
-          }
-        },
-        scales:{
-          x:{ type:'time', time:{ unit: ventana==='semana'?'week':ventana==='año'?'year':'month' }, ticks:{color:'#555d77'}, grid:{color:'#252a38'} },
-          y:{ ticks:{color:'#555d77', callback:v=>FinanceMath.eur(v)}, grid:{color:'#252a38'} }
-        }
-      }
-    });
-  }
-
-  // Builds a tag→total map from extracto applying the group mode.
-  // 'desglosado': group tags are stripped; expense appears under its remaining tags.
-  // 'porgrupos' : if an expense has ≥1 group tag, it counts only under that/those group tags;
-  //               otherwise it counts under its regular tags (same as desglosado for ungrouped).
-  function _tagMapConGrupos(extracto, grupoTags, mode) {
-    if (!grupoTags || grupoTags.size === 0) return FinanceMath.sumarPorTags(extracto, 'gasto');
-    const map = new Map();
-    for (const ev of extracto) {
-      if (ev.tipo !== 'gasto') continue;
-      const tags = ev.tags || [];
-      const grp  = tags.filter(t => grupoTags.has(t));
-      let effective;
-      if (mode === 'porgrupos') {
-        effective = grp.length > 0 ? grp : tags.filter(t => !grupoTags.has(t));
-      } else {
-        // desglosado: remove group tags; if all tags were group tags skip entirely
-        effective = tags.filter(t => !grupoTags.has(t));
-      }
-      for (const tag of effective) map.set(tag, (map.get(tag) || 0) + Math.abs(ev.cuantia));
-    }
-    return map;
-  }
-
   function renderChartTags(extracto, activeTags, grupoTags=new Set(), mode='desglosado') {
     const COLORS=['#00e5a0','#4d9fff','#ffd166','#ff4d6d','#a855f7','#fb923c','#34d399','#f472b6','#60a5fa','#facc15'];
 
@@ -1658,7 +1588,6 @@ const DashboardModule = (() => {
     State.set('config',config); render();
   }
   function applyPreset(preset) { PeriodBar.applyPreset(preset); }
-  function setVentana(v) { ventana=v; render(); }
   function setChartMode(m) { chartMode=m; render(); }
   function setTagGroupsMode(m) { tagGroupsMode=m; render(); }
   function toggleTagGrupo(tag) {
@@ -1726,5 +1655,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, applyConfig, applyPreset, setVentana, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis, setSaludView, toggleSaludConfig, applySaludConfig, resetSaludConfig };
+  return { render, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis, setSaludView, toggleSaludConfig, applySaludConfig, resetSaludConfig };
 })();

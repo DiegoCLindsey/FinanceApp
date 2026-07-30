@@ -975,19 +975,6 @@ const FinanceMath = (() => {
     return past[past.length-1].saldoAcum;
   }
 
-  function agruparOHLC(extracto, ventana) {
-    const groups = new Map();
-    for (const ev of extracto) {
-      const d=new Date(ev.fecha+'T00:00:00'); let key;
-      if (ventana==='semana') { const sw=new Date(d); sw.setDate(d.getDate()-d.getDay()); key=sw.toISOString().slice(0,10); }
-      else if (ventana==='mes') key=ev.fecha.slice(0,7);
-      else key=ev.fecha.slice(0,4);
-      if (!groups.has(key)) groups.set(key,[]);
-      groups.get(key).push(ev.saldoAcum);
-    }
-    return Array.from(groups.entries()).map(([k,v])=>({ key:k, open:v[0], close:v[v.length-1], high:Math.max(...v), low:Math.min(...v) }));
-  }
-
   function sumarPorTags(extracto, tipo) {
     const m=new Map();
     for (const ev of extracto) {
@@ -1742,7 +1729,7 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, agruparOHLC, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 
 
