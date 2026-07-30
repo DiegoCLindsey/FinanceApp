@@ -132,14 +132,18 @@ src/
       exacta (optimizarAmortizaciones y compararFrecuencias, incluidas todas las
       variantes: frecuencias, tipo plazo/cuota, loanIds, cuenta origen, filtro de
       márgenes, fechaPrimeraAmort). Mejora medida: **~1,8× más rápido** en el
-      comparador (5 frecuencias, horizonte 36m), por (a) `capPendienteAntes` usando
-      la caché de `resumenPrestamo` en vez de recalcular la tabla en cada
-      préstamo×mes — la ganancia principal — y (b) `createStatementMemo` compartido
-      entre frecuencias. Documentado en el propio módulo dónde el memo NO ahorra
-      (dentro de una corrida cada (fecha, plan) es único) y una oportunidad
-      pendiente que no es paridad exacta (truncar un único extracto al horizonte
-      cambia el prorrateo del interés del último periodo → requiere golden test,
-      movida a 6.3). `aplicarInflacion` ya no existe (eliminada en 1.8).
+      comparador (5 frecuencias, horizonte 36m).
+      CORRECCIÓN (2026-07-30): al sustituir el test de tiempos por uno
+      determinista se comprobó que la mejora viene **enteramente** de que
+      `capPendienteAntes` use la caché de `resumenPrestamo` en vez de recalcular
+      la tabla en cada préstamo×mes. `createStatementMemo` **no produce ni un
+      acierto** en los flujos actuales (ni dentro de una corrida ni entre
+      frecuencias, porque sus fechas de amortización no coinciden); se mantiene
+      por ser barato, proteger de llamadas repetidas idénticas desde la UI y ser
+      la base de 6.3. Hay un test que fija este hecho para que la documentación
+      no vuelva a desviarse.
+      Nota: el test de wall-clock se retiró por inestable (fallaba ~1 de cada 4
+      ejecuciones en CI compartida). `aplicarInflacion` ya no existe (1.8).
 - [x] **1.6 Store tipado + migraciones versionadas** — COMPLETADA.
       `state/schema.ts` (AppState tipado completo + defaults + SCHEMA_VERSION=5),
       `state/migrations/` (cadena numerada; la 005 normaliza cualquier estado

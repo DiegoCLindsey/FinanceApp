@@ -5,14 +5,17 @@
 // Paridad exacta con FinanceMath.optimizarAmortizaciones / compararFrecuencias.
 //
 // OPTIMIZACIÓN (tarea 1.5) — medida: ~1,8× más rápido que el legacy en
-// compararFrecuencias con 5 frecuencias y horizonte de 36 meses. Viene de:
-//   1. `capPendienteAntes` usa `resumenPrestamo` (con caché) en lugar de
-//      recalcular `tablaAmortizacion` en cada préstamo × mes. Es la ganancia
-//      principal: la misma tabla se pedía decenas de veces.
-//   2. `createStatementMemo` compartido entre las frecuencias del comparador,
-//      que repiten proyecciones cuando sus planes parciales coinciden.
-// Dentro de UNA corrida del optimizador el memo casi no ahorra: cada llamada
-// combina una fecha y un plan distintos, así que las claves son únicas.
+// compararFrecuencias con 5 frecuencias y horizonte de 36 meses. La ganancia
+// viene ENTERAMENTE de que `capPendienteAntes` use `resumenPrestamo` (con
+// caché) en lugar de recalcular `tablaAmortizacion` en cada préstamo × mes: la
+// misma tabla se pedía decenas de veces.
+//
+// `createStatementMemo` NO aporta aciertos en los flujos actuales, y conviene
+// no engañarse con ello (hay un test que lo fija): cada llamada combina una
+// fecha y un plan distintos, y entre frecuencias las fechas de amortización
+// tampoco coinciden. Se mantiene porque es barato, protege de llamadas
+// repetidas idénticas desde la UI y es la base de la optimización diferida
+// (docs/02, tarea 6.3).
 //
 // Oportunidad pendiente (requiere golden test propio, no es paridad exacta):
 // saldosAt() genera extractos anidados [hoy, dia15] para cada mes; un único
@@ -88,6 +91,13 @@ export interface OptimizerResult {
   totalAhorroIntereses: number;
   resumenPorLoan: ResumenLoanOptimizado[];
 }
+
+/**
+ * Defaults compartidos: el memo identifica las colecciones por referencia, así
+ * que un `= []` en la firma (array nuevo en cada llamada) impediría reconocer
+ * dos invocaciones equivalentes y anularía la caché.
+ */
+const SIN_NOMINAS: NonNullable<StatementInput['nominas']> = [];
 
 /**
  * Memo de extractos con vida limitada a una corrida del optimizador. La clave
@@ -175,7 +185,7 @@ export function optimizarAmortizaciones(
     tipoAmort = 'plazo',
     fechaPrimeraAmort = null,
     loanIds = null,
-    nominas = [],
+    nominas = SIN_NOMINAS,
     sourceAccountId = null,
     selectedMarginIds = null,
     hoy = new Date(),
@@ -413,6 +423,7 @@ export function compararFrecuencias(
   accounts: StatementAccount[],
   config: OptimizerConfig,
   options: CompararOptions = {},
+  memoExterno?: ReturnType<typeof createStatementMemo>,
 ): { resultados: ComparativaFila[]; saldoBase: number; fechaObjetivo: ISODate } {
   const {
     horizonte = 60,
@@ -422,15 +433,16 @@ export function compararFrecuencias(
     frecuencias = [1, 2, 3, 6, 12],
     fechaPrimeraAmort = null,
     loanIds = null,
-    nominas = [],
+    nominas = SIN_NOMINAS,
     sourceAccountId = null,
     selectedMarginIds = null,
     hoy = new Date(),
   } = options;
 
   // Un único memo para toda la comparativa: las frecuencias comparten muchas
-  // proyecciones intermedias (mismo plan parcial → mismo extracto).
-  const memo = createStatementMemo();
+  // proyecciones intermedias (mismo plan parcial → mismo extracto). Se puede
+  // inyectar uno desde fuera para poder medir su eficacia.
+  const memo = memoExterno ?? createStatementMemo();
   const hoyStr = formatLocalDate(hoy);
   const fechaObj = fechaObjetivo || formatLocalDate(new Date(hoy.getFullYear(), hoy.getMonth() + horizonte, 1));
 

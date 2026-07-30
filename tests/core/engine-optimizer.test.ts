@@ -221,16 +221,27 @@ describe('memoización del extracto (tarea 1.5)', () => {
     const b = optimizarAmortizaciones(loans, expenses, accounts, config, { frecuencia: 2, mesesHorizonte: 24 });
     expect(a).toEqual(b);
   });
-  it('el comparador es más rápido que el legacy equivalente', () => {
-    const opts = { horizonte: 36, minAmortizable: 500, tipoAmort: 'plazo', frecuencias: [1, 2, 3, 6, 12] };
-    const t0 = performance.now();
-    FM.compararFrecuencias(loans, expenses, accounts, config, opts);
-    const tLegacy = performance.now() - t0;
-    const t1 = performance.now();
-    const nuestro = compararFrecuencias(loans, expenses, accounts, config, opts as any);
-    const tNuevo = performance.now() - t1;
-    expect(nuestro.resultados.length).toBeGreaterThan(0);
-    // Umbral holgado para no volver el test frágil en CI compartida.
-    expect(tNuevo).toBeLessThan(tLegacy);
+  it('en el comparador las claves TAMPOCO se repiten: el memo no aporta aciertos aquí', () => {
+    // Hallazgo (2026-07-30): se documentó que el memo compartido entre
+    // frecuencias ahorraba proyecciones. NO es así, y este test lo fija: cada
+    // frecuencia amortiza en fechas distintas (la primera elegible depende de la
+    // frecuencia y del filtro `dia15 >= hoy`), así que ninguna clave coincide.
+    // La mejora de rendimiento medida (~1,8x) viene ENTERAMENTE de que
+    // `capPendienteAntes` use la caché de `resumenPrestamo` en lugar de
+    // recalcular la tabla de amortización en cada préstamo × mes.
+    // El memo se mantiene porque protege de llamadas repetidas idénticas desde
+    // la UI y es la base de la optimización diferida (docs/02, tarea 6.3).
+    const memo = createStatementMemo();
+    compararFrecuencias(
+      loans,
+      expenses,
+      accounts,
+      config,
+      { horizonte: 36, minAmortizable: 500, tipoAmort: 'plazo', frecuencias: [1, 2, 3, 6, 12] } as any,
+      memo,
+    );
+    const { hits, misses } = memo.stats();
+    expect(misses).toBeGreaterThan(0);
+    expect(hits).toBe(0);
   });
 });
