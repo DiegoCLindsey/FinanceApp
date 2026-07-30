@@ -95,7 +95,16 @@ src/
       con su manifest `{ id, nombre, flag, route?, render }`. ∥ entre vistas una vez
       exista el shell. CA: paridad visual/funcional razonable; sin `onclick=` global
       inline (delegación de eventos).
-- [ ] **1.8 Retirar código muerto** según decisiones de `03-informe-redundancias.md`.
+- [x] **1.8 Retirar código muerto y features aprobadas** — hecho por adelantado en F0+
+      (2026-07-30): calendar, HistoryModule + colección `history`,
+      `proyectarInversiones`, inflación legacy, Monte Carlo + varianzas, velas OHLC,
+      simulador de paro. Ver registro en `03-informe-redundancias.md`.
+- [ ] **1.9 Consolidaciones aprobadas** — (a) colchón → margen de seguridad
+      predefinido (migrar `colchonMeses/colchonFijo/colchonPuntos` a un margen
+      "Colchón" y retirar la config duplicada; goals y puntos críticos pasan a leer
+      del margen); (b) unificar `tagCategorias` + `tagGrupos` en un único concepto
+      "grupo de tags" con opción "mostrar como categoría". CA: migración automática
+      de datos existentes + tests.
 
 ## Fase 2 — Feature flags con configuración por usuario
 
@@ -104,9 +113,9 @@ src/
 
 - [ ] **2.1 Registro de flags** — `flags/registry.ts`: cada feature declara
       `{ id, nombre, descripcion, grupo, porDefecto, dependencias[] }`. Granularidad
-      inicial: cada vista + subfeatures costosas o de nicho (Monte Carlo, OHLC,
-      inflación, simulador de paro, optimizador, márgenes, salud financiera,
-      escenarios/supuestos, contabilidad).
+      inicial: cada vista + subfeatures de nicho (inflación, optimizador, márgenes,
+      salud financiera, escenarios/supuestos, contabilidad). Nota: Monte Carlo, OHLC
+      y el simulador de paro fueron eliminados (2026-07-30), no necesitan flag.
 - [ ] **2.2 Estado y persistencia** — `config.features: Record<flagId, boolean>` viaja
       con el estado del usuario (localStorage + backups nube + export/import JSON).
       Además, **perfiles exportables**: guardar/cargar la configuración de flags como
@@ -177,6 +186,10 @@ src/
       CA: test de flujo completo del ajuste, incluyendo estimaciones sin fechaFin.
 - [ ] **4.7 "Ajustar automáticamente todas"** — aplica 4.6 a todas las filas con
       precisión < umbral configurable, con modal de confirmación que lista los cambios.
+- [ ] **4.8 Retirar `historialPrecios`** (aprobado 2026-07-30) — una vez la
+      contabilidad alimente el análisis de precisión, migrar los historiales de
+      precios existentes a transacciones reales y eliminar `_cuantiaEfectivaExp` y la
+      UI de historial de precios en gastos.
 
 ## Fase 5 — Supuestos (puntos de guardado con diffs; sustituyen a Escenarios)
 

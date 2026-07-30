@@ -102,8 +102,7 @@ Cada función genera eventos `{fecha, concepto, cuantia, tipo, tags, cuenta, sou
   `calcMargenEnFecha` + `detectarCrucesMargenes` (márgenes de seguridad),
   `calcDesviacion` (real vs estimado con LOCF multi-cuenta),
   `calcSaludFinanciera` (tasa de ahorro, DTI con/sin hipoteca, regla 50/30/20,
-  semáforos configurables), `monteCarlo` (perturbación gaussiana de gastos/nóminas con
-  `varianza`, percentiles p10–p90).
+  semáforos configurables). *(`monteCarlo` y `agruparOHLC` eliminados el 2026-07-30.)*
 
 ### 2.6 Fiscalidad
 - `calcIRPF` (tramos progresivos), `calcBaseImponibleTrabajo` (SS 6,35 %, gastos
@@ -112,14 +111,11 @@ Cada función genera eventos `{fecha, concepto, cuantia, tipo, tags, cuenta, sou
   `calcGananciasCapital` (tramos del ahorro), `calcFondoInversion` (plusvalía, impuesto
   latente, neto), `calcFondosPension` (disponible/bloqueado FIFO con `bloqueoMeses`),
   `calcImpuestoPension`, `calcTipoMarginalPension`, `calcTipoMarginalGrupo`,
-  `calcPrestacionParo` (SEPE: tabla días cotizados→prestación, base reguladora, topes
-  IPREM por hijos, tramos 70 %/50 %).
+  *(`calcPrestacionParo` eliminado el 2026-07-30.)*
 
 ### 2.7 Inflación
 `calcFactorInflacion` (compuesto por días/año con tasas anuales), `calcInflacionMediaAnual`,
-`calcTipoRealFisher`, `ajustarPrecioReal`, y ⚠️ `aplicarInflacion` — sistema **legacy**
-paralelo (`inflacionGlobal` de config + `exp.inflacion` por gasto) aplicado como
-post-proceso solo en el dashboard.
+`calcTipoRealFisher`, `ajustarPrecioReal`, *(el sistema legacy `aplicarInflacion`/`inflacionGlobal` fue eliminado el 2026-07-30).*
 
 ### 2.8 Optimización
 - `optimizarAmortizaciones` — planifica amortizaciones parciales mes a mes respetando
