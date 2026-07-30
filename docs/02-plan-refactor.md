@@ -24,9 +24,10 @@ fase, las tareas marcadas ∥ son paralelizables.
 
 - [x] **0.1 Reparar vitest** — `vitest.config.ts` apuntaba a `src/v2` (borrado).
       Ahora incluye `tests/**/*.test.{ts,js}` sin thresholds hasta F3.
-- [x] **0.2 Export dual del núcleo** — `finance-math/finance-math.js` expone
-      `module.exports` cuando corre bajo Node, sin afectar al navegador.
-      CA: la app sigue cargando como script global; `require()` funciona en tests.
+- [x] **0.2 Export dual del núcleo** — `finance-math/finance-math.js` publica
+      `FinanceMath` en `globalThis`, sin afectar al navegador (script clásico).
+      CA: la app sigue cargando como script global; `import` + `globalThis.FinanceMath`
+      funciona en los tests bajo Node.
 - [x] **0.3 Tests de caracterización del núcleo** — `tests/finance-math.test.js`:
       préstamos (cuota, TAE, tabla, amortizaciones parciales), día efectivo, IRPF y base
       imponible, ganancias de capital, inflación, proyección de gastos, saldos con ancla,
