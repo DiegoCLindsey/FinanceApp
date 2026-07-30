@@ -1087,30 +1087,6 @@ const FinanceMath = (() => {
     return factor > 0 ? importe / factor : importe;
   }
 
-  function aplicarInflacion(events, expenses, inflacionGlobal, inflacionPeriodos=null, usarInflacion=false) {
-    const now = new Date();
-    const hoyStr = now.toISOString().slice(0, 10);
-    return events.map(ev => {
-      const exp = expenses.find(e => e._id === ev.sourceId);
-      if (!exp) return ev;
-
-      let factor;
-      if (usarInflacion && inflacionPeriodos && inflacionPeriodos.length > 0) {
-        const base = exp.fechaInicio || hoyStr;
-        factor = calcFactorInflacion(inflacionPeriodos, base, ev.fecha);
-      } else {
-        const inf = (exp.inflacion > 0 ? exp.inflacion : inflacionGlobal) / 100;
-        if (inf === 0) return ev;
-        const base    = new Date((exp.fechaInicio || hoyStr) + 'T00:00:00');
-        const evDate  = new Date(ev.fecha + 'T00:00:00');
-        const años    = Math.max(0, (evDate - base) / (365.25 * 86400000));
-        factor = Math.pow(1 + inf, años);
-      }
-
-      return { ...ev, cuantia: ev.tipo === 'gasto' ? ev.cuantia * factor : ev.cuantia };
-    });
-  }
-
   // ── IRPF ────────────────────────────────────────────────────────────────────
   // Base imponible de rendimientos del trabajo tras aplicar SS, Art.19.2 y Art.20 LIRPF
   function calcBaseImponibleTrabajo(bruto, flexAnual) {
@@ -1635,7 +1611,7 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, ajustarPrecioReal, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 
 

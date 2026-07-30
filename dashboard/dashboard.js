@@ -148,23 +148,9 @@ const DashboardModule = (() => {
     // Use filtered accounts for projection (scenario accounts only appear when active)
     const accountsForExtracto = escenarioActivo ? filtered.accounts : accounts;
 
-    // Apply inflation on top of base extracto
-    const inflGlobal    = config.inflacionGlobal||0;
     const usarInflacion = config.usarInflacion||false;
     const inflPeriodos  = State.get('inflacion') || [];
-    // When usarInflacion is active, generarExtracto already includes inflation events;
-    // only apply the legacy per-expense inflation factor when the module is NOT active.
-    let extracto=FinanceMath.generarExtracto(loans,expenses,accountsForExtracto,config, filtroAccounts.length>0?filtroAccounts:null, nominas, inflPeriodos);
-    if (!usarInflacion) {
-      const debeInflar = inflGlobal > 0 || expenses.some(e=>e.inflacion>0);
-      if (debeInflar) {
-        const allExpEvents = extracto.filter(e=>e.sourceType==='expense');
-        const inflated = FinanceMath.aplicarInflacion(allExpEvents, expenses, inflGlobal, null, false);
-        const inflMap = new Map(inflated.map(e=>[e.sourceId+'_'+e.fecha, e.cuantia]));
-        extracto = extracto.map(e => e.sourceType==='expense' ? {...e, cuantia: inflMap.get(e.sourceId+'_'+e.fecha)||e.cuantia} : e);
-        extracto = FinanceMath.recomputarSaldoAcum(extracto, accounts, config, filtroAccounts.length>0?filtroAccounts:null);
-      }
-    }
+    const extracto=FinanceMath.generarExtracto(loans,expenses,accountsForExtracto,config, filtroAccounts.length>0?filtroAccounts:null, nominas, inflPeriodos);
     const cuentasActivas=accountsForExtracto.filter(a=>a.activo&&(filtroAccounts.length===0||filtroAccounts.includes(a._id)));
     const saldoBase=cuentasActivas.reduce((s,a)=>s+FinanceMath.saldoRealCuenta(a),0);
     const saldoFinal=extracto.length>0?extracto[extracto.length-1].saldoAcum:saldoBase;
