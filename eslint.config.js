@@ -8,7 +8,9 @@ export default tseslint.config(
     files: ['src/**/*.ts', 'tests/**/*.{ts,js}'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      // ignoreRestSiblings permite el patrón `const { drop: _x, ...rest } = obj`
+      // que usan las migraciones para omitir campos legados.
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true }],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },
