@@ -171,9 +171,6 @@ const NominasModule = (() => {
     const ipcBadge = n.mesActualizacionIPC
       ? `<span class="badge badge-blue" title="Actualización IPC en mes ${n.mesActualizacionIPC}">IPC m${n.mesActualizacionIPC}</span>`
       : '';
-    const varianzaBadge = n.varianza > 0
-      ? `<span class="badge" style="background:rgba(100,200,255,0.1);color:var(--accent)">±${n.varianza}% MC</span>`
-      : '';
     const flexBadge = flexAnualRow > 0
       ? `<span class="badge" style="background:rgba(99,214,160,0.12);color:#63d6a0" title="Retribución flexible exenta IRPF y SS">RF ${FinanceMath.eur(flexAnualRow)}/año</span>`
       : '';
@@ -183,7 +180,7 @@ const NominasModule = (() => {
     return `<div class="exp-table-row">
       <div>
         <div style="font-weight:500">${n.nombre || '—'}</div>
-        <div class="flex gap-4 mt-4 flex-wrap">${ipcBadge}${varianzaBadge}${flexBadge}${ssBadge}</div>
+        <div class="flex gap-4 mt-4 flex-wrap">${ipcBadge}${flexBadge}${ssBadge}</div>
       </div>
       <div class="num">${FinanceMath.eur(brutoAnual)}${flexAnualRow > 0 ? `<div class="text-sm" style="color:var(--accent)">Diner. ${FinanceMath.eur(baseIRPFRow)}</div>` : ''}<div class="text-sm" style="color:var(--text2)">${FinanceMath.eur(netoPorPaga)}/paga neto</div></div>
       <div class="text-sm">${nPagas} pagas</div>
@@ -266,10 +263,6 @@ const NominasModule = (() => {
               <label class="form-label">Cotización SS empleado (%)</label>
               <input class="form-input" type="number" id="nf-sspct" value="${(n?.ssPct ?? 6.35).toFixed(2)}" min="0" max="50" step="0.01" placeholder="6.35"/>
               <div class="text-sm mt-4" style="color:var(--text3)">CC 4,70 + Desempleo 1,55 + FP 0,10 + MEI 0,13</div>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Varianza ± % (Monte Carlo)</label>
-              <input class="form-input" type="number" id="nf-varianza" value="${n?.varianza||0}" min="0" max="100" placeholder="0"/>
             </div>
           </div>
           <div class="mt-12" style="border-top:1px solid var(--border);padding-top:12px">
@@ -365,7 +358,6 @@ const NominasModule = (() => {
       tags:             ['nomina'],
       grupoNomina:      document.getElementById('nf-grupo').value.trim(),
       mesActualizacionIPC: mesIPC,
-      varianza:         parseFloat(document.getElementById('nf-varianza').value) || 0,
       ssPct:            parseFloat(document.getElementById('nf-sspct')?.value) ?? 6.35,
       escenarioIds:     EscenariosModule.readCheckedEscenarios(),
       retribucionFlexible: _editFlexPlan,

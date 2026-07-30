@@ -20,7 +20,6 @@ const State = (() => {
       dashboardEnd: new Date(Date.now() + 365*24*60*60*1000).toISOString().slice(0,10),
       fechaReferencia: new Date().toISOString().slice(0,10),
       colchonMeses: 6, showColchon: true, showHistorico: true, histCuenta: '',
-      showMC: false, mcIteraciones: 300,
       inflacionGlobal: 0,  // % anual por defecto para gastos indexados (legado)
       usarInflacion: false, // activar módulo de inflación por periodos
       tramos_irpf: [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]],
@@ -84,7 +83,7 @@ const State = (() => {
     // Migrate: ensure new config fields exist
     const cfgDefs = {
       colchonMeses:6, showColchon:true, showHistorico:true, histCuenta:'',
-      showMC:false, mcIteraciones:300, inflacionGlobal:0,
+      inflacionGlobal:0,
       tramos_irpf:[[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]],
       tramosGananciasCapital:[[0,19],[6000,21],[50000,23],[200000,27],[300000,28]],
       onboardingDone:false, showExecSummary:true, showCriticos:true,
@@ -108,7 +107,7 @@ const State = (() => {
     for (const [k,v] of Object.entries(cfgDefs)) {
       if (state.config[k] === undefined) state.config[k] = v;
     }
-    // Migrate: ensure expenses have basico, varianza and historialPrecios fields
+    // Migrate: ensure expenses have basico and historialPrecios fields
     // escenarioId (singular) → escenarioIds (array) migration
     const _migrEscIds = item => {
       if (Array.isArray(item.escenarioIds)) return item; // already migrated
@@ -116,7 +115,7 @@ const State = (() => {
       const { escenarioId, ...rest } = item;
       return { ...rest, escenarioIds: ids };
     };
-    state.expenses = (state.expenses || []).map(e => _migrEscIds({ basico: false, varianza: 0, inflacion: 0, historialPrecios: [], ...e }));
+    state.expenses = (state.expenses || []).map(e => _migrEscIds({ basico: false, inflacion: 0, historialPrecios: [], ...e }));
     // Migrate: ensure loans have new fields
     state.loans = (state.loans || []).map(l => {
       const lm = _migrEscIds({ tipoTasa: 'fijo', mostrarFechaFinEnDashboard: true, basico: true, tags: [], ...l });
@@ -138,7 +137,7 @@ const State = (() => {
     state.nominas = state.nominas.map(n => _migrEscIds({
       activo: true, nPagas: 12, irpfModo: 'auto', irpfPct: 0,
       representacion: 'detallado', tags: [], fechaFin: null, cuenta: 'default',
-      grupoNomina: '', mesActualizacionIPC: null, varianza: 0,
+      grupoNomina: '', mesActualizacionIPC: null,
       ...n
     }));
     // Migrate goals: add new fields if missing

@@ -1177,100 +1177,6 @@ const FinanceMath = (() => {
     return pts;
   }
 
-  // ── Monte Carlo ──────────────────────────────────────────────────────────────
-  function monteCarlo(loans, expenses, accounts, config, iteraciones=300, nominas=[]) {
-    const varExpenses = expenses.filter(e => e.varianza > 0);
-    const varNominas  = (nominas || []).filter(n => n.activo && (n.varianza || 0) > 0);
-    if (varExpenses.length === 0 && varNominas.length === 0) return null;
-
-    // MC sólo cubre el futuro (>= fechaReferencia) — el pasado es determinista
-    const raw = config.fechaReferencia || config.dashboardStart;
-    const fechaRef = raw < config.dashboardStart ? config.dashboardStart
-      : raw > config.dashboardEnd   ? config.dashboardEnd : raw;
-    const cuentasActivas = accounts.filter(a => a.activo);
-    const saldoRef = cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, fechaRef), 0);
-
-    const transferencias = expenses.filter(e => e.tipo === 'transferencia');
-    const loanEvents      = proyectarPrestamos(loans, fechaRef, config.dashboardEnd);
-    const transferEvents  = proyectarTransferencias(transferencias, fechaRef, config.dashboardEnd);
-    const varMap = new Map(varExpenses.map(e => [e._id, { varianza: e.varianza, tipo: e.tipo }]));
-    const gastos = expenses.filter(e => e.tipo !== 'transferencia');
-    const baseGastoEvents = proyectarGastos(gastos, fechaRef, config.dashboardEnd);
-    const baseNominaEvents = proyectarNominas(nominas, config, fechaRef, config.dashboardEnd);
-    const nominaVarMap = new Map(varNominas.map(n => [n._id, n.varianza]));
-
-    const allBaseEvents = [...baseGastoEvents, ...baseNominaEvents, ...loanEvents, ...transferEvents]
-      .sort((a,b) => a.fecha.localeCompare(b.fecha));
-    if (allBaseEvents.length === 0) return null;
-
-    const fechas = [...new Set(allBaseEvents.map(e=>e.fecha))].sort();
-    const n = fechas.length;
-    const samples = Array.from({length:n}, ()=>[]);
-
-    const rand_normal = () => {
-      const u1 = Math.random(), u2 = Math.random();
-      return Math.sqrt(-2*Math.log(u1)) * Math.cos(2*Math.PI*u2);
-    };
-
-    for (let iter=0; iter<iteraciones; iter++) {
-      const pertGastoEvents = baseGastoEvents.map(ev => {
-        const v = varMap.get(ev.sourceId);
-        if (!v) return ev;
-        const sigma = Math.abs(ev.cuantia) * (v.varianza / 100);
-        const delta = rand_normal() * sigma;
-        return { ...ev, cuantia: v.tipo === 'gasto' ? ev.cuantia + delta : ev.cuantia - delta };
-      });
-
-      // Perturb nómina income events by their varianza
-      const pertNominaEvents = baseNominaEvents.map(ev => {
-        if (ev.sourceType !== 'nomina') return ev;
-        // sourceId for IRPF events ends with '_irpf'; extract base nómina id
-        const nomId = ev.sourceId.replace(/_irpf$/, '');
-        const vPct  = nominaVarMap.get(nomId);
-        if (!vPct) return ev;
-        const sigma = Math.abs(ev.cuantia) * (vPct / 100);
-        const delta = rand_normal() * sigma;
-        // IRPF is a gasto (negative), nómina is ingreso; perturb in opposite directions
-        return { ...ev, cuantia: ev.tipo === 'ingreso' ? ev.cuantia + delta : ev.cuantia - delta };
-      });
-
-      const allEvents = [...pertGastoEvents, ...pertNominaEvents, ...loanEvents, ...transferEvents]
-        .sort((a,b) => a.fecha.localeCompare(b.fecha));
-
-      let saldo = saldoRef;
-      const saldoPorFecha = new Map();
-      for (const ev of allEvents) {
-        saldo += ev.tipo === 'ingreso' ? Math.abs(ev.cuantia) : -Math.abs(ev.cuantia);
-        saldoPorFecha.set(ev.fecha, saldo);
-      }
-
-      let lastSaldo = saldoRef;
-      for (let i=0; i<n; i++) {
-        const s = saldoPorFecha.get(fechas[i]);
-        if (s !== undefined) lastSaldo = s;
-        samples[i].push(lastSaldo);
-      }
-    }
-
-    const pct_fn = (arr, p) => {
-      const sorted = [...arr].sort((a,b)=>a-b);
-      const idx = (p/100) * (sorted.length - 1);
-      const lo = Math.floor(idx), hi = Math.ceil(idx);
-      if (lo === hi) return sorted[lo];
-      return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
-    };
-
-    return fechas.map((fecha, i) => {
-      const s = samples[i];
-      if (s.length === 0) return null;
-      return {
-        x: new Date(fecha+'T00:00:00').getTime(),
-        p10: pct_fn(s,10), p25: pct_fn(s,25), p50: pct_fn(s,50),
-        p75: pct_fn(s,75), p90: pct_fn(s,90)
-      };
-    }).filter(Boolean);
-  }
-
   // Analiza la salud financiera del usuario a partir de métricas pre-calculadas.
   // met: { ingresos, cuotas, cuotasHipoteca, gastosBasicos, gastosOtros, amortizaciones }
   // config: contiene los umbrales salud*
@@ -1729,7 +1635,7 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, monteCarlo, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, ajustarPrecioReal, aplicarInflacion, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 
 

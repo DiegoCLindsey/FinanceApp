@@ -63,12 +63,12 @@ const OnboardingModule = (() => {
     } else if (s.fields === 'step-income') {
       const concepto = document.getElementById('wiz-inc-concepto')?.value.trim();
       const cuantia  = parseFloat(document.getElementById('wiz-inc-cuantia')?.value)||0;
-      if (concepto && cuantia) State.addItem('expenses',{ concepto, tipo:'ingreso', cuantia, frecuencia:1, tipoFrecuencia:'mensual', fechaInicio:new Date().toISOString().slice(0,10), fechaFin:null, diaPago:'', cuenta:'default', activo:true, basico:false, varianza:0, inflacion:0, sujetoIRPF:false, tags:[] });
+      if (concepto && cuantia) State.addItem('expenses',{ concepto, tipo:'ingreso', cuantia, frecuencia:1, tipoFrecuencia:'mensual', fechaInicio:new Date().toISOString().slice(0,10), fechaFin:null, diaPago:'', cuenta:'default', activo:true, basico:false, inflacion:0, sujetoIRPF:false, tags:[] });
     } else if (s.fields === 'step-expense') {
       const concepto = document.getElementById('wiz-exp-concepto')?.value.trim();
       const cuantia  = parseFloat(document.getElementById('wiz-exp-cuantia')?.value)||0;
       const basico   = document.getElementById('wiz-exp-basico')?.checked||false;
-      if (concepto && cuantia) State.addItem('expenses',{ concepto, tipo:'gasto', cuantia, frecuencia:1, tipoFrecuencia:'mensual', fechaInicio:new Date().toISOString().slice(0,10), fechaFin:null, diaPago:'', cuenta:'default', activo:true, basico, varianza:0, inflacion:0, sujetoIRPF:false, tags:[] });
+      if (concepto && cuantia) State.addItem('expenses',{ concepto, tipo:'gasto', cuantia, frecuencia:1, tipoFrecuencia:'mensual', fechaInicio:new Date().toISOString().slice(0,10), fechaFin:null, diaPago:'', cuenta:'default', activo:true, basico, inflacion:0, sujetoIRPF:false, tags:[] });
     } else if (s.fields === 'step-colchon') {
       const meses = parseInt(document.getElementById('wiz-colchon')?.value)||6;
       const cfg = State.get('config');

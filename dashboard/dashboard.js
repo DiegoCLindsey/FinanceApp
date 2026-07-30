@@ -425,10 +425,6 @@ const DashboardModule = (() => {
           ${accPills}
           <button class="btn-secondary btn-sm" onclick="DashboardModule.clearAccFilter()">Todas</button>
           <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;row-gap:6px">
-            <label class="form-inline gap-8" style="font-size:12px;color:var(--text2)">
-              <label class="toggle"><input type="checkbox" id="cfg-show-mc" ${config.showMC?'checked':''}/><span class="toggle-slider"></span></label>
-              Monte Carlo
-            </label>
             <button class="btn-primary btn-sm" onclick="DashboardModule.applyConfig()">Actualizar</button>
           </div>
         </div>
@@ -1061,21 +1057,6 @@ const DashboardModule = (() => {
       }
     }
 
-    // Monte Carlo bands
-    let mcDatasets = [];
-    if (config.showMC && (expenses.some(e=>e.varianza>0) || nominas.some(n=>n.activo&&(n.varianza||0)>0))) {
-      const mcResult = FinanceMath.monteCarlo(loans, expenses, accounts, config, config.mcIteraciones||300, nominas);
-      if (mcResult && mcResult.length > 0) {
-        mcDatasets = [
-          { label:'MC p10', data:mcResult.map(r=>({x:r.x,y:r.p10})), borderColor:'transparent', backgroundColor:'rgba(77,159,255,0.05)', fill:'+1', borderWidth:0, pointRadius:0, tension:0.3, order:11 },
-          { label:'MC p25', data:mcResult.map(r=>({x:r.x,y:r.p25})), borderColor:'rgba(77,159,255,0.15)', backgroundColor:'rgba(77,159,255,0.10)', fill:'+2', borderWidth:0.5, pointRadius:0, tension:0.3, order:10 },
-          { label:'MC mediana', data:mcResult.map(r=>({x:r.x,y:r.p50})), borderColor:'rgba(77,159,255,0.7)', backgroundColor:'transparent', borderWidth:1.5, borderDash:[5,3], pointRadius:0, tension:0.3, fill:false, order:7 },
-          { label:'MC p75', data:mcResult.map(r=>({x:r.x,y:r.p75})), borderColor:'rgba(77,159,255,0.15)', backgroundColor:'rgba(77,159,255,0.10)', fill:'-1', borderWidth:0.5, pointRadius:0, tension:0.3, order:10 },
-          { label:'MC p90', data:mcResult.map(r=>({x:r.x,y:r.p90})), borderColor:'transparent', backgroundColor:'rgba(77,159,255,0.05)', fill:'-1', borderWidth:0, pointRadius:0, tension:0.3, order:11 },
-        ];
-      }
-    }
-
     // Per-account running saldo for margen crossing detection
     const margenesSeguridad = (config.margenesSeguridad || []).filter(m => m.activo !== false);
     const saldosPorCuenta = FinanceMath.saldosPorCuentaEnExtracto(extracto, accounts);
@@ -1147,7 +1128,6 @@ const DashboardModule = (() => {
 
     const isStacked = chartMode === 'stacked' || chartMode === 'stacked-rev';
     const datasets = [
-      ...mcDatasets,
       ...(isStacked
         ? stackedDatasets
         : chartMode === 'lines'
@@ -1235,7 +1215,7 @@ const DashboardModule = (() => {
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: {
-            display: isStacked || (histDataset != null) || margenDatasets.length>0 || mcDatasets.length>0 || criticoDatasets.length>0 || datasets.some(d=>d.label?.startsWith('🏁')),
+            display: isStacked || (histDataset != null) || margenDatasets.length>0 || criticoDatasets.length>0 || datasets.some(d=>d.label?.startsWith('🏁')),
             labels: { color:'#8b92a8', font:{size:11}, boxWidth:12, filter: i => !['MC p25','MC p10','MC p75','MC p90'].includes(i.text) }
           },
           tooltip: {
@@ -1583,7 +1563,6 @@ const DashboardModule = (() => {
       ...existing,
       fechaReferencia: document.getElementById('cfg-ref')?.value || existing.fechaReferencia || new Date().toISOString().slice(0,10),
       showHistorico:   document.getElementById('cfg-show-hist')?.checked??true,
-      showMC:          document.getElementById('cfg-show-mc')?.checked??false,
     };
     State.set('config',config); render();
   }
