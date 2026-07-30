@@ -26,9 +26,14 @@ export interface GatingDeps {
   document?: Document;
   /** Router legacy; se usa para redirigir si la vista activa se desactiva. */
   router?: { navigate: (view: string) => void };
+  /**
+   * Rutas de las vistas del paquete nuevo (`{ ruta: flagId }`), que se registran
+   * en tiempo de ejecución y no están en el mapa estático de vistas legacy.
+   */
+  rutasExtra?: () => Record<string, string>;
 }
 
-export function createGating({ flags, document: doc = document, router }: GatingDeps) {
+export function createGating({ flags, document: doc = document, router, rutasExtra }: GatingDeps) {
   function vistaActiva(): string | null {
     const activo = doc.querySelector<HTMLElement>('.nav-btn.active[data-view]');
     return activo?.dataset.view ?? null;
@@ -36,7 +41,9 @@ export function createGating({ flags, document: doc = document, router }: Gating
 
   function apply(): void {
     let redirigir = false;
-    for (const [featureId, view] of Object.entries(VISTA_POR_FEATURE)) {
+    // Vistas legacy (mapa estático) + vistas nuevas (registro en runtime)
+    const extra = Object.entries(rutasExtra?.() ?? {}).map(([ruta, flagId]) => [flagId, ruta] as [string, string]);
+    for (const [featureId, view] of [...Object.entries(VISTA_POR_FEATURE), ...extra]) {
       const activa = flags.isEnabled(featureId);
       const btn = doc.querySelector<HTMLElement>(`.nav-btn[data-view="${view}"]`);
       if (btn) {

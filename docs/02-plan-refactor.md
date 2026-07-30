@@ -153,11 +153,17 @@ src/
       basura) migra a estado válido; migración idempotente; sin excepciones ante
       datos corruptos. NOTA: la clave `state_history` no se destruye — la
       migración de Contabilidad (4.1) importará esos puntos al ledger.
-- [ ] **1.7 Portar vistas a `features/`** — una tarea por vista (dashboard, expenses,
-      loans, accounts+goals, nominas, inflacion, escenarios, rentas, margenes), cada una
-      con su manifest `{ id, nombre, flag, route?, render }`. ∥ entre vistas una vez
-      exista el shell. CA: paridad visual/funcional razonable; sin `onclick=` global
-      inline (delegación de eventos).
+- [~] **1.7 Portar vistas a `features/`** — EN CURSO. Infraestructura lista y
+      validada con la primera vista real (Contabilidad, tarea 4.3):
+      `src/app/feature-registry.ts` + manifests `{ id, route, nombre, flagId,
+      seccion, iconoPath, mount, unmount? }`, con el router legacy delegando en el
+      registro. Pendiente: portar las 9 vistas legacy (dashboard, expenses, loans,
+      accounts+goals, nominas, inflacion, escenarios→supuestos, rentas, margenes),
+      ∥ entre ellas. Al portar cada una se retiran sus puentes temporales (el de
+      `historicoSaldos` del ledger con la de cuentas, y el `State.load()` que la
+      vista de contabilidad hace para que el dashboard legacy vea los datos
+      nuevos). CA: paridad funcional razonable; sin `onclick=` global inline
+      (delegación de eventos, como en features/accounting).
 - [x] **1.8 Retirar código muerto y features aprobadas** — hecho por adelantado en F0+
       (2026-07-30): calendar, HistoryModule + colección `history`,
       `proyectarInversiones`, inflación legacy, Monte Carlo + varianzas, velas OHLC,
@@ -203,7 +209,10 @@ src/
       CA parcial: el sidebar y la vista activa reaccionan al instante (ver 2.4);
       el gating de las tarjetas del dashboard queda pendiente de portar esa vista
       (1.7) — hoy el dashboard se regenera entero en cada render legacy.
-- [~] **2.4 Gating transversal** — PARCIAL. `src/ui/gating.ts` oculta las entradas
+- [~] **2.4 Gating transversal** — PARCIAL (mejorado). El gating ya consulta el
+      registro de vistas nuevas (`rutasExtra`), así que una vista del paquete nuevo
+      se oculta del sidebar y deja de montarse con solo declarar su flag en el
+      manifest — sin tocar el módulo de gating. `src/ui/gating.ts` oculta las entradas
       del sidebar de las features desactivadas (y la sección entera si se queda sin
       vistas visibles), y redirige al dashboard si se desactiva la vista abierta. Se
       aplica al cargar, tras cada navegación y tras cada cambio en la ventana de
@@ -261,11 +270,27 @@ src/
       config (tagCategorias, tagGrupos, activeTagsFilter), deduplicando (renombrar
       sobre un tag existente = fusionar). `soloEn()` detecta descuadres entre lo
       estimado y lo real. CA verificado en test y en navegador.
-- [ ] **4.3 Vista Contabilidad** — PENDIENTE (es lo único que falta de F4; requiere
-      decidir si se escribe ya en `src/features/` con el shell nuevo o como vista
-      legacy transitoria). El servicio ya está expuesto en
-      `window.FinanceApp.accounting` (ledger, tags, precision, adjuster).
-      Diseño: tabla mensual por cuenta: columnas de gasto/ingreso
+- [x] **4.3 Vista Contabilidad** — COMPLETADA, escrita en el paquete nuevo
+      (decisión del usuario, 2026-07-30). `src/features/accounting/`:
+      · `index.ts` exporta el **manifest** de la vista (id, ruta, flag, sección del
+        sidebar, icono, mount) — es la primera vista del sistema nuevo y el patrón
+        a seguir al portar las demás en 1.7.
+      · `transactions-panel.ts`: tabla de movimientos del periodo con filtros
+        (cuenta, mes, texto), alta rápida con autocompletado de etiquetas, edición
+        de importe, borrado, selector de estimación relacionada por fila, y panel de
+        puntos de control de saldo real.
+      · `precision-panel.ts`: tabla de precisión por estimación (con desglose de los
+        últimos meses), tabla de precisión conjunta por etiqueta, botón
+        "Sugerir ajuste → X €" por fila y "Ajustar automáticamente todas (N)", ambos
+        con confirmación que lista los cambios.
+      · `dom.ts`: helpers de presentación con escapado de HTML y delegación de
+        eventos (sin `onclick=` inline).
+      Infraestructura añadida: `src/app/feature-registry.ts` (registro de vistas con
+      manifests, que crea el contenedor y el botón de sidebar, monta/desmonta y
+      respeta los flags) y un hook de ~8 líneas en `router/router.js` para que el
+      shell aloje vistas nuevas y legacy a la vez.
+      Verificado con 18 tests happy-dom y end-to-end en Chromium sobre index.html.
+      Diseño original: tabla mensual por cuenta: columnas de gasto/ingreso
       real, alta rápida, edición inline, filtros por tag/cuenta/periodo, asignación de
       cada transacción a una estimación relacionada (selector "este gasto tiene que ver
       con la estimación X / tag A").

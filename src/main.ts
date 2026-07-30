@@ -30,6 +30,8 @@ import { createFlags, type Flags } from './flags/service';
 import { FEATURES, featuresPorGrupo } from './flags/registry';
 import { createFeaturesModal } from './ui/features-modal';
 import { createGating } from './ui/gating';
+import { createFeatureRegistry, type FeatureRegistry } from './app/feature-registry';
+import { createAccountingFeature } from './features/accounting';
 import { createLedger, type Ledger } from './accounting/ledger';
 import { createTagService, type TagService } from './accounting/tags';
 import { createPrecisionAnalyzer, type PrecisionAnalyzer } from './accounting/precision';
@@ -69,6 +71,8 @@ export interface FinanceAppNamespace {
     /** Re-aplica el gating de los flags al shell (sidebar y vista activa). */
     applyGating: () => void;
   };
+  /** Registro de vistas del paquete nuevo; lo consulta el router del shell. */
+  app: FeatureRegistry;
   /** Contabilidad real (F4): ledger, etiquetas compartidas y precisión. */
   accounting: {
     ledger: Ledger;
@@ -87,15 +91,39 @@ function bootstrap(): FinanceAppNamespace {
   }
   const flags = createFlags(store);
   const ledger = createLedger(store);
-  const gating = createGating({ flags });
+  const tags = createTagService(store);
+  const precision = createPrecisionAnalyzer(ledger);
+  const adjuster = createAdjuster(store);
+
+  // Registro de vistas nuevas. El router legacy lo consulta para alojarlas.
+  const app = createFeatureRegistry({ isEnabled: (id) => flags.isEnabled(id) });
+  const gating = createGating({ flags, rutasExtra: () => app.flagPorRuta() });
   const featuresModal = createFeaturesModal({
     flags,
     onChange: () => {
+      app.attachToShell();
       gating.apply();
       // Re-render de la vista activa para que refleje el cambio de inmediato
       (globalThis as { Router?: { rerender?: () => void } }).Router?.rerender?.();
     },
   });
+
+  app.register(
+    createAccountingFeature({
+      ledger,
+      tags,
+      precision,
+      adjuster,
+      accounts: () => store.get('accounts'),
+      estimaciones: () => store.get('expenses'),
+      onDatosCambiados: () => {
+        // El dashboard legacy lee del State legacy, que comparte las claves de
+        // localStorage con el store nuevo pero mantiene su copia en memoria.
+        // Hasta portar el dashboard (1.7), se recarga desde storage.
+        (globalThis as { State?: { load?: () => unknown } }).State?.load?.();
+      },
+    }),
+  );
 
   return {
     version: SCHEMA_VERSION,
@@ -124,13 +152,8 @@ function bootstrap(): FinanceAppNamespace {
     flags,
     featureRegistry: { all: FEATURES, porGrupo: featuresPorGrupo },
     ui: { openFeatures: featuresModal.open, applyGating: gating.apply },
-    accounting: {
-      ledger,
-      tags: createTagService(store),
-      precision: createPrecisionAnalyzer(ledger),
-      adjuster: createAdjuster(store),
-      sugerirAjuste,
-    },
+    app,
+    accounting: { ledger, tags, precision, adjuster, sugerirAjuste },
   };
 }
 
@@ -148,7 +171,10 @@ if (typeof window !== 'undefined') {
   // El shell legacy se monta después de este script (y el sidebar se revela al
   // pasar la autenticación), así que el gating se aplica cuando el DOM está listo
   // y de nuevo tras cada navegación.
-  const aplicarGating = () => app.ui.applyGating();
+  const aplicarGating = () => {
+    app.app.attachToShell();
+    app.ui.applyGating();
+  };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', aplicarGating, { once: true });
   } else {
