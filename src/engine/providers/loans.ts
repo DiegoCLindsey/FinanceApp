@@ -14,11 +14,7 @@ export interface LoanItem extends LoanInput {
   simulacion?: boolean;
 }
 
-export function proyectarPrestamos(
-  loans: LoanItem[],
-  range: DateRange,
-  filtroAccounts: AccountFilter = null,
-): CashEvent[] {
+export function proyectarPrestamos(loans: LoanItem[], range: DateRange, filtroAccounts: AccountFilter = null): CashEvent[] {
   const events: CashEvent[] = [];
   for (const loan of loans) {
     if (!loan.activo) continue;
@@ -27,9 +23,29 @@ export function proyectarPrestamos(
     for (const row of tabla) {
       if (row.fecha >= range.start && row.fecha <= range.end) {
         if (!row.esAmortizacion) {
-          events.push({ fecha: row.fecha, concepto: `Cuota ${loan.nombre}`, cuantia: -row.cuota, tipo: 'gasto', tags: ['prestamo', ...(loan.tags || [])], cuenta: loan.cuenta || 'default', sourceId: loan._id, sourceType: 'loan', simulacion: loan.simulacion || false });
+          events.push({
+            fecha: row.fecha,
+            concepto: `Cuota ${loan.nombre}`,
+            cuantia: -row.cuota,
+            tipo: 'gasto',
+            tags: ['prestamo', ...(loan.tags || [])],
+            cuenta: loan.cuenta || 'default',
+            sourceId: loan._id,
+            sourceType: 'loan',
+            simulacion: loan.simulacion || false,
+          });
         } else {
-          events.push({ fecha: row.fecha, concepto: `Amort. ${loan.nombre}`, cuantia: -(row.amortizacion + row.comisionAmort), tipo: 'gasto', tags: ['amortizacion', ...(loan.tags || [])], cuenta: loan.cuenta || 'default', sourceId: loan._id, sourceType: 'loan-amort', simulacion: row.simulacion || false });
+          events.push({
+            fecha: row.fecha,
+            concepto: `Amort. ${loan.nombre}`,
+            cuantia: -(row.amortizacion + row.comisionAmort),
+            tipo: 'gasto',
+            tags: ['amortizacion', ...(loan.tags || [])],
+            cuenta: loan.cuenta || 'default',
+            sourceId: loan._id,
+            sourceType: 'loan-amort',
+            simulacion: row.simulacion || false,
+          });
         }
       }
     }

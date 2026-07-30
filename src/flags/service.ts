@@ -175,7 +175,16 @@ export function createFlags(store: FlagsStoreLike) {
     return { aplicadas, ignoradas };
   }
 
-  return { isEnabled: (id: string) => isEnabled(id), setEnabled, estado, estadoPorGrupo, reset, exportProfile, importProfile, bloqueadaPor: (id: string) => bloqueadaPor(id) };
+  return {
+    isEnabled: (id: string) => isEnabled(id),
+    setEnabled,
+    estado,
+    estadoPorGrupo,
+    reset,
+    exportProfile,
+    importProfile,
+    bloqueadaPor: (id: string) => bloqueadaPor(id),
+  };
 }
 
 export type Flags = ReturnType<typeof createFlags>;

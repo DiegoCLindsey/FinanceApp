@@ -12,11 +12,48 @@ beforeAll(async () => {
 });
 
 const range: DateRange = { start: '2026-01-01', end: '2027-12-31' };
-const periodos = [{ year: 2026, tasa: 2.5 }, { year: 2027, tasa: 3.1 }];
+const periodos = [
+  { year: 2026, tasa: 2.5 },
+  { year: 2027, tasa: 3.1 },
+];
 const gastos: ExpenseLike[] = [
-  { _id: 'g1', activo: true, concepto: 'Alquiler', cuantia: 800, tipo: 'gasto', tipoFrecuencia: 'mensual', frecuencia: 1, fechaInicio: '2025-06-01', tags: [], cuenta: 'default' },
-  { _id: 'g2', activo: true, concepto: 'Seguro', cuantia: 600, tipo: 'gasto', tipoFrecuencia: 'mensual', frecuencia: 6, fechaInicio: '2026-03-01', fechaFin: '2027-03-01', tags: [], cuenta: 'acc2' },
-  { _id: 'g3', activo: true, concepto: 'Diario', cuantia: 10, tipo: 'gasto', tipoFrecuencia: 'diaria', frecuencia: 1, fechaInicio: '2026-01-01', tags: [], cuenta: 'default' },
+  {
+    _id: 'g1',
+    activo: true,
+    concepto: 'Alquiler',
+    cuantia: 800,
+    tipo: 'gasto',
+    tipoFrecuencia: 'mensual',
+    frecuencia: 1,
+    fechaInicio: '2025-06-01',
+    tags: [],
+    cuenta: 'default',
+  },
+  {
+    _id: 'g2',
+    activo: true,
+    concepto: 'Seguro',
+    cuantia: 600,
+    tipo: 'gasto',
+    tipoFrecuencia: 'mensual',
+    frecuencia: 6,
+    fechaInicio: '2026-03-01',
+    fechaFin: '2027-03-01',
+    tags: [],
+    cuenta: 'acc2',
+  },
+  {
+    _id: 'g3',
+    activo: true,
+    concepto: 'Diario',
+    cuantia: 10,
+    tipo: 'gasto',
+    tipoFrecuencia: 'diaria',
+    frecuencia: 1,
+    fechaInicio: '2026-01-01',
+    tags: [],
+    cuenta: 'default',
+  },
 ];
 
 describe('paridad eventos de inflación', () => {

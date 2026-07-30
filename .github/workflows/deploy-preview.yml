@@ -62,6 +62,20 @@ jobs:
           echo "branch=$BRANCH"   >> "$GITHUB_OUTPUT"
           echo "sha_short=$(echo '${{ github.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
+      # ── 2b. Build del core (src/ → assets/financeapp-core.js) ──────────────
+      # Sin este paso la preview cargaría sin los módulos nuevos.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build core bundle (Vite)
+        run: npm run build
+
       # ── 3. Inyectar credenciales de Google Drive ───────────────────────────
       - name: Inject Google Drive credentials
         env:
@@ -124,6 +138,11 @@ jobs:
           exclude_assets: |
             .github
             .git
+            node_modules
+            src
+            tests
+            coverage
+            dist
 
       # ── 6. Mostrar URL del preview ─────────────────────────────────────────
       - name: Print preview URL

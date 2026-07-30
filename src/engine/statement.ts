@@ -81,8 +81,14 @@ export function recomputarSaldoAcum(
   config: StatementConfig,
   filtroAccounts: AccountFilter = null,
 ): CashEvent[] {
-  const cuentasActivas = accounts.filter((a) => a.activo && (!filtroAccounts || filtroAccounts.length === 0 || filtroAccounts.includes(a._id)));
-  return aplicarSaldoRef([...events].sort((a, b) => a.fecha.localeCompare(b.fecha)), cuentasActivas, config);
+  const cuentasActivas = accounts.filter(
+    (a) => a.activo && (!filtroAccounts || filtroAccounts.length === 0 || filtroAccounts.includes(a._id)),
+  );
+  return aplicarSaldoRef(
+    [...events].sort((a, b) => a.fecha.localeCompare(b.fecha)),
+    cuentasActivas,
+    config,
+  );
 }
 
 export function generarExtracto(input: StatementInput): CashEvent[] {
@@ -113,19 +119,25 @@ export function generarExtracto(input: StatementInput): CashEvent[] {
   if (config.usarInflacion && inflacionPeriodos.length > 0) {
     const principalId = (accounts.find((a) => a.activo && a.esCuentaPrincipal) || accounts.find((a) => a.activo) || { _id: 'default' })._id;
     allEvents = allEvents.concat(proyectarInflacionGastos(gastos, inflacionPeriodos, range, filtroAccounts, principalId));
-    const cuentasAct = accounts.filter((a) => a.activo && (!filtroAccounts || filtroAccounts.length === 0 || filtroAccounts.includes(a._id)));
+    const cuentasAct = accounts.filter(
+      (a) => a.activo && (!filtroAccounts || filtroAccounts.length === 0 || filtroAccounts.includes(a._id)),
+    );
     const saldoIni = cuentasAct.reduce((s, a) => s + saldoEnFecha(a, config.dashboardStart), 0);
     allEvents = allEvents.concat(proyectarPerdidaAhorro(saldoIni, inflacionPeriodos, range, principalId));
   }
   allEvents.sort((a, b) => a.fecha.localeCompare(b.fecha));
-  const cuentasActivas = accounts.filter((a) => a.activo && (!filtroAccounts || filtroAccounts.length === 0 || filtroAccounts.includes(a._id)));
+  const cuentasActivas = accounts.filter(
+    (a) => a.activo && (!filtroAccounts || filtroAccounts.length === 0 || filtroAccounts.includes(a._id)),
+  );
   return aplicarSaldoRef(allEvents, cuentasActivas, config);
 }
 
 /** Saldo a día de hoy según el extracto (o saldo real si no hay eventos pasados). */
 export function saldoHoy(extracto: CashEvent[], accounts: StatementAccount[], filtroAccounts: AccountFilter = null): number {
   const today = todayISO();
-  const cuentasActivas = accounts.filter((a) => a.activo && (!filtroAccounts || filtroAccounts.length === 0 || filtroAccounts.includes(a._id)));
+  const cuentasActivas = accounts.filter(
+    (a) => a.activo && (!filtroAccounts || filtroAccounts.length === 0 || filtroAccounts.includes(a._id)),
+  );
   const saldo = cuentasActivas.reduce((s, a) => s + saldoRealCuenta(a), 0);
   const past = extracto.filter((e) => e.fecha <= today);
   if (past.length === 0) return saldo;

@@ -23,7 +23,14 @@ export function proyectarRetencionesFiscales(
     if (!exp.activo || exp.tipo !== 'ingreso' || !exp.sujetoIRPF) continue;
     const salarioAnual = exp.cuantia * (exp.tipoFrecuencia === 'mensual' ? 12 : 1);
     const ret = retencionMensual(salarioAnual, t);
-    const mockGastoFiscal: ExpenseLike = { ...exp, _id: exp._id + '_irpf', concepto: `IRPF salario ${exp.concepto}`, tipo: 'gasto', cuantia: ret, tags: ['irpf', 'fiscal'] };
+    const mockGastoFiscal: ExpenseLike = {
+      ...exp,
+      _id: exp._id + '_irpf',
+      concepto: `IRPF salario ${exp.concepto}`,
+      tipo: 'gasto',
+      cuantia: ret,
+      tags: ['irpf', 'fiscal'],
+    };
     events.push(...proyectarGastos([mockGastoFiscal], range, filtroAccounts));
   }
   return events;

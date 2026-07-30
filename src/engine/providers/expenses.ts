@@ -38,11 +38,7 @@ export function cuantiaEfectiva(exp: ExpenseLike): number {
   return entries.reduce((s, h) => s + h.cuantia, 0) / entries.length;
 }
 
-export function proyectarGastos(
-  expenses: ExpenseLike[],
-  range: DateRange,
-  filtroAccounts: AccountFilter = null,
-): CashEvent[] {
+export function proyectarGastos(expenses: ExpenseLike[], range: DateRange, filtroAccounts: AccountFilter = null): CashEvent[] {
   const events: CashEvent[] = [];
   const dS = parseLocalDate(range.start);
   const dE = parseLocalDate(range.end);

@@ -1,5 +1,8 @@
 node_modules/
 dist/
+# Bundle generado por Vite desde src/ (se compila en CI y en local con npm run build)
+assets/financeapp-core.js
+assets/financeapp-core.js.map
 coverage/
 _site/
 .DS_Store

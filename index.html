@@ -407,6 +407,14 @@
 <script>window.FIREBASE_CONFIG = null;</script>
 <script src="firebase/firebase-config.js" onerror="console.info('firebase-config.js no encontrado — usa la UI para introducir la config')"></script>
 
+<!-- ── Paquete nuevo (src/ compilado por Vite) ──────────────────────────────
+     Publica window.FinanceApp (core de cálculo tipado, motor de proyección,
+     store con migraciones y feature flags). Se carga ANTES de los módulos
+     legacy para que puedan consumirlo. Si el fichero no existe (repo servido
+     sin `npm run build`), la app legacy sigue funcionando igual.
+     ──────────────────────────────────────────────────────────────────────── -->
+<script src="assets/financeapp-core.js" onerror="console.info('[FinanceApp] core no compilado — ejecuta npm run build para habilitar los módulos nuevos')"></script>
+
 <!-- ── Common services (no dependencies) ── -->
 <script src="common/crypto.js"></script>
 <script src="common/storage.js"></script>

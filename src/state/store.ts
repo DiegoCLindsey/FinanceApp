@@ -167,11 +167,20 @@ export function createStore({ adapter, hoy = new Date() }: StoreOptions) {
   }
 
   return {
-    load, get, set, patchConfig, subscribe,
-    addItem, updateItem, removeItem,
-    getPrincipalAccountId, accountName,
-    resolverTramosIRPF, resolverTramosGanancias,
-    snapshot, replaceAll,
+    load,
+    get,
+    set,
+    patchConfig,
+    subscribe,
+    addItem,
+    updateItem,
+    removeItem,
+    getPrincipalAccountId,
+    accountName,
+    resolverTramosIRPF,
+    resolverTramosGanancias,
+    snapshot,
+    replaceAll,
     get schemaVersion() {
       return SCHEMA_VERSION;
     },

@@ -43,9 +43,14 @@ export function proyectarInflacionGastos(
     }
     if (totalInflacion > 0.01) {
       events.push({
-        fecha: mesMid, concepto: 'Incremento coste de vida', cuantia: totalInflacion,
-        tipo: 'gasto', tags: ['inflacion'], cuenta: principalCuenta,
-        sourceId: 'inflacion_vida_' + mesLabel, sourceType: 'inflacion',
+        fecha: mesMid,
+        concepto: 'Incremento coste de vida',
+        cuantia: totalInflacion,
+        tipo: 'gasto',
+        tags: ['inflacion'],
+        cuenta: principalCuenta,
+        sourceId: 'inflacion_vida_' + mesLabel,
+        sourceType: 'inflacion',
       });
     }
     d = new Date(year, month + 1, 1);
@@ -78,9 +83,14 @@ export function proyectarPerdidaAhorro(
     const perdida = saldoInicial * tasaMensual;
     if (perdida > 0.01) {
       events.push({
-        fecha: mesMid, concepto: 'Pérdida ahorro por inflación', cuantia: perdida,
-        tipo: 'gasto', tags: ['inflacion'], cuenta: principalCuenta,
-        sourceId: 'inflacion_ahorro_' + mesLabel, sourceType: 'inflacion',
+        fecha: mesMid,
+        concepto: 'Pérdida ahorro por inflación',
+        cuantia: perdida,
+        tipo: 'gasto',
+        tags: ['inflacion'],
+        cuenta: principalCuenta,
+        sourceId: 'inflacion_ahorro_' + mesLabel,
+        sourceType: 'inflacion',
       });
     }
     d = new Date(year, month + 1, 1);

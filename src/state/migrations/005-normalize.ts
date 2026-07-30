@@ -62,7 +62,8 @@ export function migrateTo5(raw: RawState, ctx: MigrationContext): RawState {
   delete cfg.mcIteraciones;
   // Tablas fiscales: si venían vacías o corruptas, restaurar fallback
   if (!Array.isArray(cfg.tramos_irpf) || (cfg.tramos_irpf as unknown[]).length === 0) cfg.tramos_irpf = TRAMOS_IRPF_FALLBACK;
-  if (!Array.isArray(cfg.tramosGananciasCapital) || (cfg.tramosGananciasCapital as unknown[]).length === 0) cfg.tramosGananciasCapital = TRAMOS_AHORRO_FALLBACK;
+  if (!Array.isArray(cfg.tramosGananciasCapital) || (cfg.tramosGananciasCapital as unknown[]).length === 0)
+    cfg.tramosGananciasCapital = TRAMOS_AHORRO_FALLBACK;
   if (!Array.isArray(cfg.saludRegla) || (cfg.saludRegla as unknown[]).length !== 3) cfg.saludRegla = [50, 30, 20];
   if (typeof cfg.features !== 'object' || cfg.features === null || Array.isArray(cfg.features)) cfg.features = {};
   out.config = cfg;
@@ -70,10 +71,19 @@ export function migrateTo5(raw: RawState, ctx: MigrationContext): RawState {
   // ── accounts ────────────────────────────────────────────────────────────────
   let accounts = asArray(raw.accounts).map((a) => {
     const base: Obj = {
-      saldoInicial: 0, fechaInicialSaldo: hoyISO, historicoSaldos: [],
-      interes: 0, periodoCobro: 'mensual', activo: true, simulacion: false,
-      esCuentaPrincipal: false, aportaciones: [], planAportaciones: [],
-      bloqueoMeses: 120, impuestoRetirada: 0, grupoNomina: '',
+      saldoInicial: 0,
+      fechaInicialSaldo: hoyISO,
+      historicoSaldos: [],
+      interes: 0,
+      periodoCobro: 'mensual',
+      activo: true,
+      simulacion: false,
+      esCuentaPrincipal: false,
+      aportaciones: [],
+      planAportaciones: [],
+      bloqueoMeses: 120,
+      impuestoRetirada: 0,
+      grupoNomina: '',
       ...a,
     };
     if (!base.modeloFondo) base.modeloFondo = base.esFondoPension ? 'pension' : 'cuenta';
@@ -112,8 +122,13 @@ export function migrateTo5(raw: RawState, ctx: MigrationContext): RawState {
   // ── loans ───────────────────────────────────────────────────────────────────
   out.loans = asArray(raw.loans).map((l) => {
     const base: Obj = {
-      tipoTasa: 'fijo', mostrarFechaFinEnDashboard: true, basico: true,
-      tags: [], activo: true, amortizaciones: [], ...l,
+      tipoTasa: 'fijo',
+      mostrarFechaFinEnDashboard: true,
+      basico: true,
+      tags: [],
+      activo: true,
+      amortizaciones: [],
+      ...l,
     };
     if (!Array.isArray(base.tags)) base.tags = [];
     base.diaPago = migrarDiaPago(base.diaPago);
@@ -124,9 +139,19 @@ export function migrateTo5(raw: RawState, ctx: MigrationContext): RawState {
   // ── nominas ─────────────────────────────────────────────────────────────────
   out.nominas = asArray(raw.nominas).map((n) => {
     const base: Obj = {
-      activo: true, nPagas: 12, irpfModo: 'auto', irpfPct: 0, bruto: 0,
-      representacion: 'detallado', tags: [], fechaFin: null, cuenta: 'default',
-      grupoNomina: '', mesActualizacionIPC: null, retribucionFlexible: [], ...n,
+      activo: true,
+      nPagas: 12,
+      irpfModo: 'auto',
+      irpfPct: 0,
+      bruto: 0,
+      representacion: 'detallado',
+      tags: [],
+      fechaFin: null,
+      cuenta: 'default',
+      grupoNomina: '',
+      mesActualizacionIPC: null,
+      retribucionFlexible: [],
+      ...n,
     };
     if (!Array.isArray(base.tags)) base.tags = [];
     if (!Array.isArray(base.retribucionFlexible)) base.retribucionFlexible = [];

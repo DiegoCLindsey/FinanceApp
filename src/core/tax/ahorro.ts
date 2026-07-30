@@ -5,7 +5,11 @@
 import type { Tramos } from './irpf';
 
 export const TRAMOS_AHORRO_DEFAULT: Tramos = [
-  [0, 19], [6000, 21], [50000, 23], [200000, 27], [300000, 28],
+  [0, 19],
+  [6000, 21],
+  [50000, 23],
+  [200000, 27],
+  [300000, 28],
 ];
 
 /** Impuesto progresivo sobre una plusvalía. Plusvalías no positivas → 0. */

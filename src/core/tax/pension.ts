@@ -97,7 +97,11 @@ export function calcImpuestoPension(acc: AccountLike, cantidadRetirada: number, 
  * Tipo marginal IRPF efectivo de un plan: el del grupo de nóminas si lo tiene
  * (bruto × nPagas apilado), si no el % fijo configurado en la cuenta.
  */
-export function calcTipoMarginalPension(acc: AccountLike, nominas: NominaLike[] | null | undefined, tramos: Tramos | null | undefined): number {
+export function calcTipoMarginalPension(
+  acc: AccountLike,
+  nominas: NominaLike[] | null | undefined,
+  tramos: Tramos | null | undefined,
+): number {
   const grupoId = acc.grupoNomina;
   if (!grupoId) return acc.impuestoRetirada || 0;
   const grupoNoms = (nominas || []).filter((n) => (n.grupoNomina || '') === grupoId && n.activo !== false);

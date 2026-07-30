@@ -70,11 +70,29 @@ src/
 └── app/             # shell, router, period bar, bootstrap
 ```
 
-- [ ] **1.1 Bootstrap del paquete (re-alcance)** — el switch de `index.html` al bundle
-      de Vite se pospone hasta que el core esté completo, para que la app estática siga
-      funcionando sin build entretanto. `src/` + typecheck/lint/tests ya están cableados
-      (hecho); queda: entry `src/main.ts`, publicación de módulos legacy en `globalThis`
-      y build de Vite. CA: la app arranca con datos existentes de localStorage.
+- [x] **1.1 Bootstrap del paquete** — COMPLETADA. `src/main.ts` arranca el store
+      (con migraciones) y los flags, y publica `window.FinanceApp` (core, engine con
+      sus providers, análisis, márgenes, optimizador, store y flags). `vite.config.ts`
+      compila `src/` a un único script clásico `assets/financeapp-core.js`
+      (47 kB / 17 kB gzip, gitignored), que `index.html` carga ANTES de los scripts
+      legacy — estrategia *strangler fig*: la app legacy sigue funcionando y puede ir
+      consumiendo lo nuevo módulo a módulo.
+      OJO al retocar vite.config: el nombre del global del bundle es
+      `FinanceAppBundle`, no `FinanceApp`, porque el wrapper IIFE asigna
+      `window[name] = exports` DESPUÉS de ejecutar el módulo y sobrescribiría el
+      namespace.
+      CA verificado en Chromium headless sobre la app real: migración v5 aplicada
+      sobre localStorage, cuenta principal resuelta, flags leídos/escritos y
+      persistidos, extracto generado, y `index.html` carga sin errores de consola.
+- [x] **1.1b Reparar el pipeline** — `npm run build` fallaba desde el PR #75
+      (buscaba `src/v2/index.html`), lo que **abortaba el deploy a GitHub Pages**;
+      `ci.yml` estaba rojo por `format:check` y su fallo bloqueaba el job de tests.
+      Arreglado: build reapuntado, prettier aplicado a `src/` y `tests/` con
+      `.prettierrc.json`, `deploy.yml` reescrito (ya no hay `/v2/`; publica el
+      bundle y falla explícitamente si no se generó), `deploy-preview.yml` compila
+      el core y excluye `node_modules`/`src`/`tests` del publicado, y se retira el
+      `test.yml` que yo había añadido (duplicaba `ci.yml`). También se elimina
+      `.env.production` (VITE_BASE_URL del build antiguo).
 - [x] **1.2 `core/dates` + `core/money`** — `src/core/dates.ts` (formatLocalDate
       corrige el bug de `toISOString`, parseLocalDate, clampedDate, día efectivo) y
       `src/core/money.ts` (céntimos, roundMoney, formatEUR). Política de precisión

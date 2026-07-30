@@ -3,9 +3,15 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { generarExtracto, type StatementAccount } from '@/engine/statement';
 import {
-  calcGastoBasicoMensual, calcColchon, calcColchonEnFecha, calcMargenEnFecha,
-  saldosPorCuentaEnExtracto, detectarCrucesMargenes,
-  type BasicoExpense, type BasicoLoan, type MargenSeguridad,
+  calcGastoBasicoMensual,
+  calcColchon,
+  calcColchonEnFecha,
+  calcMargenEnFecha,
+  saldosPorCuentaEnExtracto,
+  detectarCrucesMargenes,
+  type BasicoExpense,
+  type BasicoLoan,
+  type MargenSeguridad,
 } from '@/engine/margins';
 import { detectarPuntosCriticos, mediaMensualGastos, calcDesviacion } from '@/engine/analysis';
 import type { CashEvent } from '@/engine/types';
@@ -14,15 +20,82 @@ import type { CashEvent } from '@/engine/types';
 let FM: any;
 
 const accounts: StatementAccount[] = [
-  { _id: 'default', nombre: 'Principal', activo: true, esCuentaPrincipal: true, saldoInicial: 3000, fechaInicialSaldo: '2026-01-01', historicoSaldos: [{ fecha: '2026-03-01', saldo: 2500 }, { fecha: '2026-05-01', saldo: 4100 }], interes: 0 },
-  { _id: 'acc2', nombre: 'Secundaria', activo: true, saldoInicial: 1500, fechaInicialSaldo: '2026-01-01', historicoSaldos: [{ fecha: '2026-04-01', saldo: 1800 }], interes: 0 },
+  {
+    _id: 'default',
+    nombre: 'Principal',
+    activo: true,
+    esCuentaPrincipal: true,
+    saldoInicial: 3000,
+    fechaInicialSaldo: '2026-01-01',
+    historicoSaldos: [
+      { fecha: '2026-03-01', saldo: 2500 },
+      { fecha: '2026-05-01', saldo: 4100 },
+    ],
+    interes: 0,
+  },
+  {
+    _id: 'acc2',
+    nombre: 'Secundaria',
+    activo: true,
+    saldoInicial: 1500,
+    fechaInicialSaldo: '2026-01-01',
+    historicoSaldos: [{ fecha: '2026-04-01', saldo: 1800 }],
+    interes: 0,
+  },
 ];
 
 const expenses: BasicoExpense[] = [
-  { _id: 'e1', activo: true, basico: true, concepto: 'Alquiler', cuantia: 850, tipo: 'gasto', tipoFrecuencia: 'mensual', frecuencia: 1, fechaInicio: '2025-01-01', tags: ['vivienda'], cuenta: 'default' },
-  { _id: 'e2', activo: true, basico: true, concepto: 'Luz', cuantia: 90, tipo: 'gasto', tipoFrecuencia: 'mensual', frecuencia: 2, fechaInicio: '2025-02-05', tags: ['suministros'], cuenta: 'default' },
-  { _id: 'e3', activo: true, basico: false, concepto: 'Ocio', cuantia: 200, tipo: 'gasto', tipoFrecuencia: 'mensual', frecuencia: 1, fechaInicio: '2025-01-20', tags: ['ocio'], cuenta: 'acc2' },
-  { _id: 'e4', activo: true, concepto: 'Nómina manual', cuantia: 1900, tipo: 'ingreso', tipoFrecuencia: 'mensual', frecuencia: 1, fechaInicio: '2025-01-25', tags: [], cuenta: 'default' },
+  {
+    _id: 'e1',
+    activo: true,
+    basico: true,
+    concepto: 'Alquiler',
+    cuantia: 850,
+    tipo: 'gasto',
+    tipoFrecuencia: 'mensual',
+    frecuencia: 1,
+    fechaInicio: '2025-01-01',
+    tags: ['vivienda'],
+    cuenta: 'default',
+  },
+  {
+    _id: 'e2',
+    activo: true,
+    basico: true,
+    concepto: 'Luz',
+    cuantia: 90,
+    tipo: 'gasto',
+    tipoFrecuencia: 'mensual',
+    frecuencia: 2,
+    fechaInicio: '2025-02-05',
+    tags: ['suministros'],
+    cuenta: 'default',
+  },
+  {
+    _id: 'e3',
+    activo: true,
+    basico: false,
+    concepto: 'Ocio',
+    cuantia: 200,
+    tipo: 'gasto',
+    tipoFrecuencia: 'mensual',
+    frecuencia: 1,
+    fechaInicio: '2025-01-20',
+    tags: ['ocio'],
+    cuenta: 'acc2',
+  },
+  {
+    _id: 'e4',
+    activo: true,
+    concepto: 'Nómina manual',
+    cuantia: 1900,
+    tipo: 'ingreso',
+    tipoFrecuencia: 'mensual',
+    frecuencia: 1,
+    fechaInicio: '2025-01-25',
+    tags: [],
+    cuenta: 'default',
+  },
 ];
 
 const loans: BasicoLoan[] = [
@@ -32,8 +105,23 @@ const loans: BasicoLoan[] = [
 ];
 
 const margenes: MargenSeguridad[] = [
-  { _id: 'm1', nombre: 'Reserva global', activo: true, cuentas: [], puntos: [{ _id: 'p1', fecha: '2026-01-01', tipo: 'fijo', importe: 4000 }, { _id: 'p2', fecha: '2026-07-01', tipo: 'meses', meses: 3 }] },
-  { _id: 'm2', nombre: 'Solo secundaria', activo: true, cuentas: ['acc2'], puntos: [{ _id: 'p3', fecha: '2026-02-01', tipo: 'fijo', importe: 1200 }] },
+  {
+    _id: 'm1',
+    nombre: 'Reserva global',
+    activo: true,
+    cuentas: [],
+    puntos: [
+      { _id: 'p1', fecha: '2026-01-01', tipo: 'fijo', importe: 4000 },
+      { _id: 'p2', fecha: '2026-07-01', tipo: 'meses', meses: 3 },
+    ],
+  },
+  {
+    _id: 'm2',
+    nombre: 'Solo secundaria',
+    activo: true,
+    cuentas: ['acc2'],
+    puntos: [{ _id: 'p3', fecha: '2026-02-01', tipo: 'fijo', importe: 1200 }],
+  },
   { _id: 'm3', nombre: 'Futuro', activo: true, cuentas: [], puntos: [{ _id: 'p4', fecha: '2027-01-01', tipo: 'fijo', importe: 9000 }] },
   { _id: 'm4', nombre: 'Inactivo', activo: false, cuentas: [], puntos: [{ _id: 'p5', fecha: '2026-01-01', tipo: 'fijo', importe: 99999 }] },
 ];
@@ -53,7 +141,14 @@ let extracto: CashEvent[];
 beforeAll(async () => {
   await import('../../finance-math/finance-math.js');
   FM = (globalThis as any).FinanceMath;
-  const stateData: Record<string, unknown> = { accounts, nominas: [], config, inflacion: [], tramosIRPFHistorico: [], tramosGananciasCapitalHistorico: [] };
+  const stateData: Record<string, unknown> = {
+    accounts,
+    nominas: [],
+    config,
+    inflacion: [],
+    tramosIRPFHistorico: [],
+    tramosGananciasCapitalHistorico: [],
+  };
   (globalThis as any).State = {
     get: (k: string) => stateData[k],
     accountName: (id: string) => accounts.find((a) => a._id === id)?.nombre ?? id,
@@ -86,7 +181,9 @@ describe('paridad márgenes de seguridad', () => {
     for (const m of margenes) {
       for (const fecha of fechas) {
         expect(calcMargenEnFecha(m, expenses, config, loans, fecha)).toBe(FM.calcMargenEnFecha(m, expenses, config, loans, fecha));
-        expect(calcMargenEnFecha(m, expenses, config, loans, fecha, true)).toBe(FM.calcMargenEnFecha(m, expenses, config, loans, fecha, true));
+        expect(calcMargenEnFecha(m, expenses, config, loans, fecha, true)).toBe(
+          FM.calcMargenEnFecha(m, expenses, config, loans, fecha, true),
+        );
       }
     }
     // Margen sin puntos → 0

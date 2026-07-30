@@ -11,10 +11,25 @@ beforeAll(async () => {
 });
 
 const cuentas: core.AccountLike[] = [
-  { saldoInicial: 1000, fechaInicialSaldo: '2026-01-10', historicoSaldos: [{ fecha: '2025-12-01', saldo: 500 }, { fecha: '2026-02-01', saldo: 1500 }] },
+  {
+    saldoInicial: 1000,
+    fechaInicialSaldo: '2026-01-10',
+    historicoSaldos: [
+      { fecha: '2025-12-01', saldo: 500 },
+      { fecha: '2026-02-01', saldo: 1500 },
+    ],
+  },
   { saldoInicial: 0, historicoSaldos: [] },
   { saldoInicial: 42 },
-  { saldoInicial: 100, fechaInicialSaldo: '2026-05-01', historicoSaldos: [{ fecha: '2026-04-01', saldo: 900 }, { fecha: '2026-06-01', saldo: 1100 }, { fecha: '2026-05-15', saldo: 1050 }] },
+  {
+    saldoInicial: 100,
+    fechaInicialSaldo: '2026-05-01',
+    historicoSaldos: [
+      { fecha: '2026-04-01', saldo: 900 },
+      { fecha: '2026-06-01', saldo: 1100 },
+      { fecha: '2026-05-15', saldo: 1050 },
+    ],
+  },
 ];
 
 describe('paridad saldos de cuenta', () => {

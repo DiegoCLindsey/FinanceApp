@@ -36,7 +36,10 @@ describe('paridad préstamos', () => {
     const amortsSets: core.Amortizacion[][] = [
       [],
       [{ fecha: '2026-06-01', cantidad: 3000, tipo: 'plazo' }],
-      [{ fecha: '2026-06-01', cantidad: 2000, tipo: 'cuota' }, { fecha: '2027-01-15', cantidad: 1500, tipo: 'plazo' }],
+      [
+        { fecha: '2026-06-01', cantidad: 2000, tipo: 'cuota' },
+        { fecha: '2027-01-15', cantidad: 1500, tipo: 'plazo' },
+      ],
     ];
     for (const amorts of amortsSets) {
       for (const diaPago of ['', 'dia:5', 'dia:ultimo', 'nthweekday:1:1']) {
@@ -47,15 +50,37 @@ describe('paridad préstamos', () => {
     }
   });
   it('resumenPrestamo idéntico', () => {
-    const loan = { capital: 150000, tin: 2.5, meses: 300, fechaInicio: '2025-03-01', comisionApertura: 0.5, comisionAmort: 0.25, amortizaciones: [{ fecha: '2026-09-01', cantidad: 5000, tipo: 'plazo' as const }] };
+    const loan = {
+      capital: 150000,
+      tin: 2.5,
+      meses: 300,
+      fechaInicio: '2025-03-01',
+      comisionApertura: 0.5,
+      comisionAmort: 0.25,
+      amortizaciones: [{ fecha: '2026-09-01', cantidad: 5000, tipo: 'plazo' as const }],
+    };
     expect(core.resumenPrestamo(loan)).toEqual(FM.resumenPrestamo(loan));
   });
 });
 
 describe('paridad día efectivo', () => {
   it('resolverDiaEfectivo idéntico en un grid amplio', () => {
-    const specs = ['', 'dia:1', 'dia:15', 'dia:28', 'dia:29', 'dia:30', 'dia:31', 'dia:ultimo',
-      'nthweekday:1:1', 'nthweekday:2:3', 'nthweekday:5:5', 'nthweekday:-1:0', 'nthweekday:-1:5', 'garbage'];
+    const specs = [
+      '',
+      'dia:1',
+      'dia:15',
+      'dia:28',
+      'dia:29',
+      'dia:30',
+      'dia:31',
+      'dia:ultimo',
+      'nthweekday:1:1',
+      'nthweekday:2:3',
+      'nthweekday:5:5',
+      'nthweekday:-1:0',
+      'nthweekday:-1:5',
+      'garbage',
+    ];
     for (let year = 2024; year <= 2028; year++) {
       for (let m = 0; m < 12; m++) {
         for (const spec of specs) {
@@ -121,7 +146,12 @@ describe('paridad inflación', () => {
     }
   });
   it('calcTipoRealFisher idéntica', () => {
-    for (const [nom, inf] of [[3, 2], [0, 5], [7, -1], [2, 2]]) {
+    for (const [nom, inf] of [
+      [3, 2],
+      [0, 5],
+      [7, -1],
+      [2, 2],
+    ]) {
       expect(core.calcTipoRealFisher(nom, inf)).toBe(FM.calcTipoRealFisher(nom, inf));
     }
   });
@@ -137,7 +167,13 @@ describe('paridad salud financiera', () => {
     const configs = [
       {},
       { saludExcluirHipoteca: true },
-      { saludUmbralAhorroVerde: 25, saludUmbralAhorroAmarillo: 5, saludUmbralDTIVerde: 20, saludUmbralDTIAmarillo: 35, saludRegla: [55, 25, 20] },
+      {
+        saludUmbralAhorroVerde: 25,
+        saludUmbralAhorroAmarillo: 5,
+        saludUmbralDTIVerde: 20,
+        saludUmbralDTIAmarillo: 35,
+        saludRegla: [55, 25, 20],
+      },
     ];
     for (const met of mets) {
       for (const cfg of configs) {

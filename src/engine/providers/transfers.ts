@@ -60,7 +60,8 @@ export function proyectarTransferencias(
       const originModel = modeloFondoDe(cuentaOrigen);
       const destModel = modeloFondoDe(cuentaDest);
 
-      const esTraspaso = (originModel === 'inversion' && destModel === 'inversion') || (originModel === 'pension' && destModel === 'pension');
+      const esTraspaso =
+        (originModel === 'inversion' && destModel === 'inversion') || (originModel === 'pension' && destModel === 'pension');
       const tagsBase = ['transferencia', ...(esTraspaso ? ['traspaso'] : []), ...(exp.tags || [])];
       const srcOut = esTraspaso ? 'traspaso-out' : 'transfer-out';
       const srcIn = esTraspaso ? 'traspaso-in' : 'transfer-in';
@@ -68,8 +69,28 @@ export function proyectarTransferencias(
       const addOrigen = !filtroAccounts || filtroAccounts.length === 0 || filtroAccounts.includes(exp.cuenta || 'default');
       const addDestino = !filtroAccounts || filtroAccounts.length === 0 || filtroAccounts.includes(exp.cuentaDestino || 'default');
 
-      if (addOrigen) events.push({ fecha, concepto: `Transf. → ${accountName(exp.cuentaDestino || 'default')}: ${exp.concepto}`, cuantia: exp.cuantia, tipo: 'gasto', tags: tagsBase, cuenta: exp.cuenta || 'default', sourceId: exp._id, sourceType: srcOut });
-      if (addDestino) events.push({ fecha, concepto: `Transf. ← ${accountName(exp.cuenta || 'default')}: ${exp.concepto}`, cuantia: exp.cuantia, tipo: 'ingreso', tags: tagsBase, cuenta: exp.cuentaDestino || 'default', sourceId: exp._id, sourceType: srcIn });
+      if (addOrigen)
+        events.push({
+          fecha,
+          concepto: `Transf. → ${accountName(exp.cuentaDestino || 'default')}: ${exp.concepto}`,
+          cuantia: exp.cuantia,
+          tipo: 'gasto',
+          tags: tagsBase,
+          cuenta: exp.cuenta || 'default',
+          sourceId: exp._id,
+          sourceType: srcOut,
+        });
+      if (addDestino)
+        events.push({
+          fecha,
+          concepto: `Transf. ← ${accountName(exp.cuenta || 'default')}: ${exp.concepto}`,
+          cuantia: exp.cuantia,
+          tipo: 'ingreso',
+          tags: tagsBase,
+          cuenta: exp.cuentaDestino || 'default',
+          sourceId: exp._id,
+          sourceType: srcIn,
+        });
 
       if (addOrigen && !esTraspaso && cuentaOrigen) {
         if (originModel === 'inversion') {
@@ -81,7 +102,16 @@ export function proyectarTransferencias(
             const plusvProp = inv.plusvalia * proporcion;
             const retencion = plusvProp * 0.19; // Art. 101 LIRPF
             if (retencion > 0.01) {
-              events.push({ fecha, concepto: `Retención IRPF reembolso ${cuentaOrigen.nombre} (19% s/plusvalía)`, cuantia: retencion, tipo: 'gasto', tags: ['impuesto', 'capital-mobiliario', 'retencion'], cuenta: exp.cuenta || 'default', sourceId: exp._id, sourceType: 'investment-tax' });
+              events.push({
+                fecha,
+                concepto: `Retención IRPF reembolso ${cuentaOrigen.nombre} (19% s/plusvalía)`,
+                cuantia: retencion,
+                tipo: 'gasto',
+                tags: ['impuesto', 'capital-mobiliario', 'retencion'],
+                cuenta: exp.cuenta || 'default',
+                sourceId: exp._id,
+                sourceType: 'investment-tax',
+              });
             }
           }
         } else if (originModel === 'pension') {
@@ -93,7 +123,16 @@ export function proyectarTransferencias(
             const label = cuentaOrigen.grupoNomina
               ? `IRPF rescate ${cuentaOrigen.nombre} (tipo marginal grupo "${cuentaOrigen.grupoNomina}": ${tipoEf}%)`
               : `Retención rescate ${cuentaOrigen.nombre} (${cuentaOrigen.impuestoRetirada}% s/beneficio)`;
-            events.push({ fecha, concepto: label, cuantia: impuesto, tipo: 'gasto', tags: ['impuesto', 'rendimientos-trabajo', 'pension'], cuenta: exp.cuenta || 'default', sourceId: exp._id, sourceType: 'pension-tax' });
+            events.push({
+              fecha,
+              concepto: label,
+              cuantia: impuesto,
+              tipo: 'gasto',
+              tags: ['impuesto', 'rendimientos-trabajo', 'pension'],
+              cuenta: exp.cuenta || 'default',
+              sourceId: exp._id,
+              sourceType: 'pension-tax',
+            });
           }
         }
       }

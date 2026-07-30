@@ -85,9 +85,41 @@ financeapp/
 ## Servir localmente
 
 ```bash
-cd financeapp
+npm ci            # una vez
+npm run build     # compila src/ → assets/financeapp-core.js
 python3 -m http.server 8080
 # → http://localhost:8080
+```
+
+El paso `npm run build` compila el paquete nuevo (`src/`, TypeScript) a un único
+script clásico que `index.html` carga antes de los módulos legacy. Si te lo
+saltas, la app sigue funcionando: solo faltarán los módulos nuevos (el propio
+`index.html` lo avisa por consola). El bundle está en `.gitignore` y se genera
+en CI antes de desplegar.
+
+## Estructura en migración
+
+El repo contiene dos capas que conviven durante la refactorización:
+
+- **Legacy** (raíz: `common/`, `dashboard/`, `expenses/`, …): scripts globales
+  sin bundler, lo que hoy ve el usuario.
+- **Nuevo** (`src/`): TypeScript modular y tipado — `core/` (dominio puro),
+  `engine/` (motor de proyección por providers), `state/` (store + migraciones),
+  `flags/` (feature flags). Se publica en `window.FinanceApp` para que el legacy
+  lo consuma progresivamente.
+
+El plan de migración, el análisis de features y las decisiones tomadas están en
+[`docs/`](docs/). Los cálculos del código nuevo están verificados contra el
+legacy con tests de paridad de igualdad estricta.
+
+## Comandos
+
+```bash
+npm test           # suite completa (vitest)
+npm run typecheck  # tsc --noEmit
+npm run lint       # eslint src tests
+npm run format     # prettier --write
+npm run build      # bundle del core
 ```
 
 ## Desplegar en GitHub Pages

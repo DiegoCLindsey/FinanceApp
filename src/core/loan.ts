@@ -117,7 +117,17 @@ export function tablaAmortizacion(
         mr = meses - mes + 1;
         cuota = cuotaMensual(cap, tinAnual, mr);
       }
-      rows.push({ mes: 'AMORT', fecha: am.fecha, cuota: 0, interes: 0, amortizacion: am.cantidad, comisionAmort: cost, capitalPendiente: cap, esAmortizacion: true, simulacion: am.simulacion || false });
+      rows.push({
+        mes: 'AMORT',
+        fecha: am.fecha,
+        cuota: 0,
+        interes: 0,
+        amortizacion: am.cantidad,
+        comisionAmort: cost,
+        capitalPendiente: cap,
+        esAmortizacion: true,
+        simulacion: am.simulacion || false,
+      });
       ai++;
       if (cap < 0.01) break;
     }
@@ -126,7 +136,17 @@ export function tablaAmortizacion(
     const am = Math.min(cuota - int, cap);
     cap -= am;
     if (cap < 0.01) cap = 0;
-    rows.push({ mes, fecha: fs, cuota, interes: int, amortizacion: am, comisionAmort: 0, capitalPendiente: cap, esAmortizacion: false, simulacion: false });
+    rows.push({
+      mes,
+      fecha: fs,
+      cuota,
+      interes: int,
+      amortizacion: am,
+      comisionAmort: 0,
+      capitalPendiente: cap,
+      esAmortizacion: false,
+      simulacion: false,
+    });
     mr--;
     if (mr <= 0 || cap < 0.01) break;
   }

@@ -24,15 +24,30 @@ export function detectarPuntosCriticos(extracto: CashEvent[], colchon: number): 
     const ev = extracto[i];
     const saldo = ev.saldoAcum as number;
     if (saldo < 0 && (i === 0 || (extracto[i - 1].saldoAcum as number) >= 0)) {
-      pts.push({ tipo: 'saldo_negativo', fecha: ev.fecha, saldo, mensaje: `Saldo negativo (${formatEUR(saldo)}) a partir del ${ev.fecha}` });
+      pts.push({
+        tipo: 'saldo_negativo',
+        fecha: ev.fecha,
+        saldo,
+        mensaje: `Saldo negativo (${formatEUR(saldo)}) a partir del ${ev.fecha}`,
+      });
     }
     if (colchon > 0) {
       if (saldo < colchon && !dentroBajo) {
         dentroBajo = true;
-        pts.push({ tipo: 'bajo_colchon', fecha: ev.fecha, saldo, mensaje: `Saldo por debajo del colchón (${formatEUR(saldo)} < ${formatEUR(colchon)}) desde ${ev.fecha}` });
+        pts.push({
+          tipo: 'bajo_colchon',
+          fecha: ev.fecha,
+          saldo,
+          mensaje: `Saldo por debajo del colchón (${formatEUR(saldo)} < ${formatEUR(colchon)}) desde ${ev.fecha}`,
+        });
       } else if (saldo >= colchon && dentroBajo) {
         dentroBajo = false;
-        pts.push({ tipo: 'recuperacion_colchon', fecha: ev.fecha, saldo, mensaje: `Recuperación del colchón el ${ev.fecha} (${formatEUR(saldo)})` });
+        pts.push({
+          tipo: 'recuperacion_colchon',
+          fecha: ev.fecha,
+          saldo,
+          mensaje: `Recuperación del colchón el ${ev.fecha} (${formatEUR(saldo)})`,
+        });
       }
     }
   }
@@ -67,7 +82,11 @@ export interface FilaDesviacion {
  * LOCF multi-cuenta: para cada fecha arrastra el último saldo conocido de cada
  * cuenta. En F4 el "real" pasará a derivarse del ledger de contabilidad.
  */
-export function calcDesviacion(extracto: CashEvent[], accounts: (AccountLike & { _id?: string })[], hoyStr: ISODate = todayISO()): FilaDesviacion[] {
+export function calcDesviacion(
+  extracto: CashEvent[],
+  accounts: (AccountLike & { _id?: string })[],
+  hoyStr: ISODate = todayISO(),
+): FilaDesviacion[] {
   const allDates = new Set<ISODate>();
   const dedupedByAcc = accounts.map((acc) => {
     const floor = acc.fechaInicialSaldo || '';

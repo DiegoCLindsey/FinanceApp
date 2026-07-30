@@ -44,8 +44,28 @@ export function proyectarAportaciones(
       const addD = !filtroAccounts || !filtroAccounts.length || filtroAccounts.includes(acc._id);
       const tag = modelo === 'pension' ? 'pension' : 'capital-mobiliario';
       const pushAport = (fecha: ISODate) => {
-        if (addO) events.push({ fecha, concepto: `Aportación → ${acc.nombre}`, cuantia: ap.importe, tipo: 'gasto', tags: ['aportacion', 'transferencia', tag], cuenta: origen, sourceId: ap._id, sourceType: 'aportacion-out' });
-        if (addD) events.push({ fecha, concepto: `Aportación ${acc.nombre} (${ap.periodicidad || 'mensual'})`, cuantia: ap.importe, tipo: 'ingreso', tags: ['aportacion', 'transferencia', tag], cuenta: acc._id, sourceId: ap._id, sourceType: 'aportacion-in' });
+        if (addO)
+          events.push({
+            fecha,
+            concepto: `Aportación → ${acc.nombre}`,
+            cuantia: ap.importe,
+            tipo: 'gasto',
+            tags: ['aportacion', 'transferencia', tag],
+            cuenta: origen,
+            sourceId: ap._id,
+            sourceType: 'aportacion-out',
+          });
+        if (addD)
+          events.push({
+            fecha,
+            concepto: `Aportación ${acc.nombre} (${ap.periodicidad || 'mensual'})`,
+            cuantia: ap.importe,
+            tipo: 'ingreso',
+            tags: ['aportacion', 'transferencia', tag],
+            cuenta: acc._id,
+            sourceId: ap._id,
+            sourceType: 'aportacion-in',
+          });
       };
       const freq = ({ mensual: 1, trimestral: 3, semestral: 6, anual: 12 } as Record<string, number>)[ap.periodicidad || 'mensual'] || 1;
       let year = dI.getFullYear();

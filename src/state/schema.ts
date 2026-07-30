@@ -196,17 +196,41 @@ export interface AppState {
 
 export type CollectionKey = Exclude<keyof AppState, 'config'>;
 
-export const TRAMOS_IRPF_FALLBACK: Tramos = [[0, 19], [12450, 24], [20200, 30], [35200, 37], [60000, 45], [300000, 47]];
-export const TRAMOS_AHORRO_FALLBACK: Tramos = [[0, 19], [6000, 21], [50000, 23], [200000, 27], [300000, 28]];
+export const TRAMOS_IRPF_FALLBACK: Tramos = [
+  [0, 19],
+  [12450, 24],
+  [20200, 30],
+  [35200, 37],
+  [60000, 45],
+  [300000, 47],
+];
+export const TRAMOS_AHORRO_FALLBACK: Tramos = [
+  [0, 19],
+  [6000, 21],
+  [50000, 23],
+  [200000, 27],
+  [300000, 28],
+];
 
 /** Cuenta que siempre debe existir. */
 export function defaultAccount(hoyISO: ISODate): Account {
   return {
-    _id: 'default', nombre: 'Default', descripcion: 'Cuenta principal',
-    saldo: 0, saldoInicial: 0, fechaInicialSaldo: hoyISO, historicoSaldos: [],
-    interes: 0, periodoCobro: 'mensual', activo: true, simulacion: false,
-    esCuentaPrincipal: true, modeloFondo: 'cuenta', aportaciones: [],
-    planAportaciones: [], escenarioIds: [],
+    _id: 'default',
+    nombre: 'Default',
+    descripcion: 'Cuenta principal',
+    saldo: 0,
+    saldoInicial: 0,
+    fechaInicialSaldo: hoyISO,
+    historicoSaldos: [],
+    interes: 0,
+    periodoCobro: 'mensual',
+    activo: true,
+    simulacion: false,
+    esCuentaPrincipal: true,
+    modeloFondo: 'cuenta',
+    aportaciones: [],
+    planAportaciones: [],
+    escenarioIds: [],
   };
 }
 
@@ -215,27 +239,50 @@ export function defaultConfig(hoyISO: ISODate, finISO: ISODate): AppConfig {
     dashboardStart: hoyISO,
     dashboardEnd: finISO,
     fechaReferencia: hoyISO,
-    colchonMeses: 6, colchonTipo: 'meses', colchonFijo: 0, colchonPuntos: [],
-    showColchon: true, margenesSeguridad: [],
+    colchonMeses: 6,
+    colchonTipo: 'meses',
+    colchonFijo: 0,
+    colchonPuntos: [],
+    showColchon: true,
+    margenesSeguridad: [],
     usarInflacion: false,
     tramos_irpf: TRAMOS_IRPF_FALLBACK,
     tramosGananciasCapital: TRAMOS_AHORRO_FALLBACK,
-    showExecSummary: true, showCriticos: true, showHistorico: true, histCuenta: '',
+    showExecSummary: true,
+    showCriticos: true,
+    showHistorico: true,
+    histCuenta: '',
     analisisCollapsed: false,
-    activeTagsFilter: [], tagCategorias: [], tagGrupos: [],
-    saludUmbralAhorroVerde: 20, saludUmbralAhorroAmarillo: 10,
-    saludUmbralDTIVerde: 30, saludUmbralDTIAmarillo: 40,
-    saludRegla: [50, 30, 20], saludExcluirHipoteca: false, saludTagHipoteca: 'hipoteca',
-    storageMode: 'local', autoSave: false, autoSaveInterval: 15,
-    onboardingDone: false, escenarioActivo: null,
+    activeTagsFilter: [],
+    tagCategorias: [],
+    tagGrupos: [],
+    saludUmbralAhorroVerde: 20,
+    saludUmbralAhorroAmarillo: 10,
+    saludUmbralDTIVerde: 30,
+    saludUmbralDTIAmarillo: 40,
+    saludRegla: [50, 30, 20],
+    saludExcluirHipoteca: false,
+    saludTagHipoteca: 'hipoteca',
+    storageMode: 'local',
+    autoSave: false,
+    autoSaveInterval: 15,
+    onboardingDone: false,
+    escenarioActivo: null,
     features: {},
   };
 }
 
 export function defaultState(hoyISO: ISODate, finISO: ISODate): AppState {
   return {
-    loans: [], expenses: [], accounts: [defaultAccount(hoyISO)], nominas: [],
-    goals: [], inflacion: [], tramosIRPFHistorico: [], tramosGananciasCapitalHistorico: [],
-    escenarios: [], config: defaultConfig(hoyISO, finISO),
+    loans: [],
+    expenses: [],
+    accounts: [defaultAccount(hoyISO)],
+    nominas: [],
+    goals: [],
+    inflacion: [],
+    tramosIRPFHistorico: [],
+    tramosGananciasCapitalHistorico: [],
+    escenarios: [],
+    config: defaultConfig(hoyISO, finISO),
   };
 }

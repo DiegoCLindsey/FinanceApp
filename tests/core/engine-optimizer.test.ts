@@ -10,25 +10,121 @@ import type { BasicoExpense, MargenSeguridad } from '@/engine/margins';
 let FM: any;
 
 const accounts: StatementAccount[] = [
-  { _id: 'default', nombre: 'Principal', activo: true, esCuentaPrincipal: true, saldoInicial: 25000, fechaInicialSaldo: '2026-07-01', historicoSaldos: [{ fecha: '2026-07-30', saldo: 26000 }], interes: 0 },
-  { _id: 'acc2', nombre: 'Secundaria', activo: true, saldoInicial: 4000, fechaInicialSaldo: '2026-07-01', historicoSaldos: [], interes: 1.2, periodoCobro: 'mensual' },
+  {
+    _id: 'default',
+    nombre: 'Principal',
+    activo: true,
+    esCuentaPrincipal: true,
+    saldoInicial: 25000,
+    fechaInicialSaldo: '2026-07-01',
+    historicoSaldos: [{ fecha: '2026-07-30', saldo: 26000 }],
+    interes: 0,
+  },
+  {
+    _id: 'acc2',
+    nombre: 'Secundaria',
+    activo: true,
+    saldoInicial: 4000,
+    fechaInicialSaldo: '2026-07-01',
+    historicoSaldos: [],
+    interes: 1.2,
+    periodoCobro: 'mensual',
+  },
 ];
 
 const loans: LoanItem[] = [
-  { _id: 'l1', nombre: 'Hipoteca', activo: true, capital: 120000, tin: 3.1, meses: 300, fechaInicio: '2024-01-01', comisionAmort: 0.25, comisionApertura: 0, amortizaciones: [], cuenta: 'default', tags: ['hipoteca'] },
-  { _id: 'l2', nombre: 'Coche', activo: true, capital: 15000, tin: 6.5, meses: 60, fechaInicio: '2025-03-01', comisionAmort: 0, comisionApertura: 0, amortizaciones: [], cuenta: 'default', tags: [] },
-  { _id: 'l3', nombre: 'Simulado', activo: true, simulacion: true, capital: 5000, tin: 9, meses: 24, fechaInicio: '2026-01-01', amortizaciones: [], cuenta: 'default', tags: [] },
+  {
+    _id: 'l1',
+    nombre: 'Hipoteca',
+    activo: true,
+    capital: 120000,
+    tin: 3.1,
+    meses: 300,
+    fechaInicio: '2024-01-01',
+    comisionAmort: 0.25,
+    comisionApertura: 0,
+    amortizaciones: [],
+    cuenta: 'default',
+    tags: ['hipoteca'],
+  },
+  {
+    _id: 'l2',
+    nombre: 'Coche',
+    activo: true,
+    capital: 15000,
+    tin: 6.5,
+    meses: 60,
+    fechaInicio: '2025-03-01',
+    comisionAmort: 0,
+    comisionApertura: 0,
+    amortizaciones: [],
+    cuenta: 'default',
+    tags: [],
+  },
+  {
+    _id: 'l3',
+    nombre: 'Simulado',
+    activo: true,
+    simulacion: true,
+    capital: 5000,
+    tin: 9,
+    meses: 24,
+    fechaInicio: '2026-01-01',
+    amortizaciones: [],
+    cuenta: 'default',
+    tags: [],
+  },
 ];
 
 const expenses: BasicoExpense[] = [
-  { _id: 'e1', activo: true, basico: true, concepto: 'Alquiler', cuantia: 700, tipo: 'gasto', tipoFrecuencia: 'mensual', frecuencia: 1, fechaInicio: '2025-01-01', tags: [], cuenta: 'default' },
-  { _id: 'e2', activo: true, concepto: 'Ingresos', cuantia: 3200, tipo: 'ingreso', tipoFrecuencia: 'mensual', frecuencia: 1, fechaInicio: '2025-01-25', tags: [], cuenta: 'default' },
-  { _id: 'e3', activo: true, concepto: 'Varios', cuantia: 450, tipo: 'gasto', tipoFrecuencia: 'mensual', frecuencia: 1, fechaInicio: '2025-01-10', tags: [], cuenta: 'acc2' },
+  {
+    _id: 'e1',
+    activo: true,
+    basico: true,
+    concepto: 'Alquiler',
+    cuantia: 700,
+    tipo: 'gasto',
+    tipoFrecuencia: 'mensual',
+    frecuencia: 1,
+    fechaInicio: '2025-01-01',
+    tags: [],
+    cuenta: 'default',
+  },
+  {
+    _id: 'e2',
+    activo: true,
+    concepto: 'Ingresos',
+    cuantia: 3200,
+    tipo: 'ingreso',
+    tipoFrecuencia: 'mensual',
+    frecuencia: 1,
+    fechaInicio: '2025-01-25',
+    tags: [],
+    cuenta: 'default',
+  },
+  {
+    _id: 'e3',
+    activo: true,
+    concepto: 'Varios',
+    cuantia: 450,
+    tipo: 'gasto',
+    tipoFrecuencia: 'mensual',
+    frecuencia: 1,
+    fechaInicio: '2025-01-10',
+    tags: [],
+    cuenta: 'acc2',
+  },
 ];
 
 const margenesSeguridad: MargenSeguridad[] = [
   { _id: 'm1', nombre: 'Reserva', activo: true, cuentas: [], puntos: [{ _id: 'p1', fecha: '2026-01-01', tipo: 'fijo', importe: 6000 }] },
-  { _id: 'm2', nombre: 'Solo acc2', activo: true, cuentas: ['acc2'], puntos: [{ _id: 'p2', fecha: '2026-01-01', tipo: 'fijo', importe: 3000 }] },
+  {
+    _id: 'm2',
+    nombre: 'Solo acc2',
+    activo: true,
+    cuentas: ['acc2'],
+    puntos: [{ _id: 'p2', fecha: '2026-01-01', tipo: 'fijo', importe: 3000 }],
+  },
 ];
 
 const config = {
@@ -43,7 +139,14 @@ const config = {
 beforeAll(async () => {
   await import('../../finance-math/finance-math.js');
   FM = (globalThis as any).FinanceMath;
-  const stateData: Record<string, unknown> = { accounts, nominas: [], config, inflacion: [], tramosIRPFHistorico: [], tramosGananciasCapitalHistorico: [] };
+  const stateData: Record<string, unknown> = {
+    accounts,
+    nominas: [],
+    config,
+    inflacion: [],
+    tramosIRPFHistorico: [],
+    tramosGananciasCapitalHistorico: [],
+  };
   (globalThis as any).State = {
     get: (k: string) => stateData[k],
     accountName: (id: string) => accounts.find((a) => a._id === id)?.nombre ?? id,
@@ -98,7 +201,10 @@ describe('memoización del extracto (tarea 1.5)', () => {
     expect(memo.stats()).toEqual({ hits: 1, misses: 1 });
     expect(b).toBe(a); // misma referencia: no se regeneró
     // Cambiar el plan de amortizaciones invalida la clave
-    const conPlan = { ...input, loans: loans.map((l) => ({ ...l, amortizaciones: [{ fecha: '2027-01-15' as const, cantidad: 1000, tipo: 'plazo' }] })) };
+    const conPlan = {
+      ...input,
+      loans: loans.map((l) => ({ ...l, amortizaciones: [{ fecha: '2027-01-15' as const, cantidad: 1000, tipo: 'plazo' }] })),
+    };
     memo.statement(conPlan);
     expect(memo.stats()).toEqual({ hits: 1, misses: 2 });
   });

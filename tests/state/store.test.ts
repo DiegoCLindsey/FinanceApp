@@ -14,11 +14,43 @@ const HOY = new Date(2026, 6, 30); // 2026-07-30 local
 // Backup v4 realista: campos legados, colección retirada y datos incompletos
 const backupV4: Record<string, unknown> = {
   loans: [
-    { _id: 'l1', nombre: 'Hipoteca', capital: 120000, tin: 3, meses: 300, fechaInicio: '2024-01-01', diaPago: 'ultimo', escenarioId: 'esc1', varianza: 10, amortizaciones: [{ _id: 'a1', fecha: '2026-01-01', cantidad: 3000, tipo: 'plazo', escenarioId: 'esc1' }] },
+    {
+      _id: 'l1',
+      nombre: 'Hipoteca',
+      capital: 120000,
+      tin: 3,
+      meses: 300,
+      fechaInicio: '2024-01-01',
+      diaPago: 'ultimo',
+      escenarioId: 'esc1',
+      varianza: 10,
+      amortizaciones: [{ _id: 'a1', fecha: '2026-01-01', cantidad: 3000, tipo: 'plazo', escenarioId: 'esc1' }],
+    },
   ],
   expenses: [
-    { _id: 'e1', concepto: 'Alquiler', cuantia: 800, tipo: 'gasto', tipoFrecuencia: 'mensual', frecuencia: 1, fechaInicio: '2025-01-01', diaPago: '5', varianza: 15, inflacion: 3, escenarioId: null },
-    { _id: 'e2', concepto: 'Nómina vieja', cuantia: 2000, tipo: 'ingreso', tipoFrecuencia: 'mensual', frecuencia: 1, diaPago: 'primer-lunes', tags: null },
+    {
+      _id: 'e1',
+      concepto: 'Alquiler',
+      cuantia: 800,
+      tipo: 'gasto',
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+      fechaInicio: '2025-01-01',
+      diaPago: '5',
+      varianza: 15,
+      inflacion: 3,
+      escenarioId: null,
+    },
+    {
+      _id: 'e2',
+      concepto: 'Nómina vieja',
+      cuantia: 2000,
+      tipo: 'ingreso',
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+      diaPago: 'primer-lunes',
+      tags: null,
+    },
   ],
   accounts: [
     { _id: 'default', nombre: 'Default', saldoInicial: 5000, fechaInicialSaldo: '2026-01-01', esFondoPension: false },
@@ -29,7 +61,16 @@ const backupV4: Record<string, unknown> = {
   inflacion: [{ _id: 'i1', year: 2026, tasa: 2.5 }],
   escenarios: [{ _id: 'esc1', nombre: 'Escenario A', inversiones: [{ _id: 'inv1', importe: 1000 }] }],
   history: [{ _id: 'h1', fecha: '2025-01-01', saldo: 4000 }],
-  config: { dashboardStart: '2026-01-01', dashboardEnd: '2027-01-01', inflacionGlobal: 2, showMC: true, mcIteraciones: 500, colchonMeses: 8, saldoInicial: 999, tramos_irpf: [] },
+  config: {
+    dashboardStart: '2026-01-01',
+    dashboardEnd: '2027-01-01',
+    inflacionGlobal: 2,
+    showMC: true,
+    mcIteraciones: 500,
+    colchonMeses: 8,
+    saldoInicial: 999,
+    tramos_irpf: [],
+  },
 };
 
 describe('migración a v5', () => {
@@ -150,8 +191,30 @@ describe('store', () => {
     const seed = {
       [VERSION_KEY]: SCHEMA_VERSION,
       [`${KEY_PREFIX}accounts`]: [
-        { _id: 'a', nombre: 'A', esCuentaPrincipal: true, activo: true, saldoInicial: 0, fechaInicialSaldo: '2026-01-01', historicoSaldos: [], interes: 0, modeloFondo: 'cuenta', escenarioIds: [] },
-        { _id: 'b', nombre: 'B', esCuentaPrincipal: true, activo: true, saldoInicial: 0, fechaInicialSaldo: '2026-01-01', historicoSaldos: [], interes: 0, modeloFondo: 'cuenta', escenarioIds: [] },
+        {
+          _id: 'a',
+          nombre: 'A',
+          esCuentaPrincipal: true,
+          activo: true,
+          saldoInicial: 0,
+          fechaInicialSaldo: '2026-01-01',
+          historicoSaldos: [],
+          interes: 0,
+          modeloFondo: 'cuenta',
+          escenarioIds: [],
+        },
+        {
+          _id: 'b',
+          nombre: 'B',
+          esCuentaPrincipal: true,
+          activo: true,
+          saldoInicial: 0,
+          fechaInicialSaldo: '2026-01-01',
+          historicoSaldos: [],
+          interes: 0,
+          modeloFondo: 'cuenta',
+          escenarioIds: [],
+        },
       ],
     };
     const store = createStore({ adapter: createMemoryAdapter(seed), hoy: HOY });
@@ -166,7 +229,16 @@ describe('store', () => {
     const notificadas: string[] = [];
     const unsub = store.subscribe((k) => notificadas.push(k));
 
-    const nuevo = store.addItem('expenses', { concepto: 'Gym', cuantia: 40, tipo: 'gasto', tipoFrecuencia: 'mensual', frecuencia: 1, tags: [], activo: true, escenarioIds: [] } as any);
+    const nuevo = store.addItem('expenses', {
+      concepto: 'Gym',
+      cuantia: 40,
+      tipo: 'gasto',
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+      tags: [],
+      activo: true,
+      escenarioIds: [],
+    } as any);
     expect(nuevo._id).toBeTruthy();
     expect(store.get('expenses')).toHaveLength(1);
 
@@ -207,8 +279,22 @@ describe('resolvers de tablas fiscales (cierra 1.3)', () => {
   });
 
   const historico = [
-    { _id: 't1', año: 2024, tramos: [[0, 18], [20000, 28]] as [number, number][] },
-    { _id: 't2', año: 2026, tramos: [[0, 20], [25000, 32]] as [number, number][] },
+    {
+      _id: 't1',
+      año: 2024,
+      tramos: [
+        [0, 18],
+        [20000, 28],
+      ] as [number, number][],
+    },
+    {
+      _id: 't2',
+      año: 2026,
+      tramos: [
+        [0, 20],
+        [25000, 32],
+      ] as [number, number][],
+    },
   ];
 
   it('coincidencia exacta, entrada anterior más reciente y fallback', () => {

@@ -129,15 +129,53 @@ export function proyectarNominas(
       const irpfPorPaga = irpf / nPagas;
       const ssPorPaga = ssAnual / nPagas;
       const ingresoPorPaga = nom.representacion === 'simplificado' ? brutoCashPorPaga - ssPorPaga - irpfPorPaga : brutoCashPorPaga;
-      events.push({ fecha, concepto: nom.nombre, cuantia: ingresoPorPaga, tipo: 'ingreso', cuenta, tags: nom.tags || [], sourceId: nom._id, sourceType: 'nomina' });
+      events.push({
+        fecha,
+        concepto: nom.nombre,
+        cuantia: ingresoPorPaga,
+        tipo: 'ingreso',
+        cuenta,
+        tags: nom.tags || [],
+        sourceId: nom._id,
+        sourceType: 'nomina',
+      });
       if (nom.representacion === 'detallado') {
-        if (ssPorPaga > 0) events.push({ fecha, concepto: `SS ${nom.nombre}`, cuantia: ssPorPaga, tipo: 'gasto', cuenta, tags: ['seguridad-social', 'fiscal'], sourceId: nom._id + '_ss', sourceType: 'nomina' });
-        if (irpfPorPaga > 0) events.push({ fecha, concepto: `IRPF ${nom.nombre}`, cuantia: irpfPorPaga, tipo: 'gasto', cuenta, tags: ['irpf', 'fiscal'], sourceId: nom._id + '_irpf', sourceType: 'nomina' });
+        if (ssPorPaga > 0)
+          events.push({
+            fecha,
+            concepto: `SS ${nom.nombre}`,
+            cuantia: ssPorPaga,
+            tipo: 'gasto',
+            cuenta,
+            tags: ['seguridad-social', 'fiscal'],
+            sourceId: nom._id + '_ss',
+            sourceType: 'nomina',
+          });
+        if (irpfPorPaga > 0)
+          events.push({
+            fecha,
+            concepto: `IRPF ${nom.nombre}`,
+            cuantia: irpfPorPaga,
+            tipo: 'gasto',
+            cuenta,
+            tags: ['irpf', 'fiscal'],
+            sourceId: nom._id + '_irpf',
+            sourceType: 'nomina',
+          });
       }
       for (const comp of nom.retribucionFlexible || []) {
         if (!comp.cuenta || !(comp.importe > 0)) continue;
         if (filtroAccounts && filtroAccounts.length > 0 && !filtroAccounts.includes(comp.cuenta)) continue;
-        events.push({ fecha, concepto: `${nom.nombre} — ${FLEX_TIPO_LABEL[comp.tipo] || comp.tipo}`, cuantia: comp.importe, tipo: 'ingreso', cuenta: comp.cuenta, tags: ['retribucion-flexible', comp.tipo], sourceId: `${nom._id}_flex_${comp._id || comp.tipo}`, sourceType: 'nomina' });
+        events.push({
+          fecha,
+          concepto: `${nom.nombre} — ${FLEX_TIPO_LABEL[comp.tipo] || comp.tipo}`,
+          cuantia: comp.importe,
+          tipo: 'ingreso',
+          cuenta: comp.cuenta,
+          tags: ['retribucion-flexible', comp.tipo],
+          sourceId: `${nom._id}_flex_${comp._id || comp.tipo}`,
+          sourceType: 'nomina',
+        });
       }
     };
 

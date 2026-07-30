@@ -5,7 +5,12 @@
 export type Tramos = [number, number][];
 
 export const TRAMOS_IRPF_DEFAULT: Tramos = [
-  [0, 19], [12450, 24], [20200, 30], [35200, 37], [60000, 45], [300000, 47],
+  [0, 19],
+  [12450, 24],
+  [20200, 30],
+  [35200, 37],
+  [60000, 45],
+  [300000, 47],
 ];
 
 /** Cuota íntegra por tramos progresivos. */

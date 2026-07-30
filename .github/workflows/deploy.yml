@@ -38,9 +38,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # ── 4. Build V2 ──────────────────────────────────────────────────────────
-      # .env.production sets VITE_BASE_URL=/FinanceApp/v2/ automatically
-      - name: Build V2 (Vite)
+      # ── 4. Build del core (src/ → assets/financeapp-core.js) ─────────────────
+      # Bundle IIFE que index.html carga antes de los scripts legacy.
+      # Ver vite.config.ts y src/main.ts.
+      - name: Build core bundle (Vite)
         run: npm run build
 
       # ── 5. Inject Google Drive credentials into V1 ────────────────────────────
@@ -96,25 +97,21 @@ jobs:
             echo "⚠️  FIREBASE secrets no definidos. La config deberá introducirse manualmente en la UI."
           fi
 
-      # ── 7. Assemble _site/ (V1 at root + V2 at /v2/) ─────────────────────────
+      # ── 7. Assemble _site/ ───────────────────────────────────────────────────
       - name: Assemble deploy site
         run: |
-          mkdir -p _site/v2
-
-          # V1: copy everything except tooling dirs
-          # Nota: firebase/firebase-config.js (generado en paso 6) SÍ se incluye
+          # App estática completa. assets/financeapp-core.js (paso 4) SÍ se
+          # incluye; firebase/firebase-config.js (paso 6) también.
           rsync -av \
             --exclude='.git' \
             --exclude='node_modules' \
             --exclude='src' \
+            --exclude='tests' \
             --exclude='dist' \
             --exclude='coverage' \
             --exclude='_site' \
             --exclude='.env*' \
             . _site/
-
-          # V2: copy build output (use -a + trailing dot to avoid glob issues)
-          cp -a dist/. _site/v2/
 
           # Verify Firebase config was included (warns if secrets not set)
           if [ -f _site/firebase/firebase-config.js ]; then
@@ -123,8 +120,12 @@ jobs:
             echo "⚠️  firebase-config.js NO incluido (secrets no definidos)"
           fi
 
-          echo "=== _site/v2/ contents ==="
-          ls -la _site/v2/
+          if [ -f _site/assets/financeapp-core.js ]; then
+            echo "✅ core bundle incluido ($(wc -c < _site/assets/financeapp-core.js) bytes)"
+          else
+            echo "::error::assets/financeapp-core.js no se generó — el build ha fallado"
+            exit 1
+          fi
 
       # ── 8. Upload & deploy ────────────────────────────────────────────────────
       - name: Setup GitHub Pages

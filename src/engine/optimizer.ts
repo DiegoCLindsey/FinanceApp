@@ -114,8 +114,21 @@ export function createStatementMemo() {
   const loansFingerprint = (loans: LoanItem[]): string =>
     loans
       .map((l) =>
-        [l._id, l.capital, l.tin, l.meses, l.fechaInicio, l.comisionAmort || 0, l.comisionApertura || 0, l.diaPago || '', l.activo ? 1 : 0, l.cuenta || '',
-          (l.amortizaciones || []).map((a) => `${a.fecha}:${a.cantidad}:${a.tipo || ''}`).sort().join(','),
+        [
+          l._id,
+          l.capital,
+          l.tin,
+          l.meses,
+          l.fechaInicio,
+          l.comisionAmort || 0,
+          l.comisionApertura || 0,
+          l.diaPago || '',
+          l.activo ? 1 : 0,
+          l.cuenta || '',
+          (l.amortizaciones || [])
+            .map((a) => `${a.fecha}:${a.cantidad}:${a.tipo || ''}`)
+            .sort()
+            .join(','),
         ].join('|'),
       )
       .join(';');
@@ -123,9 +136,13 @@ export function createStatementMemo() {
   function statement(input: StatementInput): CashEvent[] {
     const key = [
       loansFingerprint(input.loans),
-      refId(input.expenses), refId(input.accounts), refId(input.nominas),
+      refId(input.expenses),
+      refId(input.accounts),
+      refId(input.nominas),
       refId(input.inflacionPeriodos),
-      input.config.dashboardStart, input.config.dashboardEnd, input.config.fechaReferencia || '',
+      input.config.dashboardStart,
+      input.config.dashboardEnd,
+      input.config.fechaReferencia || '',
       input.config.usarInflacion ? 1 : 0,
       (input.filtroAccounts || []).join(','),
     ].join('#');
@@ -171,9 +188,8 @@ export function optimizarAmortizaciones(
   const allActiveIds = activeAccs.map((a) => a._id);
 
   const principalAcc = activeAccs.find((a) => a.esCuentaPrincipal) || activeAccs[0];
-  const srcAcc = sourceAccountId && allActiveIds.includes(sourceAccountId)
-    ? activeAccs.find((a) => a._id === sourceAccountId)
-    : principalAcc;
+  const srcAcc =
+    sourceAccountId && allActiveIds.includes(sourceAccountId) ? activeAccs.find((a) => a._id === sourceAccountId) : principalAcc;
   const sourceAccId = srcAcc?._id;
 
   const loansActivos = loans
@@ -188,7 +204,14 @@ export function optimizarAmortizaciones(
     .filter((m) => !hasMarginFilter || (selectedMarginIds as string[]).includes(m._id as string));
 
   if (loansActivos.length === 0) {
-    return { plan: [], margenesAplicados: margenesAplicables.length, totalAmortizado: 0, totalComisiones: 0, totalAhorroIntereses: 0, resumenPorLoan: [] };
+    return {
+      plan: [],
+      margenesAplicados: margenesAplicables.length,
+      totalAmortizado: 0,
+      totalComisiones: 0,
+      totalAhorroIntereses: 0,
+      resumenPorLoan: [],
+    };
   }
 
   const amortsPorLoan: Record<string, { _id: string; fecha: ISODate; cantidad: number; tipo: string; simulacion: boolean }[]> = {};
@@ -223,7 +246,14 @@ export function optimizarAmortizaciones(
   function saldosAt(fecha: ISODate): { source: number; total: number } {
     const loansActualizados = loans.map((l) => ({ ...l, amortizaciones: [...(l.amortizaciones || []), ...(amortsPorLoan[l._id] || [])] }));
     const cfg = { ...config, dashboardStart: hoyStr, dashboardEnd: fecha };
-    const ext = memo.statement({ loans: loansActualizados, expenses: expenses as StatementInput['expenses'], accounts, config: cfg, filtroAccounts: null, nominas });
+    const ext = memo.statement({
+      loans: loansActualizados,
+      expenses: expenses as StatementInput['expenses'],
+      accounts,
+      config: cfg,
+      filtroAccounts: null,
+      nominas,
+    });
 
     const totalBase = activeAccs.reduce((s, a) => s + saldoRealCuenta(a), 0);
     const sourceBase = srcAcc ? saldoRealCuenta(srcAcc) : 0;
@@ -304,11 +334,17 @@ export function optimizarAmortizaciones(
 
       totalAmortizadoEsteMes += costeTotal;
       plan.push({
-        mes: label, fechaAmort: dia15,
-        loanId: loan._id, loanNombre: loan.nombre, tin: loan.tin,
-        capitalAntes: capActual, cantidadAmort: cantidad, comision,
+        mes: label,
+        fechaAmort: dia15,
+        loanId: loan._id,
+        loanNombre: loan.nombre,
+        tin: loan.tin,
+        capitalAntes: capActual,
+        cantidadAmort: cantidad,
+        comision,
         capitalDespues: Math.max(0, capActual - cantidad),
-        saldoDisponible: excedente + SAFETY_BUFFER, excedente,
+        saldoDisponible: excedente + SAFETY_BUFFER,
+        excedente,
         saldoDespues: excedente + SAFETY_BUFFER - totalAmortizadoEsteMes,
         tipoAmort,
       });
@@ -327,10 +363,14 @@ export function optimizarAmortizaciones(
       const resSin = resumenPrestamo(loan);
       const resCon = resumenPrestamo({ ...loan, amortizaciones: [...(loan.amortizaciones || []), ...amorts] });
       return {
-        loanId: loan._id, nombre: loan.nombre, tin: loan.tin,
-        fechaFinSin: resSin.fechaFin, fechaFinCon: resCon.fechaFin,
+        loanId: loan._id,
+        nombre: loan.nombre,
+        tin: loan.tin,
+        fechaFinSin: resSin.fechaFin,
+        fechaFinCon: resCon.fechaFin,
         mesesAhorrados: resSin.mesesReales - resCon.mesesReales,
-        interesesSin: resSin.totalIntereses, interesesCon: resCon.totalIntereses,
+        interesesSin: resSin.totalIntereses,
+        interesesCon: resCon.totalIntereses,
         ahorroIntereses: resSin.totalIntereses - resCon.totalIntereses,
         numAmortizaciones: amorts.length,
         totalAmortizado: amorts.reduce((s, a) => s + a.cantidad, 0),
@@ -397,7 +437,14 @@ export function compararFrecuencias(
   function saldoConPlan(amortsPorLoan: Record<string, { fecha: ISODate; cantidad: number; tipo: string; simulacion?: boolean }[]>): number {
     const loansConPlan = loans.map((l) => ({ ...l, amortizaciones: [...(l.amortizaciones || []), ...(amortsPorLoan[l._id] || [])] }));
     const cfgObj = { ...config, dashboardStart: hoyStr, dashboardEnd: fechaObj };
-    const extracto = memo.statement({ loans: loansConPlan, expenses: expenses as StatementInput['expenses'], accounts, config: cfgObj, filtroAccounts: null, nominas });
+    const extracto = memo.statement({
+      loans: loansConPlan,
+      expenses: expenses as StatementInput['expenses'],
+      accounts,
+      config: cfgObj,
+      filtroAccounts: null,
+      nominas,
+    });
     if (extracto.length === 0) {
       return accounts.filter((a) => a.activo).reduce((s, a) => s + saldoRealCuenta(a), 0);
     }
@@ -409,15 +456,36 @@ export function compararFrecuencias(
 
   const resultados = frecuencias
     .map((frec) => {
-      const res = optimizarAmortizaciones(loans, expenses, accounts, config, {
-        frecuencia: frec, mesesHorizonte: horizonte, minAmortizable, tipoAmort,
-        fechaPrimeraAmort, loanIds, nominas, sourceAccountId, selectedMarginIds, hoy,
-      }, memo);
+      const res = optimizarAmortizaciones(
+        loans,
+        expenses,
+        accounts,
+        config,
+        {
+          frecuencia: frec,
+          mesesHorizonte: horizonte,
+          minAmortizable,
+          tipoAmort,
+          fechaPrimeraAmort,
+          loanIds,
+          nominas,
+          sourceAccountId,
+          selectedMarginIds,
+          hoy,
+        },
+        memo,
+      );
 
       const amortsPorLoan: Record<string, { _id: string; fecha: ISODate; cantidad: number; tipo: string; simulacion: boolean }[]> = {};
       for (const l of loans) amortsPorLoan[l._id] = [];
       for (const p of res.plan) {
-        amortsPorLoan[p.loanId].push({ _id: p.mes + '_' + p.loanId, fecha: p.fechaAmort, cantidad: p.cantidadAmort, tipo: tipoAmort, simulacion: true });
+        amortsPorLoan[p.loanId].push({
+          _id: p.mes + '_' + p.loanId,
+          fecha: p.fechaAmort,
+          cantidad: p.cantidadAmort,
+          tipo: tipoAmort,
+          simulacion: true,
+        });
       }
 
       const saldo = saldoConPlan(amortsPorLoan);

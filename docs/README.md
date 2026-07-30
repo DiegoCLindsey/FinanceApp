@@ -24,6 +24,18 @@ contexto previo.
 
 ## Estado actual del repo (2026-07-30)
 
-- App productiva: scripts globales sin bundler (`index.html` + carpetas por módulo), desplegable en GitHub Pages.
-- Tooling (`vite.config.ts`, parte de `eslint.config.js`, scripts npm de lint/format) apuntaba a `src/v2/`, carpeta **eliminada** en el PR #75. La configuración de vitest ya está reparada (Fase 0).
-- Tests: `tests/` contiene tests de caracterización vitest contra el código real; `tests/nomina.test.cjs` es un test legado standalone con copias inline (se retirará al completar F3).
+- **Dos capas conviven**: la app legacy (scripts globales en la raíz) sigue siendo lo
+  que ve el usuario; el paquete nuevo (`src/`, TypeScript) se compila a
+  `assets/financeapp-core.js` y se publica en `window.FinanceApp` para que el legacy
+  lo consuma progresivamente (*strangler fig*).
+- **Núcleo de cálculo portado por completo** con paridad de igualdad estricta frente al
+  legacy: `core/` (fechas locales, dinero, préstamos, IRPF, ahorro, pensiones,
+  inflación, salud, cuentas, tablas fiscales), `engine/` (8 providers + statement +
+  análisis + márgenes + optimizador), `state/` (store tipado + migraciones v5) y
+  `flags/` (registro de 22 features + servicio con dependencias y perfiles).
+- **Pipeline reparado**: `npm run build` estaba roto desde el PR #75 y con él el deploy
+  a Pages; `ci.yml` estaba rojo por prettier. Ver tarea 1.1b del plan.
+- Tests: 127 en verde (`npm test`). `tests/finance-math.test.js` son los de
+  caracterización del legacy (contrato de paridad); `tests/core/`, `tests/state/` y
+  `tests/flags/` cubren el paquete nuevo. `tests/nomina.test.cjs` es un test legado
+  standalone con copias inline (se retirará al completar F3).

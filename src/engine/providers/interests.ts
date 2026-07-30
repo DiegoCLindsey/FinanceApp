@@ -31,7 +31,9 @@ export function proyectarInteresesCuentas(
     const isMonthly = periodoCobro === 'mensual';
     // Mensual: aritmética de calendario (evita drift de 30,44 días);
     // diario/semanal: ms fijos.
-    const periodoMsFixed = isMonthly ? null : ({ diario: 86400000, semanal: 7 * 86400000 } as Record<string, number>)[periodoCobro] || 86400000;
+    const periodoMsFixed = isMonthly
+      ? null
+      : ({ diario: 86400000, semanal: 7 * 86400000 } as Record<string, number>)[periodoCobro] || 86400000;
     const paFijo = isMonthly ? 1 / 12 : (periodoMsFixed as number) / (365.25 * 86400000);
 
     let saldoCuenta = saldoEnFecha(acc, range.start);

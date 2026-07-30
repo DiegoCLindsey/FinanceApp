@@ -161,15 +161,30 @@ export function detectarCrucesMargenes(
         dentroAlerta = false;
         continue;
       }
-      const saldo = !margen.cuentas || margen.cuentas.length === 0
-        ? (ev.saldoAcum as number)
-        : margen.cuentas.reduce((s, id) => s + (saldosPorCuenta[i]?.saldos?.[id] || 0), 0);
+      const saldo =
+        !margen.cuentas || margen.cuentas.length === 0
+          ? (ev.saldoAcum as number)
+          : margen.cuentas.reduce((s, id) => s + (saldosPorCuenta[i]?.saldos?.[id] || 0), 0);
       if (saldo < target && !dentroAlerta) {
         dentroAlerta = true;
-        alertas.push({ tipo: 'bajo_margen', fecha: ev.fecha, saldo, target, nombre: margen.nombre, mensaje: `⚠ ${margen.nombre}: ${formatEUR(saldo)} < ${formatEUR(target)} desde ${ev.fecha}` });
+        alertas.push({
+          tipo: 'bajo_margen',
+          fecha: ev.fecha,
+          saldo,
+          target,
+          nombre: margen.nombre,
+          mensaje: `⚠ ${margen.nombre}: ${formatEUR(saldo)} < ${formatEUR(target)} desde ${ev.fecha}`,
+        });
       } else if (saldo >= target && dentroAlerta) {
         dentroAlerta = false;
-        alertas.push({ tipo: 'recuperacion_margen', fecha: ev.fecha, saldo, target, nombre: margen.nombre, mensaje: `✓ ${margen.nombre}: recuperado el ${ev.fecha}` });
+        alertas.push({
+          tipo: 'recuperacion_margen',
+          fecha: ev.fecha,
+          saldo,
+          target,
+          nombre: margen.nombre,
+          mensaje: `✓ ${margen.nombre}: recuperado el ${ev.fecha}`,
+        });
       }
     }
   }
