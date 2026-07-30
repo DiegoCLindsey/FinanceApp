@@ -83,10 +83,12 @@ src/
 - [ ] **1.3 Portar `core/` fiscal y préstamos** ∥ — EN CURSO. Portados con paridad
       exacta verificada (`tests/core/parity.test.ts`, igualdad estricta): loan.ts
       (cuota, TAE, tabla, resumen con caché), tax/irpf.ts, tax/ahorro.ts,
-      inflation.ts, health.ts. Pendiente: tax/pension.ts (calcFondosPension,
-      calcImpuestoPension, calcTipoMarginal*; requieren inyectar 'hoy' y tramos en
-      lugar de leer State), calcFondoInversion, saldoRealCuenta/saldoEnFecha (irán a
-      engine/ o a un core/accounts.ts). CA: paridad exacta (tolerancia 0).
+      inflation.ts, health.ts, accounts.ts (saldoRealCuenta/saldoEnFecha) y
+      tax/pension.ts (calcFondosPension con 'hoy' inyectable, calcImpuestoPension,
+      calcTipoMarginalPension, calcFondoInversion con tramos explícitos).
+      Pendiente: calcTipoMarginalGrupo y los resolvers de tablas por ejercicio
+      (tramosIRPFParaAño/tramosGananciasParaAño) — están acoplados al State y se
+      portarán con la capa state/ (tarea 1.6). CA: paridad exacta (tolerancia 0).
 - [ ] **1.4 Motor de proyección como providers** — interfaz
       `EventProvider { id; project(range, ctx): CashEvent[] }`; `statement.ts` compone
       los providers registrados (OCP: contabilidad/supuestos se enchufarán aquí).
