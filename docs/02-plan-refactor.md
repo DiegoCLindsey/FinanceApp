@@ -89,9 +89,14 @@ src/
       Pendiente: calcTipoMarginalGrupo y los resolvers de tablas por ejercicio
       (tramosIRPFParaAño/tramosGananciasParaAño) — están acoplados al State y se
       portarán con la capa state/ (tarea 1.6). CA: paridad exacta (tolerancia 0).
-- [ ] **1.4 Motor de proyección como providers** — interfaz
-      `EventProvider { id; project(range, ctx): CashEvent[] }`; `statement.ts` compone
-      los providers registrados (OCP: contabilidad/supuestos se enchufarán aquí).
+- [ ] **1.4 Motor de proyección como providers** — EN CURSO. Hecho: contratos en
+      `src/engine/types.ts` (CashEvent, DateRange, EventProvider) y primer provider
+      portado con paridad exacta: `providers/expenses.ts` (proyectarGastos +
+      cuantiaEfectiva). Pendiente, siguiendo el mismo patrón (portar + test de
+      paridad estricta en tests/core/engine.test.ts): loans, transfers (ojo:
+      acoplado a State.accountName y cuentas — inyectar accounts), salaries
+      (nóminas), interests, contributions (aportaciones), inflation-events,
+      retenciones; después `statement.ts` (generarExtracto + _aplicarSaldoRef).
       CA: extracto idéntico al actual para los fixtures golden de F0.
 - [ ] **1.5 Optimización de cálculo** — memoizar extracto por hash de inputs;
       `optimizer.ts` reutiliza proyecciones incrementales en vez de regenerar todo por
