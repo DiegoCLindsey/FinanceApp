@@ -106,10 +106,18 @@ src/
       `analysis.ts` (detectarPuntosCriticos, mediaMensualGastos, calcDesviacion).
       El optimizador va en 1.5. CA cumplido: extracto y análisis idénticos al
       actual, verificado con igualdad estricta.
-- [ ] **1.5 Optimización de cálculo** — memoizar extracto por hash de inputs;
-      `optimizer.ts` reutiliza proyecciones incrementales en vez de regenerar todo por
-      mes; `aplicarInflacion` O(n·m) → Map. CA: mismos resultados, benchmark en test
-      (opcional) documentando la mejora.
+- [x] **1.5 Optimización de cálculo** — `engine/optimizer.ts` portado con paridad
+      exacta (optimizarAmortizaciones y compararFrecuencias, incluidas todas las
+      variantes: frecuencias, tipo plazo/cuota, loanIds, cuenta origen, filtro de
+      márgenes, fechaPrimeraAmort). Mejora medida: **~1,8× más rápido** en el
+      comparador (5 frecuencias, horizonte 36m), por (a) `capPendienteAntes` usando
+      la caché de `resumenPrestamo` en vez de recalcular la tabla en cada
+      préstamo×mes — la ganancia principal — y (b) `createStatementMemo` compartido
+      entre frecuencias. Documentado en el propio módulo dónde el memo NO ahorra
+      (dentro de una corrida cada (fecha, plan) es único) y una oportunidad
+      pendiente que no es paridad exacta (truncar un único extracto al horizonte
+      cambia el prorrateo del interés del último periodo → requiere golden test,
+      movida a 6.3). `aplicarInflacion` ya no existe (eliminada en 1.8).
 - [ ] **1.6 Store tipado + migraciones versionadas** — `state/` sustituye a
       `common/state.js`; migración v4→v5 formaliza el esquema. CA: import de un backup
       JSON v4 real produce estado válido.
@@ -247,7 +255,10 @@ src/
 - [ ] **6.2 README y docs de arquitectura actualizados**; guía de contribución con el
       flujo de tests.
 - [ ] **6.3 Auditoría de rendimiento final** (dashboard < 100 ms re-render con 10 años
-      de horizonte y 200 items).
+      de horizonte y 200 items). Incluye la oportunidad diferida de 1.5: sustituir los
+      extractos anidados de `saldosAt()` por un único extracto truncado — cambia
+      decimales del interés del último periodo, así que necesita golden test propio
+      y nota de cambio de comportamiento.
 
 ---
 
