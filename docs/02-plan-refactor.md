@@ -276,6 +276,22 @@ src/
       `<select>`: comprobar `option[selected]` en el HTML para la dirección
       "pintar", y fijar `.value` a mano para la dirección "leer". Si un test de
       `<select>` pasa por casualidad, probablemente esté comprobando la opción 1.
+      **Préstamos** se dividió en cuatro ficheros (`index`, `card`, `forms`,
+      `optimizer-modal`) porque el legacy eran 932 líneas en un solo IIFE. El
+      peor `onclick` inline del repositorio estaba ahí: el botón "Aplicar plan"
+      serializaba el plan de optimización entero dentro del atributo con
+      `JSON.stringify(plan).replace(/"/g,'&quot;')`, y se rompía en cuanto un
+      nombre de préstamo traía comillas. `resumenPrestamoConAhorro` subió a
+      `core/loan` con test de paridad contra el motor legacy.
+      **Nóminas**: antes de portar la vista se extrajo el IRPF de grupo a
+      `core/tax/nomina-grupo`, que estaba escrito TRES veces dentro de la vista
+      (total del grupo, cada fila, y un `irpfMarginal` que nunca se llamaba).
+      Los tests lo fijan contra un oráculo que reproduce el cálculo legacy
+      literalmente. *Corrección numérica deliberada:* con dos nóminas del mismo
+      bruto en un grupo, el filtro `> bruto` de la vista descartaba a la
+      empatada y ambas filas tributaban desde el primer tramo, sumando MENOS que
+      el impuesto real del grupo; ahora el apilado desempata por `_id` y las
+      filas cuadran siempre con el total.
 - [x] **1.8 Retirar código muerto y features aprobadas** — hecho por adelantado en F0+
       (2026-07-30): calendar, HistoryModule + colección `history`,
       `proyectarInversiones`, inflación legacy, Monte Carlo + varianzas, velas OHLC,
