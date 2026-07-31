@@ -108,6 +108,30 @@ export function irpfGrupo(grupo: NominaGrupoLike[], tramos: Tramos): number {
   return grupo.reduce((s, n) => s + irpfNomina(n, grupo, tramos), 0);
 }
 
+/** Tipo marginal aplicable a una base imponible (el % del tramo en el que cae). */
+export function tipoMarginal(imponible: number, tramos: Tramos): number {
+  const ordenados = [...(tramos || [])].sort((a, b) => a[0] - b[0]);
+  let pct = ordenados[0]?.[1] ?? 19;
+  for (const [desde, p] of ordenados) {
+    if (imponible >= desde) pct = p;
+    else break;
+  }
+  return pct;
+}
+
+/**
+ * Tipo marginal del grupo completo: el tramo en el que cae la base imponible
+ * conjunta. Es el tipo al que tributaría un euro más de retribución dineraria,
+ * y por tanto el que ahorra un euro de retribución flexible exenta.
+ * Paridad con FinanceMath.calcTipoMarginalGrupo (grupo ya filtrado por activas).
+ */
+export function tipoMarginalGrupo(grupo: NominaGrupoLike[], tramos: Tramos): number {
+  if (!grupo || grupo.length === 0) return 0;
+  const totalBruto = grupo.reduce((s, n) => s + (n.bruto || 0), 0);
+  const totalFlex = grupo.reduce((s, n) => s + flexAnual(n), 0);
+  return tipoMarginal(calcBaseImponibleTrabajo(totalBruto, totalFlex), tramos);
+}
+
 export interface DesgloseNomina {
   brutoAnual: number;
   flexAnual: number;

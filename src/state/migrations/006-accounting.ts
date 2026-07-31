@@ -8,9 +8,9 @@
 //      en 1.8, que se preservó a propósito en la migración v5 para poder
 //      recuperarla aquí (ver docs/02-plan-refactor.md, tareas 1.6 y 4.1).
 //
-// `historicoSaldos` NO se borra: el código legacy (vista de cuentas, saldos del
-// motor) sigue leyéndolo. Mientras conviven, LedgerService escribe en ambos
-// sitios; el puente se retira al portar la vista de cuentas (tarea 1.7).
+// `historicoSaldos` NO se borra: el motor legacy y el dashboard siguen
+// leyéndolo. Mientras conviven, el ledger escribe en ambos sitios; el puente se
+// retira al portar el dashboard (tarea 1.7).
 
 import { toCents } from '@/core/money';
 import type { MigrationContext, RawState } from './types';

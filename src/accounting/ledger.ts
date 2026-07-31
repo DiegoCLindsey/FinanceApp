@@ -7,9 +7,11 @@
 // movimientos no arrastra error de coma flotante. Los euros solo aparecen en la
 // frontera (entrada de formularios y presentación).
 //
-// PUENTE CON EL LEGACY: mientras la vista de cuentas siga siendo la legacy, los
-// puntos de control se escriben también en `accounts[].historicoSaldos`, que es
-// lo que leen el motor legacy y esa vista. Se retira al portarla (tarea 1.7).
+// PUENTE CON EL LEGACY: los puntos de control se replican en
+// `accounts[].historicoSaldos`, que es de donde el motor legacy
+// (`finance-math.js`) y el dashboard sacan el saldo real de una cuenta. Desde
+// que la vista de cuentas está portada (1.7) este ledger es el ÚNICO escritor
+// del campo; el puente se retira cuando el dashboard deje de leerlo.
 
 import { todayISO, type ISODate } from '@/core/dates';
 import { fromCents, toCents } from '@/core/money';
@@ -166,8 +168,8 @@ export function createLedger(store: LedgerStoreLike) {
 
   /**
    * Puente temporal: replica los puntos de control en
-   * `accounts[].historicoSaldos`, que es lo que leen el motor y la vista legacy.
-   * Se elimina al portar la vista de cuentas (tarea 1.7).
+   * `accounts[].historicoSaldos`, que es lo que leen el motor legacy y el
+   * dashboard. Se elimina al portar el dashboard (tarea 1.7).
    */
   function sincronizarConLegacy(cuentaId: string): void {
     const puntos = puntosControl(cuentaId);

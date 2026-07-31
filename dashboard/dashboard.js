@@ -567,12 +567,18 @@ const DashboardModule = (() => {
         })()}
       </div>
       ${(()=>{
+        // El saldo de un objetivo lo calcula el paquete nuevo (core/goals); esta
+        // tarjeta desaparece si el bundle no está disponible en vez de inventarse
+        // cifras. El resto del dashboard sigue funcionando.
+        const _core = window.FinanceApp?.core;
+        if (!_core?.saldoParaObjetivo) return '';
+        const colchonHoy = FinanceMath.calcColchonEnFecha(expenses, config, loans, new Date().toISOString().slice(0,10));
         const goalsActivos = goals.filter(g=>!g.completado).slice().sort((a,b)=>(a.prioridad||99)-(b.prioridad||99)).slice(0,3);
         if (!goalsActivos.length) return '';
         return `<div class="card mb-14" style="padding:12px">
           <div class="card-title" style="margin-bottom:8px">🎯 Objetivos de ahorro</div>
           ${goalsActivos.map(g=>{
-            const saldo = GoalsModule._saldoParaObjetivo(g, accounts, config, loans, expenses);
+            const saldo = _core.saldoParaObjetivo(g, accounts, colchonHoy);
             const prog  = g.targetAmount>0 ? Math.min(100,(saldo/g.targetAmount)*100) : 0;
             const alcanzado = saldo >= g.targetAmount && g.targetAmount > 0;
             return '<div class="mb-8 ' + (alcanzado?'goal-alcanzado':'') + '" style="' + (alcanzado?'padding:4px;border-radius:6px;':'') + '"><div class="flex justify-between"><span style="font-size:12px;font-weight:500">#' + (g.prioridad||1) + ' ' + g.nombre + (alcanzado?' 🎉':'') + '</span><span class="num" style="font-size:11px">' + FinanceMath.eur(saldo) + ' / ' + FinanceMath.eur(g.targetAmount) + '</span></div><div class="goal-bar"><div class="goal-bar-fill" style="width:' + prog + '%;background:' + (g.color||'var(--accent)') + '"></div></div></div>';

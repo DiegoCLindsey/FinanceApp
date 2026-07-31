@@ -194,8 +194,9 @@ src/
       `crearResolverTramos` sustituyen a tramosIRPFParaAño y
       tramosGananciasParaAño como funciones puras (el histórico y el default
       entran por parámetro), con paridad verificada; el store los cablea a sus
-      datos. `calcTipoMarginalGrupo` no se porta: solo lo usaba la vista de
-      nóminas, que lo recalcula inline; se resolverá al portar la vista (1.7).
+      datos. `calcTipoMarginalGrupo` se portó después, al llegar a cuentas
+      (1.7), como `tipoMarginalGrupo` en `core/tax/nomina-grupo`: lo usaban la
+      vista de nóminas y la tarjeta beneficio de cuentas, cada una a su manera.
       CA cumplido: paridad exacta (tolerancia 0).
 - [x] **1.4 Motor de proyección como providers** — COMPLETADA. Contratos en
       `src/engine/types.ts` (CashEvent, DateRange, EventProvider) y primer provider
@@ -249,10 +250,13 @@ src/
       seccion, iconoPath, mount, unmount? }`, con el router legacy delegando en el
       registro. Pendiente: portar las 9 vistas legacy (dashboard, expenses, loans,
       accounts+goals, nominas, inflacion, escenarios→supuestos, rentas, margenes),
-      ∥ entre ellas. **Portadas hasta ahora (5/9): `margenes` →
+      ∥ entre ellas. **Portadas hasta ahora (6/9): `margenes` →
       `src/features/margins`, `inflacion` → `src/features/inflation`,
-      `expenses` → `src/features/expenses`, `loans` → `src/features/loans` y
-      `nominas` → `src/features/salaries`.** En cada
+      `expenses` → `src/features/expenses`, `loans` → `src/features/loans`,
+      `nominas` → `src/features/salaries` y `accounts`+`goals` →
+      `src/features/accounts`.** Quedan `rentas` (fiscalidad),
+      `escenarios`→supuestos y `dashboard` (el último, porque arrastra la
+      consolidación del colchón de la tarea 1.9). En cada
       una se retira su fichero legacy y su entrada del router; el botón y el
       contenedor que ya existían en index.html se reutilizan, así que la
       navegación no cambia para el usuario.
@@ -262,11 +266,12 @@ src/
       (api.worldbank.org) NO es alcanzable desde el contenedor de desarrollo,
       así que el camino de éxito solo está verificado con la respuesta real
       simulada; el de fallo sí se comprobó en navegador.
-      Al portar cada una se retiran sus puentes temporales (el de
-      `historicoSaldos` del ledger con la de cuentas, y el `State.load()` que la
-      vista de contabilidad hace para que el dashboard legacy vea los datos
-      nuevos). CA: paridad funcional razonable; sin `onclick=` global inline
-      (delegación de eventos, como en features/accounting).
+      Al portar cada una se retiran sus puentes temporales (el `State.load()`
+      que las vistas nuevas hacen para que el dashboard legacy vea los datos
+      nuevos, y el de `historicoSaldos` del ledger, que ahora depende del
+      dashboard y no de la vista de cuentas — ver más abajo). CA: paridad
+      funcional razonable; sin `onclick=` global inline (delegación de eventos,
+      como en features/accounting).
       Al portar gastos salió el widget de "día efectivo", ahora en
       `src/features/shared/dia-pago.ts` y reutilizable por préstamos y nóminas.
       **TRAMPA DEL ENTORNO DE TESTS:** happy-dom (v15 y v20) ignora el atributo
@@ -294,11 +299,51 @@ src/
       filas cuadran siempre con el total.
       La vista quedó en cuatro ficheros (`index`, `form`, `tramos`, `pensions`).
       Los **planes de pensiones** siguen viviendo en la colección `accounts` y
-      se editan desde aquí, porque su fiscalidad es la del trabajo; al portar la
-      vista de cuentas hay que decidir si esa sección se muda allí.
+      se editan desde aquí, porque su fiscalidad es la del trabajo.
+      **DECIDIDO al portar cuentas: se quedan en Nóminas.** La vista de cuentas
+      los filtra, y su formulario ya NO ofrece el tipo "Plan de pensiones" — en
+      el legacy sí lo ofrecía, así que crear uno desde allí lo hacía desaparecer
+      sin explicación.
       **No usar caracteres no ASCII en nombres de atributos**: un
       `data-anadir-año` hace inválido el selector CSS y `querySelector` lanza.
       Los valores sí pueden llevarlos; los nombres no.
+      **Cuentas y objetivos** quedó en seis ficheros (`index`, `card`, `form`,
+      `historico`, `tramos-ganancias`, `goals`) más `core/goals.ts` para la
+      aritmética de los objetivos. Correcciones deliberadas, todas con test:
+      · el **histórico de saldos es ya el de puntos de control del ledger**. Antes
+        lo escribían DOS módulos sobre el mismo campo `accounts[].historicoSaldos`,
+        y `sincronizarConLegacy` lo reemplaza entero: registrar un punto desde
+        Contabilidad borraba lo que se hubiera añadido desde Cuentas. Ahora el
+        ledger es el único escritor y la vista solo lee de él; el puente con
+        `historicoSaldos` sigue vivo, pero ahora depende del **dashboard**, que
+        es quien lo lee (junto con `finance-math.js`);
+      · los **flujos del período** de un fondo (aportaciones, reembolsos y la
+        retención del art. 101) salen de `proyectarTransferencias`, no de un
+        contador de ocurrencias propio de la vista que además seguía hablando de
+        frecuencias `trimestral`/`semestral`/`anual` — valores que el esquema
+        eliminó, así que con datos actuales contaba CERO y nadie lo notaba;
+      · el **tipo marginal de una tarjeta beneficio sin grupo** usaba
+        `bruto × nPagas`, pero `bruto` YA es anual: multiplicaba la base por doce
+        y se iba al tramo más alto (47 % donde tocaba 30 %). Ahora la nómina
+        vinculada se trata como grupo de una y comparte camino con el caso de
+        grupo (`tipoMarginalGrupo`, en `core/tax/nomina-grupo`);
+      · los **tramos de ganancias de capital** ya se pueden definir por ejercicio
+        fiscal. La colección `tramosGananciasCapitalHistorico` existía y el motor
+        la resolvía desde 1.5, pero no había forma de rellenarla desde la interfaz;
+      · la **proyección de cumplimiento de un objetivo** generaba el extracto
+        completo dentro del bucle de 120 meses (120 × nCuentas × nObjetivos por
+        cada pintado). Ahora se genera uno por cuenta y se recorre con un cursor.
+        La diferencia numérica está acotada al interés del periodo en curso, que
+        el proveedor de intereses truncaba en la fecha de corte; puede adelantar
+        la fecha estimada como mucho un mes. Además el fin de mes se calcula con
+        `formatLocalDate`: el legacy usaba `toISOString()` sobre medianoche local
+        y en España evaluaba el saldo el día 30 en vez del 31.
+      **`const` de nivel superior y `window`, otra vez:** `window.Router` era
+      `undefined` porque `router/router.js` declara `const Router`. Dos
+      consumidores que no comparten ámbito con ese script lo buscaban ahí y
+      fallaban en silencio: el botón de sidebar que crea el registro de features
+      (para vistas sin botón en index.html) y el re-render tras cambiar un flag
+      (`src/main.ts`). El router ahora se publica con `window.Router = Router`.
 - [x] **1.8 Retirar código muerto y features aprobadas** — hecho por adelantado en F0+
       (2026-07-30): calendar, HistoryModule + colección `history`,
       `proyectarInversiones`, inflación legacy, Monte Carlo + varianzas, velas OHLC,
@@ -437,7 +482,9 @@ src/
       exactamente 10 € (test).
       PUENTE TEMPORAL: `registrarPuntoControl` replica en
       `accounts[].historicoSaldos`, que es lo que leen el motor y la vista legacy; se
-      retira al portar la vista de cuentas (1.7).
+      retira al portar el dashboard (1.7): desde que la vista de cuentas está
+      portada, el ledger es el ÚNICO escritor de `historicoSaldos`, pero el
+      motor legacy y el dashboard siguen leyéndolo.
       Pendiente: que `saldoEnFecha` del engine lea del ledger para el pasado y que la
       vista de desviación se alimente de aquí — ambos requieren 1.7.
 - [x] **4.5 Análisis de precisión** — COMPLETADA. `accounting/precision.ts` con las
