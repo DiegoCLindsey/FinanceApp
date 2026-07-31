@@ -185,3 +185,40 @@ export function resumenPrestamo(loan: LoanInput): ResumenPrestamo {
   resumenCache.set(key, result);
   return result;
 }
+
+export interface ResumenPrestamoConAhorro extends ResumenPrestamo {
+  /** Mismo préstamo sin ninguna amortización anticipada. */
+  sinAmort: ResumenPrestamo;
+  /** Intereses que se ahorran gracias a las amortizaciones. */
+  ahorroIntereses: number;
+  /** Meses que se acorta el préstamo (positivo = termina antes). */
+  ahorroTiempo: number;
+  /** Comisiones pagadas por amortizar. */
+  costeTotalAmort: number;
+  /** Ahorro de intereses menos el coste de amortizar. */
+  ahorroNeto: number;
+  /** Capital + intereses + comisión de apertura + comisiones de amortización. */
+  totalPagado: number;
+}
+
+/**
+ * Resumen con la comparativa contra el mismo préstamo sin amortizar, que es lo
+ * que la vista necesita para enseñar cuánto aportan las amortizaciones.
+ * Paridad exacta con FinanceMath.resumenPrestamoConAhorro.
+ */
+export function resumenPrestamoConAhorro(loan: LoanInput): ResumenPrestamoConAhorro {
+  const base = resumenPrestamo(loan);
+  const sinAmort = resumenPrestamo({ ...loan, amortizaciones: [] });
+  const ahorroIntereses = sinAmort.totalIntereses - base.totalIntereses;
+  const ahorroTiempo = sinAmort.mesesReales - base.mesesReales;
+  const costeTotalAmort = base.totalComAm;
+  return {
+    ...base,
+    sinAmort,
+    ahorroIntereses,
+    ahorroTiempo,
+    costeTotalAmort,
+    ahorroNeto: ahorroIntereses - costeTotalAmort,
+    totalPagado: loan.capital + base.totalIntereses + base.comAp + base.totalComAm,
+  };
+}

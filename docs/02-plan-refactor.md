@@ -218,9 +218,10 @@ src/
       seccion, iconoPath, mount, unmount? }`, con el router legacy delegando en el
       registro. Pendiente: portar las 9 vistas legacy (dashboard, expenses, loans,
       accounts+goals, nominas, inflacion, escenarios→supuestos, rentas, margenes),
-      ∥ entre ellas. **Portadas hasta ahora (3/9): `margenes` →
-      `src/features/margins`, `inflacion` → `src/features/inflation` y
-      `expenses` → `src/features/expenses`.** En cada
+      ∥ entre ellas. **Portadas hasta ahora (4/9): `margenes` →
+      `src/features/margins`, `inflacion` → `src/features/inflation`,
+      `expenses` → `src/features/expenses` y `loans` → `src/features/loans`.**
+      En cada
       una se retira su fichero legacy y su entrada del router; el botón y el
       contenedor que ya existían en index.html se reutilizan, así que la
       navegación no cambia para el usuario.

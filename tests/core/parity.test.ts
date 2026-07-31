@@ -61,6 +61,21 @@ describe('paridad préstamos', () => {
     };
     expect(core.resumenPrestamo(loan)).toEqual(FM.resumenPrestamo(loan));
   });
+  it('resumenPrestamoConAhorro idéntico (lo consume la tarjeta de la vista)', () => {
+    const base = { capital: 150000, tin: 2.5, meses: 300, fechaInicio: '2025-03-01', comisionApertura: 0.5, comisionAmort: 0.25 };
+    const amortsSets: core.Amortizacion[][] = [
+      [],
+      [{ fecha: '2026-09-01', cantidad: 5000, tipo: 'plazo' }],
+      [
+        { fecha: '2026-09-01', cantidad: 5000, tipo: 'plazo' },
+        { fecha: '2028-02-01', cantidad: 12000, tipo: 'cuota' },
+      ],
+    ];
+    for (const amortizaciones of amortsSets) {
+      const loan = { ...base, amortizaciones };
+      expect(core.resumenPrestamoConAhorro(loan)).toEqual(FM.resumenPrestamoConAhorro(loan));
+    }
+  });
 });
 
 describe('paridad día efectivo', () => {
