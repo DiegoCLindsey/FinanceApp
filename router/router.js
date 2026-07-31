@@ -9,15 +9,44 @@
 // router de src/app/ (docs/02-plan-refactor.md, tarea 1.7).
 const Router = (() => {
   // margenes, inflacion, expenses y loans se han portado a src/features/ (tarea 1.7)
+  //
+  // `mods` se construye con guardas `typeof` a propósito: si el navegador sirve
+  // un index.html y un router.js de despliegues distintos, un módulo legacy
+  // puede no estar cargado. Referenciarlo directo lanzaría un ReferenceError
+  // aquí y dejaría `Router` sin definir — es decir, la aplicación entera muerta.
+  //
+  // Tiene que ser `typeof <identificador>` y NO `window['<nombre>']`: los módulos
+  // legacy se declaran con `const` en el ámbito global, y una declaración `const`
+  // de nivel superior NO crea propiedad en `window`. Buscarlos ahí devuelve
+  // undefined para todos y deja las vistas en blanco.
   const views=['dashboard','accounts','nominas','escenarios','rentas'];
-  const mods={ dashboard:DashboardModule, accounts:AccountsModule, nominas:NominasModule, escenarios:EscenariosModule, rentas:RentasModule };
+  const mods={
+    dashboard: typeof DashboardModule !== 'undefined' ? DashboardModule : null,
+    accounts:  typeof AccountsModule  !== 'undefined' ? AccountsModule  : null,
+    nominas:   typeof NominasModule   !== 'undefined' ? NominasModule   : null,
+    escenarios:typeof EscenariosModule!== 'undefined' ? EscenariosModule: null,
+    rentas:    typeof RentasModule    !== 'undefined' ? RentasModule    : null,
+  };
   let _current = 'dashboard';
   // Registro de vistas del paquete nuevo (ausente si el bundle no está compilado)
   const _nuevas = () => window.FinanceApp?.app ?? null;
   function _esNueva(view) { return !!_nuevas()?.has(view); }
+  /** Registrada en el paquete nuevo pero apagada por su feature flag. */
+  function _desactivada(view) { const r=_nuevas(); return !!r && !r.has(view) && view in (r.flagPorRuta?.() ?? {}); }
   function _todasLasRutas() { return [...views, ...(_nuevas()?.routes() ?? [])]; }
   function navigate(view) {
-    if(!views.includes(view) && !_esNueva(view))return;
+    if (!views.includes(view) && !_esNueva(view)) {
+      // Nunca en silencio: un botón que no hace nada es lo más difícil de
+      // diagnosticar. Puede ser una vista desactivada, o un despliegue servido
+      // a medias desde la caché del navegador.
+      if (_desactivada(view)) {
+        UI.toast('Esa funcionalidad está desactivada. Actívala en Funcionalidades.', 'warn');
+      } else {
+        console.error(`[Router] La vista "${view}" no está disponible. Suele indicar que el navegador ha mezclado ficheros de dos versiones; recarga sin caché.`);
+        UI.toast('Esta vista no se ha podido cargar. Recarga la página.', 'err');
+      }
+      return;
+    }
     _current = view;
     _todasLasRutas().forEach(v=>document.getElementById(`view-${v}`)?.classList.toggle('hidden',v!==view));
     document.querySelectorAll('.nav-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.view===view));

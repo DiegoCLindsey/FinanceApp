@@ -127,14 +127,49 @@ jobs:
             exit 1
           fi
 
-          # Cache busting del bundle. index.html y assets/financeapp-core.js se
-          # despliegan juntos pero la CDN los cachea por separado: sin esto, un
-          # index.html nuevo puede quedar emparejado con un bundle viejo (o con
-          # un 404 cacheado) y window.FinanceApp no llega a existir.
-          sed -i "s|assets/financeapp-core.js\"|assets/financeapp-core.js?v=${GITHUB_SHA:0:8}\"|" _site/index.html
-          grep -q "financeapp-core.js?v=${GITHUB_SHA:0:8}" _site/index.html \
-            && echo "✅ bundle versionado como ?v=${GITHUB_SHA:0:8}" \
-            || { echo "::error::no se pudo versionar la etiqueta script del bundle"; exit 1; }
+      # ── 7b. Cache busting de TODOS los recursos propios ──────────────────────
+      # GitHub Pages sirve cada fichero con su propio max-age, así que tras un
+      # despliegue el navegador puede mezclar versiones: index.html nuevo con
+      # router.js viejo, o al revés. Eso rompió las vistas portadas — el router
+      # cacheado no las conocía y sus botones no hacían nada.
+      #
+      # Al versionar cada URL propia con el SHA, index.html pasa a ser el único
+      # fichero sensible a la caché: cuando se refresca, arrastra el juego
+      # completo de scripts y estilos de su misma versión. Y mientras no se
+      # refresque, sirve un conjunto viejo pero COHERENTE.
+      - name: Version local assets (cache busting)
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+
+          v = os.environ['SHA'][:8]
+          ruta = '_site/index.html'
+          html = open(ruta, encoding='utf-8').read()
+
+          # Solo URLs propias y relativas: fuera CDNs, absolutas y data:
+          patron = re.compile(r'\b(src|href)="(?!https?:|//|data:|#)([^"?#]+\.(?:js|css))"')
+          sellados = []
+
+          def sellar(m):
+              sellados.append(m.group(2))
+              return f'{m.group(1)}="{m.group(2)}?v={v}"'
+
+          html = patron.sub(sellar, html)
+
+          if not sellados:
+              print('::error::no se selló ninguna URL — ¿ha cambiado el formato de index.html?')
+              sys.exit(1)
+          if not any(s.endswith('financeapp-core.js') for s in sellados):
+              print('::error::el bundle no quedó versionado')
+              sys.exit(1)
+
+          open(ruta, 'w', encoding='utf-8').write(html)
+          print(f'✅ {len(sellados)} recursos versionados como ?v={v}')
+          for s in sellados:
+              print(f'   · {s}')
+          PY
 
       # ── 8. Upload & deploy ────────────────────────────────────────────────────
       - name: Setup GitHub Pages

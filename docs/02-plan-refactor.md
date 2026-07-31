@@ -63,9 +63,8 @@ fase, las tareas marcadas ∥ son paralelizables.
       Dos causas posibles se han cerrado de raíz:
       · `bootstrap()` va en `try/catch` y deja el motivo en `window.FinanceAppError`
         en vez de dejar el namespace sin definir y sin pista alguna;
-      · el despliegue publica `index.html` con `?v=<sha>` en la etiqueta del bundle,
-        porque la CDN cachea `index.html` y `assets/financeapp-core.js` por separado
-        y un index nuevo podía quedar emparejado con un bundle viejo o con un 404.
+      · el despliegue versiona con `?v=<sha>` TODOS los recursos propios de
+        `index.html` (ver P.4), no solo el bundle.
       **Aviso para quien depure el bundle en local:** contiene identificadores no
       ASCII (`año`). Si se carga desde una página **sin `<meta charset>`**, el
       navegador lo decodifica como latin-1 y falla con `SyntaxError: missing )
@@ -90,6 +89,38 @@ fase, las tareas marcadas ∥ son paralelizables.
       está ahí en claro); lo que protege es la copia en la nube frente al
       proveedor. Para equipos compartidos, `autoLogoutMinutos` acota la ventana.
       Si el bundle no carga, `auth.js` usa un stub inerte y se comporta como antes.
+
+- [x] **P.4 Botones del sidebar que no hacían nada** — al pulsar Gastos,
+      Préstamos, Inflación o Márgenes no ocurría **nada, ni siquiera un error**.
+      Los cuatro son vistas ya portadas.
+      **Causa:** GitHub Pages sirve cada fichero con su propio `max-age`, así que
+      tras un despliegue el navegador puede mezclar versiones — un `index.html`
+      nuevo con un `router/router.js` (o un bundle) viejo. El router servido no
+      conocía esas rutas y `navigate()` retornaba en silencio.
+      Verificado reproduciendo el emparejamiento cruzado en Chromium: con un
+      `router.js` de dos despliegues atrás, `Router` ni siquiera llegaba a
+      definirse (`ReferenceError` al construir `mods` con módulos legacy ya
+      retirados) y la aplicación entera quedaba muerta.
+      **Arreglo, en tres capas:**
+      1. el despliegue sella `?v=<sha>` en **todos** los `src`/`href` propios de
+         `index.html` (27 recursos), dejando fuera CDNs y fuentes. Así
+         `index.html` es el único fichero sensible a la caché: cuando se
+         refresca arrastra el juego completo de su versión, y mientras no lo
+         haga sirve un conjunto viejo pero **coherente**;
+      2. `router.js` construye `mods` con guardas `typeof`, de modo que un
+         módulo legacy ausente no puede volver a tumbar el router entero;
+      3. `navigate()` ya no falla en silencio: si la ruta está registrada pero
+         su flag está apagado lo dice, y si no existe avisa y deja en consola
+         que el navegador puede haber mezclado versiones.
+      **Trampa del ámbito global, que casi se cuela:** el primer intento
+      resolvía los módulos con `window['<nombre>']`. Los módulos legacy se
+      declaran con `const` en el ámbito global, y **una declaración `const` de
+      nivel superior no crea propiedad en `window`** — devolvía `null` para
+      todos y dejaba las cinco vistas legacy en blanco (sin ningún error). Hay
+      que usar `typeof <identificador>`.
+      `tests/app/router.test.ts` carga el `router.js` real y cubre las tres
+      capas; se verificó que falla contra el código anterior y contra la versión
+      con `window[...]`.
 
 ## Fase 1 — Refactor SOLID + modularización (TypeScript, ESM)
 
