@@ -1,4 +1,4 @@
-// Depends on: DashboardModule, LoansModule, ExpensesModule, AccountsModule
+// Depends on: DashboardModule, LoansModule, AccountsModule, NominasModule
 //
 // Durante la migración a src/ este router aloja DOS tipos de vista:
 //   · las legacy, declaradas en `views`/`mods` aquí abajo;
@@ -8,9 +8,9 @@
 // Cuando todas las vistas estén portadas, este fichero se sustituye por el
 // router de src/app/ (docs/02-plan-refactor.md, tarea 1.7).
 const Router = (() => {
-  // 'margenes' e 'inflacion' se han portado a src/features/ (tarea 1.7)
-  const views=['dashboard','loans','expenses','accounts','nominas','escenarios','rentas'];
-  const mods={ dashboard:DashboardModule, loans:LoansModule, expenses:ExpensesModule, accounts:AccountsModule, nominas:NominasModule, escenarios:EscenariosModule, rentas:RentasModule };
+  // 'margenes', 'inflacion' y 'expenses' se han portado a src/features/ (tarea 1.7)
+  const views=['dashboard','loans','accounts','nominas','escenarios','rentas'];
+  const mods={ dashboard:DashboardModule, loans:LoansModule, accounts:AccountsModule, nominas:NominasModule, escenarios:EscenariosModule, rentas:RentasModule };
   let _current = 'dashboard';
   // Registro de vistas del paquete nuevo (ausente si el bundle no está compilado)
   const _nuevas = () => window.FinanceApp?.app ?? null;

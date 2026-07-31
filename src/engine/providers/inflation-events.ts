@@ -5,7 +5,7 @@
 
 import { formatLocalDate, parseLocalDate, todayISO } from '@/core/dates';
 import { calcFactorInflacion, type PeriodoInflacion } from '@/core/inflation';
-import { cuantiaEfectiva, type ExpenseLike } from './expenses';
+import { type ExpenseLike } from './expenses';
 import type { AccountFilter, CashEvent, DateRange } from '../types';
 
 /** Gasto incremental mensual por encarecimiento de la cesta respecto a su precio base. */
@@ -39,7 +39,7 @@ export function proyectarInflacionGastos(
       const factor = calcFactorInflacion(inflacionPeriodos, base, mesMid);
       if (factor <= 1) continue;
       const freq = Math.max(1, exp.frecuencia || 1);
-      totalInflacion += (cuantiaEfectiva(exp) * (factor - 1)) / freq;
+      totalInflacion += (exp.cuantia * (factor - 1)) / freq;
     }
     if (totalInflacion > 0.01) {
       events.push({

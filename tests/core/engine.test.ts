@@ -1,6 +1,6 @@
 // Paridad legacy ↔ engine nuevo: provider de gastos (Fase 1, tarea 1.4).
 import { describe, it, expect, beforeAll } from 'vitest';
-import { proyectarGastos, cuantiaEfectiva, type ExpenseLike } from '@/engine/providers/expenses';
+import { proyectarGastos, type ExpenseLike } from '@/engine/providers/expenses';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 let FM: any;
@@ -95,11 +95,6 @@ const fixtures: ExpenseLike[] = [
     diaPago: 'nthweekday:1:1',
     tags: ['formacion'],
     cuenta: 'default',
-    historialPrecios: [
-      { fecha: '2025-03-01', cuantia: 110 },
-      { fecha: '2025-10-01', cuantia: 130 },
-      { fecha: '2024-05-01', cuantia: 90 },
-    ],
   },
 ];
 
@@ -116,8 +111,9 @@ describe('paridad provider de gastos', () => {
       expect(proyectarGastos(fixtures, { start, end }, [])).toEqual(FM.proyectarGastos(fixtures, start, end, []));
     }
   });
-  it('cuantiaEfectiva: media del último año del historial', () => {
-    expect(cuantiaEfectiva(fixtures[6])).toBe(120); // (110+130)/2
-    expect(cuantiaEfectiva(fixtures[0])).toBe(50);
+  it('la cuantía proyectada es siempre la configurada (v7 retiró historialPrecios)', () => {
+    // fixtures[6] tenía historial de precios con media 120 ≠ cuantía 120 antes
+    // de v7; hoy solo cuenta `cuantia`, y el legacy hace lo mismo (paridad).
+    expect(proyectarGastos([fixtures[6]], { start: '2026-01-01', end: '2026-01-31' })[0].cuantia).toBe(120);
   });
 });

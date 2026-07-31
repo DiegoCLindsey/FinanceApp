@@ -19,8 +19,10 @@ import type { MargenSeguridad, PuntoReserva } from '@/engine/margins';
  * v6 (2026-07): módulo de contabilidad real (F4) — colecciones `transacciones`
  *   y `puntosControl`. El histórico de saldos pasa a ser de contabilidad y es el
  *   source of truth del pasado.
+ * v7 (2026-07): retira `historialPrecios` de las estimaciones — cada entrada
+ *   pasa a ser una transacción real enlazada a su estimación (tarea 4.8).
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export interface Loan {
   _id: string;
@@ -63,8 +65,6 @@ export interface Expense {
   basico?: boolean;
   sujetoIRPF?: boolean;
   clasificacion?: Clasificacion;
-  /** Se retira en F4 cuando Contabilidad lo sustituya (docs/03, B4). */
-  historialPrecios?: { fecha: ISODate; cuantia: number }[];
   escenarioIds: string[];
   /** Estimación de la que proviene por un ajuste automático (F4, tarea 4.6). */
   ajustadaDesdeId?: string;

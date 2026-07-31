@@ -124,9 +124,12 @@ describe('proyección de gastos', () => {
     expect(FM.proyectarGastos([gasto], '2026-01-01', '2026-12-31')).toHaveLength(1);
     expect(FM.proyectarGastos([gasto], '2026-06-01', '2026-12-31')).toHaveLength(0);
   });
-  it('historialPrecios: usa la media del último año en lugar de la cuantía', () => {
-    const evs = FM.proyectarGastos([{ _id: 'g4', activo: true, concepto: 'H', cuantia: 80, tipo: 'gasto', tipoFrecuencia: 'mensual', frecuencia: 1, fechaInicio: '2026-01-01', tags: [], historialPrecios: [{ fecha: '2025-06-01', cuantia: 90 }, { fecha: '2025-09-01', cuantia: 110 }, { fecha: '2024-01-01', cuantia: 500 }] }], '2026-01-01', '2026-01-31');
-    expect(evs[0].cuantia).toBe(100); // media de 2025: (90+110)/2, ignora 2024
+  it('proyecta la cuantía configurada aunque arrastre un historialPrecios viejo (v7)', () => {
+    // Antes de v7 el motor usaba en silencio la media del último año del
+    // historial. Ese comportamiento se retiró: la contabilidad real es ahora la
+    // fuente del pasado y "sugerir ajuste" quien propone cambiar la cuantía.
+    const evs = FM.proyectarGastos([{ _id: 'g4', activo: true, concepto: 'H', cuantia: 80, tipo: 'gasto', tipoFrecuencia: 'mensual', frecuencia: 1, fechaInicio: '2026-01-01', tags: [], historialPrecios: [{ fecha: '2025-06-01', cuantia: 90 }, { fecha: '2025-09-01', cuantia: 110 }] }], '2026-01-01', '2026-01-31');
+    expect(evs[0].cuantia).toBe(80);
   });
   it('gasto inactivo no genera eventos', () => {
     expect(FM.proyectarGastos([{ _id: 'g6', activo: false, concepto: 'off', cuantia: 10, tipo: 'gasto', tipoFrecuencia: 'mensual', frecuencia: 1, fechaInicio: '2026-01-01', tags: [] }], '2026-01-01', '2026-12-31')).toHaveLength(0);

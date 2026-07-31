@@ -218,8 +218,9 @@ src/
       seccion, iconoPath, mount, unmount? }`, con el router legacy delegando en el
       registro. Pendiente: portar las 9 vistas legacy (dashboard, expenses, loans,
       accounts+goals, nominas, inflacion, escenarios→supuestos, rentas, margenes),
-      ∥ entre ellas. **Portadas hasta ahora (2/9): `margenes` →
-      `src/features/margins` e `inflacion` → `src/features/inflation`.** En cada
+      ∥ entre ellas. **Portadas hasta ahora (3/9): `margenes` →
+      `src/features/margins`, `inflacion` → `src/features/inflation` y
+      `expenses` → `src/features/expenses`.** En cada
       una se retira su fichero legacy y su entrada del router; el botón y el
       contenedor que ya existían en index.html se reutilizan, así que la
       navegación no cambia para el usuario.
@@ -234,6 +235,15 @@ src/
       vista de contabilidad hace para que el dashboard legacy vea los datos
       nuevos). CA: paridad funcional razonable; sin `onclick=` global inline
       (delegación de eventos, como en features/accounting).
+      Al portar gastos salió el widget de "día efectivo", ahora en
+      `src/features/shared/dia-pago.ts` y reutilizable por préstamos y nóminas.
+      **TRAMPA DEL ENTORNO DE TESTS:** happy-dom (v15 y v20) ignora el atributo
+      `selected` al parsear `innerHTML` — el `selectedIndex` de un `<select>`
+      creado así se queda en 1 (o −1), marque lo que marque el HTML. Los
+      navegadores reales sí lo respetan (verificado en Chromium). Para probar un
+      `<select>`: comprobar `option[selected]` en el HTML para la dirección
+      "pintar", y fijar `.value` a mano para la dirección "leer". Si un test de
+      `<select>` pasa por casualidad, probablemente esté comprobando la opción 1.
 - [x] **1.8 Retirar código muerto y features aprobadas** — hecho por adelantado en F0+
       (2026-07-30): calendar, HistoryModule + colección `history`,
       `proyectarInversiones`, inflación legacy, Monte Carlo + varianzas, velas OHLC,
@@ -408,10 +418,18 @@ src/
       `aplicarTodas(sugerencias)` ajusta en bloque y devuelve `{aplicadas, errores}`
       para que la UI liste los cambios en la confirmación. El modal de confirmación
       va con la vista (4.3).
-- [ ] **4.8 Retirar `historialPrecios`** (aprobado 2026-07-30) — una vez la
-      contabilidad alimente el análisis de precisión, migrar los historiales de
-      precios existentes a transacciones reales y eliminar `_cuantiaEfectivaExp` y la
-      UI de historial de precios en gastos.
+- [x] **4.8 Retirar `historialPrecios`** — COMPLETADA (aprobada 2026-07-30).
+      Migración v7 (`007-price-history.ts`): cada entrada del historial pasa a ser
+      una transacción real (`origen: 'importado'`, `estimacionId` = la estimación),
+      y el campo desaparece del esquema. Retirados `_cuantiaEfectivaExp`
+      (finance-math) y `cuantiaEfectiva` (engine/providers/expenses), y con ellos
+      la UI de historial al portar la vista de gastos.
+      **Cambio de comportamiento visible y buscado:** un gasto con historial se
+      proyectaba con la media del último año en vez de con su cuantía; esa media
+      era invisible y no se podía desactivar. Ahora se proyecta la cuantía
+      configurada, y quien propone cambiarla es "sugerir ajuste" (4.6), que se
+      apoya en esas mismas transacciones. Los tests de caracterización del motor
+      que fijaban la media se reescribieron para fijar el comportamiento nuevo.
 
 ## Fase 5 — Supuestos (puntos de guardado con diffs; sustituyen a Escenarios)
 

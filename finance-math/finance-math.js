@@ -133,18 +133,6 @@ const FinanceMath = (() => {
     return result;
   }
 
-  // Cuantía efectiva de un gasto: usa la media del año más reciente del historial
-  // de precios si existe, sino la cuantía configurada.
-  function _cuantiaEfectivaExp(exp) {
-    const hist = (exp.historialPrecios || []).filter(h => h.cuantia > 0);
-    if (!hist.length) return exp.cuantia;
-    const sorted = [...hist].sort((a, b) => b.fecha.localeCompare(a.fecha));
-    const lastYear = new Date(sorted[0].fecha + 'T00:00:00').getFullYear();
-    const entries  = sorted.filter(h => new Date(h.fecha + 'T00:00:00').getFullYear() === lastYear);
-    if (!entries.length) return exp.cuantia;
-    return entries.reduce((s, h) => s + h.cuantia, 0) / entries.length;
-  }
-
   function proyectarGastos(expenses, dateStart, dateEnd, filtroAccounts=null) {
     const events = [];
     const dS = new Date(dateStart+'T00:00:00'), dE = new Date(dateEnd+'T00:00:00');
@@ -153,7 +141,7 @@ const FinanceMath = (() => {
       if (filtroAccounts && filtroAccounts.length>0 && !filtroAccounts.includes(exp.cuenta||'default')) continue;
       const dI = new Date((exp.fechaInicio||dateStart)+'T00:00:00');
       const dF = exp.fechaFin ? new Date(exp.fechaFin+'T00:00:00') : dE;
-      const cuantia = _cuantiaEfectivaExp(exp);
+      const cuantia = exp.cuantia;
       const push = (fecha) => events.push({
         fecha, concepto:exp.concepto, cuantia, tipo:exp.tipo,
         tags:exp.tags, cuenta:exp.cuenta||'default', sourceId:exp._id, sourceType:'expense'
@@ -859,7 +847,7 @@ const FinanceMath = (() => {
         const factor = calcFactorInflacion(inflacionPeriodos, base, mesMid);
         if (factor <= 1) continue;
         const freq = Math.max(1, exp.frecuencia || 1);
-        totalInflacion += _cuantiaEfectivaExp(exp) * (factor - 1) / freq;
+        totalInflacion += exp.cuantia * (factor - 1) / freq;
       }
       if (totalInflacion > 0.01) {
         events.push({

@@ -7,6 +7,7 @@
 import { SCHEMA_VERSION, type AppState } from '../schema';
 import { migrateTo5 } from './005-normalize';
 import { migrateTo6 } from './006-accounting';
+import { migrateTo7 } from './007-price-history';
 import type { Migration, MigrationContext, RawState } from './types';
 
 const MIGRATIONS: Migration[] = [
@@ -15,6 +16,11 @@ const MIGRATIONS: Migration[] = [
     version: 6,
     describe: 'Contabilidad real: crea transacciones y puntosControl (importa historicoSaldos y la clave history)',
     migrate: migrateTo6,
+  },
+  {
+    version: 7,
+    describe: 'Retira historialPrecios: cada entrada pasa a ser una transacción real enlazada a su estimación',
+    migrate: migrateTo7,
   },
 ];
 

@@ -263,12 +263,6 @@ describe('aplicar ajuste', () => {
     expect(estimacionNueva.fechaFin).toBeNull();
   });
 
-  it('el historial de precios no se arrastra a la copia', () => {
-    const env2 = entorno([estimacion({ historialPrecios: [{ fecha: '2025-06-01', cuantia: 90 }] })]);
-    const { estimacionNueva } = env2.adjuster.aplicar('e1', 160, { hoy: HOY_ISO });
-    expect(estimacionNueva.historialPrecios).toEqual([]);
-  });
-
   it('lanza un error claro si la estimación no existe', () => {
     const env2 = entorno();
     expect(() => env2.adjuster.aplicar('nope', 10)).toThrow(/no existe/);

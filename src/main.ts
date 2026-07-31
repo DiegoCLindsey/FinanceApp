@@ -34,6 +34,7 @@ import { createFeatureRegistry, type FeatureRegistry } from './app/feature-regis
 import { createAccountingFeature } from './features/accounting';
 import { createMarginsFeature } from './features/margins';
 import { createInflationFeature } from './features/inflation';
+import { createExpensesFeature } from './features/expenses';
 import { createLedger, type Ledger } from './accounting/ledger';
 import { createTagService, type TagService } from './accounting/tags';
 import { createPrecisionAnalyzer, type PrecisionAnalyzer } from './accounting/precision';
@@ -144,6 +145,7 @@ function bootstrap(): FinanceAppNamespace {
 
   app.register(createMarginsFeature({ store, onDatosCambiados: refrescarLegacy }));
   app.register(createInflationFeature({ store, onDatosCambiados: refrescarLegacy }));
+  app.register(createExpensesFeature({ store, onDatosCambiados: refrescarLegacy }));
 
   app.register(
     createAccountingFeature({

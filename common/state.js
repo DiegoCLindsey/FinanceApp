@@ -105,7 +105,7 @@ const State = (() => {
     for (const [k,v] of Object.entries(cfgDefs)) {
       if (state.config[k] === undefined) state.config[k] = v;
     }
-    // Migrate: ensure expenses have basico and historialPrecios fields
+    // Migrate: ensure expenses have basico (historialPrecios se retiró en v7)
     // escenarioId (singular) → escenarioIds (array) migration
     const _migrEscIds = item => {
       if (Array.isArray(item.escenarioIds)) return item; // already migrated
@@ -113,7 +113,7 @@ const State = (() => {
       const { escenarioId, ...rest } = item;
       return { ...rest, escenarioIds: ids };
     };
-    state.expenses = (state.expenses || []).map(e => _migrEscIds({ basico: false, historialPrecios: [], ...e }));
+    state.expenses = (state.expenses || []).map(e => _migrEscIds({ basico: false, ...e }));
     // Migrate: ensure loans have new fields
     state.loans = (state.loans || []).map(l => {
       const lm = _migrEscIds({ tipoTasa: 'fijo', mostrarFechaFinEnDashboard: true, basico: true, tags: [], ...l });

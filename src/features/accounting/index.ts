@@ -4,7 +4,7 @@
 // legacy (ver src/app/feature-registry.ts).
 
 import { formatEUR } from '@/core/money';
-import { todayISO } from '@/core/dates';
+import { todayISO, type ISODate } from '@/core/dates';
 import type { FeatureManifest } from '@/app/feature-registry';
 import type { Ledger } from '@/accounting/ledger';
 import type { TagService } from '@/accounting/tags';
@@ -24,6 +24,12 @@ export interface AccountingViewDeps {
   estimaciones: () => Expense[];
   /** Se llama cuando cambian los datos, para refrescar otras vistas. */
   onDatosCambiados?: () => void;
+  /**
+   * Fecha de "hoy" de la vista: corte de los ajustes, saldo actual y mes por
+   * defecto. Inyectable para que los tests no dependan del día en que se
+   * ejecutan (un test que fijaba 2026-07-30 se rompía al día siguiente).
+   */
+  hoy?: () => ISODate;
 }
 
 const ICONO = 'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zM6 10h5v2H6v-2zm0 4h8v2H6v-2z';
@@ -33,11 +39,12 @@ export function createAccountingFeature(deps: AccountingViewDeps): FeatureManife
   // interfaz, no del usuario, así que no va al store.
   const estado: EstadoPanel = {
     cuentaId: '',
-    mes: todayISO().slice(0, 7),
+    mes: (deps.hoy ?? todayISO)().slice(0, 7),
     filtroTexto: '',
   };
 
   const notificar = () => deps.onDatosCambiados?.();
+  const hoy = deps.hoy ?? todayISO;
 
   const txDeps = {
     ledger: deps.ledger,
@@ -52,10 +59,11 @@ export function createAccountingFeature(deps: AccountingViewDeps): FeatureManife
     adjuster: deps.adjuster,
     estimaciones: deps.estimaciones,
     onDatosCambiados: notificar,
+    hoy,
   };
 
   function render(container: HTMLElement): void {
-    const saldoHoy = deps.ledger.saldoTotal(todayISO());
+    const saldoHoy = deps.ledger.saldoTotal(hoy());
     const ultima = deps.ledger.ultimaFecha();
     const nTx = deps.ledger.transacciones().length;
 

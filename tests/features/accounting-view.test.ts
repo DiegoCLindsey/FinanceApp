@@ -76,6 +76,7 @@ function entorno({ conDatos = false }: { conDatos?: boolean } = {}) {
     precision: createPrecisionAnalyzer(ledger),
     adjuster: createAdjuster(store),
     accounts: () => store.get('accounts'),
+    hoy: () => '2026-07-30',
     estimaciones: () => store.get('expenses'),
     onDatosCambiados,
   });

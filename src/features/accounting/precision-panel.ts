@@ -6,6 +6,7 @@ import { formatEUR } from '@/core/money';
 import type { Adjuster, Sugerencia } from '@/accounting/adjust';
 import { sugerirAjuste } from '@/accounting/adjust';
 import type { PrecisionAnalyzer, PrecisionEstimacion } from '@/accounting/precision';
+import type { ISODate } from '@/core/dates';
 import type { Expense } from '@/state/schema';
 import { confirmar, esc, eurColor, nombreMes, onClick, precisionBadge, precisionBadge as badge, tagChips, toast } from './dom';
 
@@ -14,6 +15,8 @@ export interface PrecisionPanelDeps {
   adjuster: Adjuster;
   estimaciones: () => Expense[];
   onDatosCambiados: () => void;
+  /** Fecha de corte del ajuste. Inyectable para que los tests no dependan del día. */
+  hoy: () => ISODate;
 }
 
 interface FilaAnalisis {
@@ -148,7 +151,7 @@ export function wirePrecisionPanel(container: HTMLElement, deps: PrecisionPanelD
       `Nueva estimación: ${formatEUR(s.cuantiaSugerida)}\n\n` +
       `La estimación actual se cerrará hoy y se creará su continuación con el nuevo importe. ¿Aplicar?`;
     if (!confirmar(mensaje)) return;
-    deps.adjuster.aplicar(id, s.cuantiaSugerida);
+    deps.adjuster.aplicar(id, s.cuantiaSugerida, { hoy: deps.hoy() });
     toast(`Estimación ajustada a ${formatEUR(s.cuantiaSugerida)}`);
     deps.onDatosCambiados();
     refrescar();
@@ -161,7 +164,7 @@ export function wirePrecisionPanel(container: HTMLElement, deps: PrecisionPanelD
     if (sugerencias.length === 0) return;
     const listado = sugerencias.map((s) => `• ${s.concepto}: ${formatEUR(s.cuantiaActual)} → ${formatEUR(s.cuantiaSugerida)}`).join('\n');
     if (!confirmar(`Se van a ajustar ${sugerencias.length} estimaciones:\n\n${listado}\n\n¿Continuar?`)) return;
-    const { aplicadas, errores } = deps.adjuster.aplicarTodas(sugerencias);
+    const { aplicadas, errores } = deps.adjuster.aplicarTodas(sugerencias, { hoy: deps.hoy() });
     toast(
       errores.length > 0 ? `${aplicadas.length} ajustadas, ${errores.length} con error` : `${aplicadas.length} estimaciones ajustadas`,
       errores.length > 0 ? 'warn' : 'ok',

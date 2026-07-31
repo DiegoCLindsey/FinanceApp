@@ -105,7 +105,6 @@ export function createAdjuster(store: AjusteStoreLike) {
       fechaInicio: hoy,
       fechaFin: original.fechaFin ?? null,
       // El historial de precios pertenece a la estimación anterior
-      historialPrecios: [],
       ajustadaDesdeId: original._id,
       ajustadaEn: hoy,
     };
