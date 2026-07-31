@@ -249,10 +249,10 @@ src/
       seccion, iconoPath, mount, unmount? }`, con el router legacy delegando en el
       registro. Pendiente: portar las 9 vistas legacy (dashboard, expenses, loans,
       accounts+goals, nominas, inflacion, escenarios→supuestos, rentas, margenes),
-      ∥ entre ellas. **Portadas hasta ahora (4/9): `margenes` →
+      ∥ entre ellas. **Portadas hasta ahora (5/9): `margenes` →
       `src/features/margins`, `inflacion` → `src/features/inflation`,
-      `expenses` → `src/features/expenses` y `loans` → `src/features/loans`.**
-      En cada
+      `expenses` → `src/features/expenses`, `loans` → `src/features/loans` y
+      `nominas` → `src/features/salaries`.** En cada
       una se retira su fichero legacy y su entrada del router; el botón y el
       contenedor que ya existían en index.html se reutilizan, así que la
       navegación no cambia para el usuario.
@@ -292,6 +292,13 @@ src/
       empatada y ambas filas tributaban desde el primer tramo, sumando MENOS que
       el impuesto real del grupo; ahora el apilado desempata por `_id` y las
       filas cuadran siempre con el total.
+      La vista quedó en cuatro ficheros (`index`, `form`, `tramos`, `pensions`).
+      Los **planes de pensiones** siguen viviendo en la colección `accounts` y
+      se editan desde aquí, porque su fiscalidad es la del trabajo; al portar la
+      vista de cuentas hay que decidir si esa sección se muda allí.
+      **No usar caracteres no ASCII en nombres de atributos**: un
+      `data-anadir-año` hace inválido el selector CSS y `querySelector` lanza.
+      Los valores sí pueden llevarlos; los nombres no.
 - [x] **1.8 Retirar código muerto y features aprobadas** — hecho por adelantado en F0+
       (2026-07-30): calendar, HistoryModule + colección `history`,
       `proyectarInversiones`, inflación legacy, Monte Carlo + varianzas, velas OHLC,

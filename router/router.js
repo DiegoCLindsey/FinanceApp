@@ -1,4 +1,4 @@
-// Depends on: DashboardModule, AccountsModule, NominasModule, EscenariosModule, RentasModule
+// Depends on: DashboardModule, AccountsModule, EscenariosModule, RentasModule
 //
 // Durante la migración a src/ este router aloja DOS tipos de vista:
 //   · las legacy, declaradas en `views`/`mods` aquí abajo;
@@ -8,7 +8,7 @@
 // Cuando todas las vistas estén portadas, este fichero se sustituye por el
 // router de src/app/ (docs/02-plan-refactor.md, tarea 1.7).
 const Router = (() => {
-  // margenes, inflacion, expenses y loans se han portado a src/features/ (tarea 1.7)
+  // margenes, inflacion, expenses, loans y nominas se han portado a src/features/ (1.7)
   //
   // `mods` se construye con guardas `typeof` a propósito: si el navegador sirve
   // un index.html y un router.js de despliegues distintos, un módulo legacy
@@ -19,11 +19,10 @@ const Router = (() => {
   // legacy se declaran con `const` en el ámbito global, y una declaración `const`
   // de nivel superior NO crea propiedad en `window`. Buscarlos ahí devuelve
   // undefined para todos y deja las vistas en blanco.
-  const views=['dashboard','accounts','nominas','escenarios','rentas'];
+  const views=['dashboard','accounts','escenarios','rentas'];
   const mods={
     dashboard: typeof DashboardModule !== 'undefined' ? DashboardModule : null,
     accounts:  typeof AccountsModule  !== 'undefined' ? AccountsModule  : null,
-    nominas:   typeof NominasModule   !== 'undefined' ? NominasModule   : null,
     escenarios:typeof EscenariosModule!== 'undefined' ? EscenariosModule: null,
     rentas:    typeof RentasModule    !== 'undefined' ? RentasModule    : null,
   };
