@@ -22,7 +22,7 @@ import { formatLocalDate, lastDayOfMonth, parseLocalDate, type ISODate } from '@
 import { saldoRealCuenta } from '@/core/accounts';
 import { resumenPrestamo, type LoanInput } from '@/core/loan';
 import type { CashEvent } from './types';
-import type { StatementAccount } from './statement';
+import { sumarPorTags, type StatementAccount } from './statement';
 
 /** Milisegundos de un mes medio; el legacy usa esta misma constante. */
 const MS_MES = 30.44 * 86400000;
@@ -211,6 +211,62 @@ export function interesesPorCuenta(eventos: CashEvent[], accounts: StatementAcco
       total: suma(eventos.filter((e) => e.sourceType === 'account-interest' && e.sourceId === a._id)),
     }))
     .filter((a) => a.total > 0)
+    .sort((a, b) => b.total - a.total);
+}
+
+// ── Gasto por etiqueta, con grupos ────────────────────────────────────────────
+
+/**
+ * Cómo se reparte el gasto de un movimiento entre sus etiquetas cuando hay
+ * "grupos de etiquetas" (`config.tagGrupos`):
+ *
+ *  · 'desglosado': la etiqueta de grupo se retira y el gasto cuenta bajo las
+ *    demás. Si TODAS sus etiquetas eran de grupo, no cuenta en ningún sitio.
+ *  · 'porgrupos': si el gasto lleva alguna etiqueta de grupo, cuenta solo bajo
+ *    esas; si no, bajo las suyas normales.
+ */
+export type ModoGrupoTags = 'desglosado' | 'porgrupos';
+
+/**
+ * Gasto acumulado por etiqueta en el periodo.
+ *
+ * REGRESIÓN CORREGIDA (introducida el 2026-07-30, detectada el 2026-08-06):
+ * esta función existía en `dashboard/dashboard.js` como `_tagMapConGrupos` y el
+ * commit que retiró el gráfico de velas OHLC se la llevó por delante sin querer,
+ * dejando las dos llamadas en pie. Desde entonces `renderChartTags` lanzaba
+ * `ReferenceError` en cada pintado, y como las seis gráficas se dibujan en un
+ * mismo `setTimeout`, se llevaba por delante también las cuatro siguientes:
+ * solo sobrevivía la curva de saldo. Ahora vive aquí, con tests.
+ */
+export function sumarGastosPorTag(
+  extracto: CashEvent[],
+  grupoTags: Set<string> = new Set(),
+  modo: ModoGrupoTags = 'desglosado',
+): Map<string, number> {
+  if (grupoTags.size === 0) return sumarPorTags(extracto, 'gasto');
+
+  const mapa = new Map<string, number>();
+  for (const ev of extracto) {
+    if (ev.tipo !== 'gasto') continue;
+    const tags = ev.tags || [];
+    const deGrupo = tags.filter((t) => grupoTags.has(t));
+    const sueltas = tags.filter((t) => !grupoTags.has(t));
+    const efectivas = modo === 'porgrupos' && deGrupo.length > 0 ? deGrupo : sueltas;
+    for (const tag of efectivas) mapa.set(tag, (mapa.get(tag) || 0) + Math.abs(ev.cuantia));
+  }
+  return mapa;
+}
+
+/** Etiquetas ordenadas por gasto, aplicando el filtro activo de la vista. */
+export function gastoPorTagOrdenado(
+  extracto: CashEvent[],
+  opciones: { grupoTags?: Set<string>; modo?: ModoGrupoTags; activos?: Set<string>; entreMeses?: number } = {},
+): { tag: string; total: number }[] {
+  const activos = opciones.activos;
+  const div = opciones.entreMeses && opciones.entreMeses > 0 ? opciones.entreMeses : 1;
+  return [...sumarGastosPorTag(extracto, opciones.grupoTags, opciones.modo).entries()]
+    .filter(([tag]) => !activos || activos.size === 0 || activos.has(tag))
+    .map(([tag, total]) => ({ tag, total: total / div }))
     .sort((a, b) => b.total - a.total);
 }
 

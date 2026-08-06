@@ -122,6 +122,36 @@ fase, las tareas marcadas ∥ son paralelizables.
       capas; se verificó que falla contra el código anterior y contra la versión
       con `window[...]`.
 
+### P.5 — Cinco de las seis gráficas del dashboard estaban muertas
+
+**Síntoma:** en el dashboard solo se pintaba la curva de evolución del saldo.
+Faltaban el donut de gasto por etiqueta, la media mensual por etiqueta, el
+desglose mensual, el donut de gastos y el de saldos por cuenta.
+
+**Causa:** el commit `8f64dfb` (2026-07-30), que retiró el gráfico de velas
+OHLC, se llevó por delante `_tagMapConGrupos` sin querer y dejó en pie sus dos
+llamadas. `renderChartTags` lanzaba `ReferenceError` en cada pintado y, como las
+seis gráficas se dibujaban en un mismo `setTimeout` sin protección, la excepción
+abortaba el bloque entero: las cuatro que venían detrás no llegaban a ejecutarse.
+Nadie lo vio porque el fallo solo salía por consola.
+
+**Arreglo (2026-08-06):**
+  · la función vuelve, ahora en `engine/dashboard.ts` como `sumarGastosPorTag`,
+    con tests que fijan los modos 'desglosado' y 'porgrupos'. Es además la pieza
+    que la tarea 1.9(b) va a consolidar;
+  · cada gráfica se pinta dentro de su propio `try/catch` con el nombre en el
+    mensaje de error, para que un fallo en una no pueda volver a tumbar a las
+    demás.
+
+**Verificación:** en Chromium las seis se reportan ya de forma independiente. El
+CDN de Chart.js no es alcanzable desde el contenedor, así que lo que se comprueba
+es que el `ReferenceError` de `_tagMapConGrupos` ha desaparecido y que el
+aislamiento funciona; el pintado en sí hay que mirarlo en el navegador real.
+
+**Lección:** al borrar una feature, buscar los identificadores que se van, no
+solo el bloque. Y nunca encadenar efectos independientes en un mismo bloque sin
+aislarlos.
+
 ## Fase 1 — Refactor SOLID + modularización (TypeScript, ESM)
 
 > Objetivo: migrar a `src/` con módulos ES tipados y build de Vite, manteniendo paridad

@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
   cuentasVisibles,
+  gastoPorTagOrdenado,
   idsHipoteca,
   idsPrestamosIniciados,
   interesesPorCuenta,
@@ -13,6 +14,7 @@ import {
   rangoMesDe,
   resumenPrestamosPeriodo,
   sinTransferencias,
+  sumarGastosPorTag,
   totalesPeriodo,
   type LoanDashboard,
 } from '@/engine/dashboard';
@@ -209,6 +211,60 @@ describe('resumen de préstamos del periodo', () => {
     // Con el fin de mes calculado por toISOString() el día 31 quedaba fuera
     const dia31: LoanDashboard = { ...hipoteca, _id: 'd31', fechaInicio: '2024-01-31', diaPago: 'dia:31' };
     expect(resumenPrestamosPeriodo([dia31], '2026-01-01', '2026-12-31', 12).cuotasFin).toBeGreaterThan(0);
+  });
+});
+
+describe('gasto por etiqueta con grupos de etiquetas', () => {
+  // REGRESIÓN: `_tagMapConGrupos` desapareció del dashboard el 2026-07-30 al
+  // retirar el gráfico de velas, dejando sus dos llamadas en pie. Estos tests
+  // fijan el comportamiento que se perdió.
+  const eventos = [
+    ev({ tipo: 'gasto', cuantia: 100, tags: ['ocio', 'variable'] }),
+    ev({ tipo: 'gasto', cuantia: 200, tags: ['comida', 'variable'] }),
+    ev({ tipo: 'gasto', cuantia: 50, tags: ['variable'] }), // solo etiqueta de grupo
+    ev({ tipo: 'gasto', cuantia: 300, tags: ['vivienda'] }), // sin etiqueta de grupo
+    ev({ tipo: 'ingreso', cuantia: 2000, tags: ['nomina'] }),
+  ];
+  const grupo = new Set(['variable']);
+
+  it('sin grupos se comporta como la suma normal por etiqueta', () => {
+    const m = sumarGastosPorTag(eventos);
+    expect(m.get('ocio')).toBe(100);
+    expect(m.get('variable')).toBe(350); // 100 + 200 + 50
+    expect(m.has('nomina')).toBe(false); // los ingresos no entran
+  });
+
+  it('en desglosado la etiqueta de grupo se retira y el resto se reparte', () => {
+    const m = sumarGastosPorTag(eventos, grupo, 'desglosado');
+    expect(m.get('ocio')).toBe(100);
+    expect(m.get('comida')).toBe(200);
+    expect(m.get('vivienda')).toBe(300);
+    expect(m.has('variable')).toBe(false);
+  });
+
+  it('en desglosado, un gasto cuyas etiquetas son todas de grupo no cuenta', () => {
+    const total = [...sumarGastosPorTag(eventos, grupo, 'desglosado').values()].reduce((s, v) => s + v, 0);
+    expect(total).toBe(600); // los 50 del gasto solo-grupo se quedan fuera
+  });
+
+  it('en porgrupos el gasto cuenta bajo su grupo, y los demás bajo los suyos', () => {
+    const m = sumarGastosPorTag(eventos, grupo, 'porgrupos');
+    expect(m.get('variable')).toBe(350); // 100 + 200 + 50
+    expect(m.get('vivienda')).toBe(300); // sin grupo: bajo su etiqueta
+    expect(m.has('ocio')).toBe(false);
+  });
+
+  it('ordena de mayor a menor y respeta el filtro de etiquetas activas', () => {
+    const filas = gastoPorTagOrdenado(eventos, { grupoTags: grupo, modo: 'desglosado' });
+    expect(filas.map((f) => f.tag)).toEqual(['vivienda', 'comida', 'ocio']);
+
+    const soloOcio = gastoPorTagOrdenado(eventos, { grupoTags: grupo, activos: new Set(['ocio']) });
+    expect(soloOcio).toEqual([{ tag: 'ocio', total: 100 }]);
+  });
+
+  it('divide entre los meses para dar la media mensual', () => {
+    const filas = gastoPorTagOrdenado(eventos, { grupoTags: grupo, entreMeses: 4 });
+    expect(filas[0]).toEqual({ tag: 'vivienda', total: 75 });
   });
 });
 

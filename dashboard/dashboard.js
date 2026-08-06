@@ -962,12 +962,20 @@ const DashboardModule = (() => {
       .map(([label, total]) => ({ label, value: total / numMeses }))
       .sort((a, b) => b.value - a.value);
     setTimeout(()=>{
-      renderChartSaldo(extracto);
-      renderChartTags(extracto, activeTags, grupoTags, tagGroupsMode);
-      renderChartBreakdown(_metricasGraficos);
-      renderChartExpenseDonut(_donutMetrics);
-      renderChartOtrosDonut(_otrosTagData);
-      renderChartSaldosDonut(accounts.filter(a => a.activo && !a.simulacion));
+      // Cada gráfica va aislada: un fallo en una no puede dejar sin pintar a las
+      // que vienen detrás, que es justo lo que pasó con `_tagMapConGrupos`.
+      const _graficas = [
+        ['saldo',      () => renderChartSaldo(extracto)],
+        ['tags',       () => renderChartTags(extracto, activeTags, grupoTags, tagGroupsMode)],
+        ['breakdown',  () => renderChartBreakdown(_metricasGraficos)],
+        ['gastos',     () => renderChartExpenseDonut(_donutMetrics)],
+        ['otros',      () => renderChartOtrosDonut(_otrosTagData)],
+        ['saldos',     () => renderChartSaldosDonut(accounts.filter(a => a.activo && !a.simulacion))],
+      ];
+      for (const [nombre, pintar] of _graficas) {
+        try { pintar(); }
+        catch (e) { console.error(`[Dashboard] La gráfica "${nombre}" no se ha podido pintar:`, e); }
+      }
     }, 60);
   }
 
@@ -1264,6 +1272,18 @@ const DashboardModule = (() => {
         }
       }
     });
+  }
+
+  // Reparto del gasto por etiqueta, teniendo en cuenta los grupos de etiquetas.
+  // Vivía aquí como `_tagMapConGrupos` y el commit que retiró el gráfico de velas
+  // OHLC (8f64dfb, 2026-07-30) se la llevó por delante dejando las llamadas en
+  // pie: desde entonces `renderChartTags` lanzaba ReferenceError y, como las seis
+  // gráficas se pintan en el mismo setTimeout, tumbaba también las cuatro
+  // siguientes. Ahora vive en engine/dashboard, con tests.
+  function _tagMapConGrupos(extracto, grupoTags, mode) {
+    const dash = window.FinanceApp?.engine?.dashboard;
+    if (dash?.sumarGastosPorTag) return dash.sumarGastosPorTag(extracto, grupoTags, mode);
+    return FinanceMath.sumarPorTags(extracto, 'gasto'); // sin bundle: sin agrupar
   }
 
   function renderChartTags(extracto, activeTags, grupoTags=new Set(), mode='desglosado') {
