@@ -250,13 +250,13 @@ src/
       seccion, iconoPath, mount, unmount? }`, con el router legacy delegando en el
       registro. Pendiente: portar las 9 vistas legacy (dashboard, expenses, loans,
       accounts+goals, nominas, inflacion, escenarios→supuestos, rentas, margenes),
-      ∥ entre ellas. **Portadas hasta ahora (7/9): `margenes` →
+      ∥ entre ellas. **Portadas hasta ahora (8/9): `margenes` →
       `src/features/margins`, `inflacion` → `src/features/inflation`,
       `expenses` → `src/features/expenses`, `loans` → `src/features/loans`,
       `nominas` → `src/features/salaries`, `accounts`+`goals` →
-      `src/features/accounts` y `rentas` → `src/features/taxes`.** Quedan
-      `escenarios`→supuestos y `dashboard` (el último, porque arrastra la
-      consolidación del colchón de la tarea 1.9). En cada
+      `src/features/accounts`, `rentas` → `src/features/taxes` y `escenarios` →
+      `src/features/scenarios`.** Solo queda el **dashboard**, que va el último
+      porque arrastra la consolidación del colchón de la tarea 1.9. En cada
       una se retira su fichero legacy y su entrada del router; el botón y el
       contenedor que ya existían en index.html se reutilizan, así que la
       navegación no cambia para el usuario.
@@ -372,6 +372,33 @@ src/
         declaración y BORRABA lo que el usuario hubiera escrito en los campos
         manuales. Ahora se repinta solo la barra y el contenido, y escribir en un
         campo actualiza únicamente el cuadro (sin quitarle el foco).
+      **Escenarios** quedó en dos ficheros (`index`, `chart`) más
+      `core/scenarios.ts` con el filtro por pertenencia y la serie mensual de
+      saldo. La vista se cuelga del flag `supuestos`, que es el definitivo: en
+      F5 pasa a llamarse "Supuestos" y a trabajar con diffs sobre lo canónico,
+      y así no hay que migrar la preferencia del usuario. Correcciones
+      deliberadas, con test:
+      · la línea del gráfico se construía sumando `delta` desde CERO, sin el
+        saldo de partida, de modo que NO cuadraba con la tabla comparativa que
+        tenía justo debajo (una decía ~25.000 € y la otra el flujo del periodo);
+      · los meses se recorrían con `toISOString()` sobre medianoche local — el
+        mismo error del día que apareció en objetivos, ahora en el mes: para el
+        día 1 devuelve el MES ANTERIOR, así que cada mes se leía en la casilla
+        equivocada y la serie salía desplazada;
+      · la instancia de Chart.js se destruye SIEMPRE antes de repintar; el
+        legacy solo lo hacía en dos de los tres caminos y dejaba instancias
+        vivas sobre el mismo canvas;
+      · el nombre y la descripción del escenario se interpolaban crudos en la
+        tarjeta, en la tabla y en la leyenda del gráfico.
+      El acceso a Chart.js va con guarda (`hayChartJs`): llega por CDN desde el
+      shell, y si no está la vista pinta la tabla y lo explica en lugar de
+      romperse. OJO: **el CDN de Chart.js NO es alcanzable desde el contenedor
+      de desarrollo**, así que el gráfico solo está verificado por el camino de
+      ausencia; el de presencia hay que mirarlo en el navegador real.
+      Al portar esta vista, el botón "✕ Salir" del banner de escenario del
+      dashboard pasó de `EscenariosModule.desactivar()` a
+      `DashboardModule.salirEscenario()`, que toca su propia config. Se retira
+      al portar el dashboard.
       **`const` de nivel superior y `window`, otra vez:** `window.Router` era
       `undefined` porque `router/router.js` declara `const Router`. Dos
       consumidores que no comparten ámbito con ese script lo buscaban ahí y

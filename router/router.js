@@ -1,4 +1,4 @@
-// Depends on: DashboardModule, EscenariosModule
+// Depends on: DashboardModule
 //
 // Durante la migración a src/ este router aloja DOS tipos de vista:
 //   · las legacy, declaradas en `views`/`mods` aquí abajo;
@@ -8,8 +8,8 @@
 // Cuando todas las vistas estén portadas, este fichero se sustituye por el
 // router de src/app/ (docs/02-plan-refactor.md, tarea 1.7).
 const Router = (() => {
-  // margenes, inflacion, expenses, loans, nominas, accounts (+goals) y rentas
-  // se han portado a src/features/ (1.7)
+  // Solo queda `dashboard` sin portar a src/features/ (1.7); cuando lo esté,
+  // este fichero se sustituye por el router del paquete nuevo.
   //
   // `mods` se construye con guardas `typeof` a propósito: si el navegador sirve
   // un index.html y un router.js de despliegues distintos, un módulo legacy
@@ -20,10 +20,9 @@ const Router = (() => {
   // legacy se declaran con `const` en el ámbito global, y una declaración `const`
   // de nivel superior NO crea propiedad en `window`. Buscarlos ahí devuelve
   // undefined para todos y deja las vistas en blanco.
-  const views=['dashboard','escenarios'];
+  const views=['dashboard'];
   const mods={
     dashboard: typeof DashboardModule !== 'undefined' ? DashboardModule : null,
-    escenarios:typeof EscenariosModule!== 'undefined' ? EscenariosModule: null,
   };
   let _current = 'dashboard';
   // Registro de vistas del paquete nuevo (ausente si el bundle no está compilado)

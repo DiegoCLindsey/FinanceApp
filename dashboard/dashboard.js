@@ -121,6 +121,16 @@ const DashboardModule = (() => {
     `;
   }
 
+  // Salir del escenario activo. Vivía en EscenariosModule, que ya está portado
+  // a src/features/scenarios; el dashboard es la última vista legacy y toca su
+  // propia config directamente hasta que también se porte (1.7).
+  function salirEscenario() {
+    const cfg = State.get('config');
+    State.set('config', { ...cfg, escenarioActivo: null });
+    UI.toast('Volviendo a la realidad base');
+    render();
+  }
+
   function toggleExecSummary() {
     const cfg = State.get('config');
     State.set('config', {...cfg, showExecSummary: !cfg.showExecSummary});
@@ -338,7 +348,7 @@ const DashboardModule = (() => {
             <span style="font-weight:600;color:${color}">Escenario: ${esc?.nombre||escenarioActivo}</span>
             ${esc?.descripcion ? `<span style="color:var(--text3);margin-left:8px">${esc.descripcion}</span>` : ''}
           </div>
-          <button class="btn-secondary btn-sm" onclick="EscenariosModule.desactivar();Router.navigate('dashboard')">✕ Salir</button>
+          <button class="btn-secondary btn-sm" onclick="DashboardModule.salirEscenario()">✕ Salir</button>
         </div>`;
       })() : ''}
 
@@ -1626,5 +1636,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis, setSaludView, toggleSaludConfig, applySaludConfig, resetSaludConfig };
+  return { render, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis, setSaludView, toggleSaludConfig, applySaludConfig, resetSaludConfig };
 })();
