@@ -274,6 +274,12 @@ src/
       como en features/accounting).
       Al portar gastos salió el widget de "día efectivo", ahora en
       `src/features/shared/dia-pago.ts` y reutilizable por préstamos y nóminas.
+      **ANTES DE EMPUJAR, `npm run verify`**: encadena typecheck, lint,
+      `format:check` y los tests con cobertura, en el mismo orden que el job de
+      CI. Se añadió después de que el commit de escenarios (`e6271d8`) pusiera
+      el CI en rojo por dos ficheros sin pasar por Prettier — el `--write` se
+      había lanzado solo sobre `tests/`. Ni tipos ni tests fallaban; el
+      pipeline se paró en el formato y el despliegue quedó cancelado.
       **TESTS QUE DEPENDEN DEL DÍA EN QUE SE EJECUTAN:** ya han aparecido tres
       (contabilidad, precisión y el comparador de frecuencias del optimizador).
       El patrón es siempre el mismo: la vista o el motor llaman a `new Date()`
