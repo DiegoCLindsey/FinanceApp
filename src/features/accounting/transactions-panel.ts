@@ -15,6 +15,12 @@ export interface TransactionsPanelDeps {
   /** Etiquetas conocidas, para el datalist de autocompletado. */
   tagsConocidas: () => string[];
   onDatosCambiados: () => void;
+  /**
+   * "Hoy" de la vista. Inyectable, y no `todayISO()` suelto: el panel lo usa
+   * para la fecha por defecto de los formularios, y si no coincide con el mes
+   * que se está mirando, el movimiento recién creado no aparece en la lista.
+   */
+  hoy?: () => ISODate;
 }
 
 export interface EstadoPanel {
@@ -31,6 +37,7 @@ function rangoMes(mes: string): { desde: ISODate; hasta: ISODate } {
 
 export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: EstadoPanel): string {
   const { ledger } = deps;
+  const hoy = (deps.hoy ?? todayISO)();
   const cuentas = deps.accounts().filter((a) => a.activo);
   const { desde, hasta } = rangoMes(estado.mes);
   const filtro = { cuentaId: estado.cuentaId || undefined, desde, hasta, texto: estado.filtroTexto || undefined };
@@ -141,7 +148,7 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
         <div class="card mb-14">
           <div class="card-title">Registrar movimiento</div>
           <div class="grid-2">
-            <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" type="date" id="nt-fecha" value="${esc(todayISO())}"/></div>
+            <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" type="date" id="nt-fecha" value="${esc(hoy)}"/></div>
             <div class="form-group"><label class="form-label">Tipo</label>
               <select class="form-input" id="nt-tipo">
                 <option value="gasto">Gasto</option>
@@ -178,7 +185,7 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
             de control más los movimientos posteriores. Si el banco dice otra cosa, manda el punto.
           </div>
           <div class="grid-2">
-            <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" type="date" id="pc-fecha" value="${esc(todayISO())}"/></div>
+            <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" type="date" id="pc-fecha" value="${esc(hoy)}"/></div>
             <div class="form-group"><label class="form-label">Saldo (€)</label><input class="form-input" type="number" id="pc-saldo" step="0.01" placeholder="0,00"/></div>
           </div>
           <div class="form-group"><label class="form-label">Cuenta</label><select class="form-input" id="pc-cuenta">${opcionesCuenta}</select></div>
@@ -226,7 +233,7 @@ export function wireTransactionsPanel(
       .map((t) => t.trim().toLowerCase())
       .filter(Boolean);
     ledger.registrar({
-      fecha: valor(container, '#nt-fecha') || todayISO(),
+      fecha: valor(container, '#nt-fecha') || (deps.hoy ?? todayISO)(),
       cuentaId: valor(container, '#nt-cuenta'),
       importe,
       concepto,
@@ -275,7 +282,7 @@ export function wireTransactionsPanel(
     const saldo = numero(container, '#pc-saldo');
     ledger.registrarPuntoControl(
       valor(container, '#pc-cuenta'),
-      valor(container, '#pc-fecha') || todayISO(),
+      valor(container, '#pc-fecha') || (deps.hoy ?? todayISO)(),
       saldo,
       valor(container, '#pc-nota').trim() || undefined,
     );

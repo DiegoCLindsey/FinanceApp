@@ -52,6 +52,7 @@ export function createAccountingFeature(deps: AccountingViewDeps): FeatureManife
     estimaciones: deps.estimaciones,
     tagsConocidas: () => deps.tags.todas(),
     onDatosCambiados: notificar,
+    hoy,
   };
 
   const precDeps = {

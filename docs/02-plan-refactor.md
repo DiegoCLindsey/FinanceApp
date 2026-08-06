@@ -250,11 +250,11 @@ src/
       seccion, iconoPath, mount, unmount? }`, con el router legacy delegando en el
       registro. Pendiente: portar las 9 vistas legacy (dashboard, expenses, loans,
       accounts+goals, nominas, inflacion, escenarios→supuestos, rentas, margenes),
-      ∥ entre ellas. **Portadas hasta ahora (6/9): `margenes` →
+      ∥ entre ellas. **Portadas hasta ahora (7/9): `margenes` →
       `src/features/margins`, `inflacion` → `src/features/inflation`,
       `expenses` → `src/features/expenses`, `loans` → `src/features/loans`,
-      `nominas` → `src/features/salaries` y `accounts`+`goals` →
-      `src/features/accounts`.** Quedan `rentas` (fiscalidad),
+      `nominas` → `src/features/salaries`, `accounts`+`goals` →
+      `src/features/accounts` y `rentas` → `src/features/taxes`.** Quedan
       `escenarios`→supuestos y `dashboard` (el último, porque arrastra la
       consolidación del colchón de la tarea 1.9). En cada
       una se retira su fichero legacy y su entrada del router; el botón y el
@@ -274,6 +274,14 @@ src/
       como en features/accounting).
       Al portar gastos salió el widget de "día efectivo", ahora en
       `src/features/shared/dia-pago.ts` y reutilizable por préstamos y nóminas.
+      **TESTS QUE DEPENDEN DEL DÍA EN QUE SE EJECUTAN:** ya han aparecido tres
+      (contabilidad, precisión y el comparador de frecuencias del optimizador).
+      El patrón es siempre el mismo: la vista o el motor llaman a `new Date()`
+      por dentro y el test fija una fecha distinta. La regla es que TODO lo que
+      dependa de "hoy" se inyecte — `hoy?: () => ISODate` en las deps de la
+      vista, `hoy?: Date` en las funciones del motor — y que el test lo pase
+      siempre. El último caso (2026-08-06) afirmaba que el memo del comparador
+      no da aciertos: solo era cierto pasado el día 15 del mes.
       **TRAMPA DEL ENTORNO DE TESTS:** happy-dom (v15 y v20) ignora el atributo
       `selected` al parsear `innerHTML` — el `selectedIndex` de un `<select>`
       creado así se queda en 1 (o −1), marque lo que marque el HTML. Los
@@ -338,6 +346,32 @@ src/
         la fecha estimada como mucho un mes. Además el fin de mes se calcula con
         `formatLocalDate`: el legacy usaba `toISOString()` sobre medianoche local
         y en España evaluaba el saldo el día 30 en vez del 31.
+      **Fiscalidad** quedó en cuatro ficheros (`index`, `declaracion`, `tabs`,
+      `tramos-table`) más `core/tax/renta.ts` para el borrador de la
+      declaración, y `desgloseBaseTrabajo` en `core/tax/irpf.ts` para que el
+      cuadro pueda enseñar línea a línea el camino de bruto a base imponible SIN
+      recalcularlo. La vista tenía la CUARTA copia del apilado de IRPF por
+      grupo. Correcciones deliberadas, todas con test:
+      · el resumen y la pestaña de trabajo calculaban el IRPF con
+        `calcIRPF(bruto)` sobre el bruto CRUDO — sin cotización, sin art. 19.2
+        ni art. 20 y sin apilar el grupo —, así que no cuadraban con lo que
+        decía la vista de Nóminas para las mismas nóminas;
+      · el neto del resumen era `(bruto × 12) − IRPF × 12` sobre un bruto que ya
+        es anual: con 40.000 € de bruto anunciaba ~343.000 € de neto. La pestaña
+        de trabajo etiquetaba de "mensual" importes anuales y buscaba el tramo
+        marginal con `bruto × 12`;
+      · el límite deducible de las aportaciones a planes de pensiones era
+        `min(8.000, 30 % del RNT)` en el borrador y 1.500 € en la pestaña de al
+        lado — el mismo dato, dos valores. Unificado en 1.500 €
+        (`LIMITE_APORTACION_PENSION`), que es lo que ya usaban nóminas y cuentas;
+      · "otros ingresos sujetos a IRPF" multiplicaba por la frecuencia en vez de
+        dividir (`frecuencia` es el PERIODO): un ingreso trimestral contaba 36
+        veces al año en lugar de 4, y los diarios no se anualizaban;
+      · cambiar de pestaña ya no repinta la vista entera. `setTab` llamaba a
+        `render()` "para actualizar los estilos", lo que recalculaba la
+        declaración y BORRABA lo que el usuario hubiera escrito en los campos
+        manuales. Ahora se repinta solo la barra y el contenido, y escribir en un
+        campo actualiza únicamente el cuadro (sin quitarle el foco).
       **`const` de nivel superior y `window`, otra vez:** `window.Router` era
       `undefined` porque `router/router.js` declara `const Router`. Dos
       consumidores que no comparten ámbito con ese script lo buscaban ahí y

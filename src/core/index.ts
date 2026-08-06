@@ -9,3 +9,4 @@ export * from './goals';
 export * from './tax/irpf';
 export * from './tax/ahorro';
 export * from './tax/pension';
+export * from './tax/renta';

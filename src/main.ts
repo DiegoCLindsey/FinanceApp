@@ -38,6 +38,7 @@ import { createExpensesFeature } from './features/expenses';
 import { createLoansFeature } from './features/loans';
 import { createSalariesFeature } from './features/salaries';
 import { createAccountsFeature } from './features/accounts';
+import { createTaxesFeature } from './features/taxes';
 import { createLedger, type Ledger } from './accounting/ledger';
 import { createTagService, type TagService } from './accounting/tags';
 import { createPrecisionAnalyzer, type PrecisionAnalyzer } from './accounting/precision';
@@ -159,6 +160,7 @@ function bootstrap(): FinanceAppNamespace {
       onDatosCambiados: refrescarLegacy,
     }),
   );
+  app.register(createTaxesFeature({ store }));
 
   app.register(
     createAccountingFeature({

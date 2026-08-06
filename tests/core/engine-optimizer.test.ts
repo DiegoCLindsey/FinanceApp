@@ -221,27 +221,40 @@ describe('memoización del extracto (tarea 1.5)', () => {
     const b = optimizarAmortizaciones(loans, expenses, accounts, config, { frecuencia: 2, mesesHorizonte: 24 });
     expect(a).toEqual(b);
   });
-  it('en el comparador las claves TAMPOCO se repiten: el memo no aporta aciertos aquí', () => {
-    // Hallazgo (2026-07-30): se documentó que el memo compartido entre
-    // frecuencias ahorraba proyecciones. NO es así, y este test lo fija: cada
-    // frecuencia amortiza en fechas distintas (la primera elegible depende de la
-    // frecuencia y del filtro `dia15 >= hoy`), así que ninguna clave coincide.
-    // La mejora de rendimiento medida (~1,8x) viene ENTERAMENTE de que
-    // `capPendienteAntes` use la caché de `resumenPrestamo` en lugar de
-    // recalcular la tabla de amortización en cada préstamo × mes.
-    // El memo se mantiene porque protege de llamadas repetidas idénticas desde
-    // la UI y es la base de la optimización diferida (docs/02, tarea 6.3).
+  // Hallazgo (2026-07-30, corregido el 2026-08-06): se documentó que el memo
+  // compartido entre frecuencias ahorraba proyecciones. Casi nunca: cada
+  // frecuencia amortiza en fechas distintas, así que las claves solo coinciden
+  // en el primer mes, y solo si el día 15 todavía no ha pasado (el optimizador
+  // descarta las fechas con `dia15 < hoy`). La mejora de rendimiento medida
+  // (~1,8x) viene ENTERAMENTE de que `capPendienteAntes` use la caché de
+  // `resumenPrestamo` en lugar de recalcular la tabla en cada préstamo × mes.
+  //
+  // La versión anterior de este test no inyectaba `hoy` y afirmaba `hits === 0`:
+  // pasaba solo pasado el día 15 de cada mes y fallaba durante la primera
+  // quincena. Es el mismo tropiezo que ya se corrigió en accounting-view.
+  const comparar = (hoy: Date) => {
     const memo = createStatementMemo();
     compararFrecuencias(
       loans,
       expenses,
       accounts,
       config,
-      { horizonte: 36, minAmortizable: 500, tipoAmort: 'plazo', frecuencias: [1, 2, 3, 6, 12] } as any,
+      { horizonte: 36, minAmortizable: 500, tipoAmort: 'plazo', frecuencias: [1, 2, 3, 6, 12], hoy } as any,
       memo,
     );
-    const { hits, misses } = memo.stats();
+    return memo.stats();
+  };
+
+  it('pasado el día 15 ninguna clave del comparador se repite: cero aciertos', () => {
+    const { hits, misses } = comparar(new Date(2026, 6, 20));
     expect(misses).toBeGreaterThan(0);
     expect(hits).toBe(0);
+  });
+
+  it('antes del día 15 solo coincide esa primera fecha, compartida por las cinco frecuencias', () => {
+    const { hits, misses } = comparar(new Date(2026, 6, 6));
+    expect(misses).toBeGreaterThan(0);
+    // Cuatro frecuencias reaprovechan lo que proyectó la primera
+    expect(hits).toBe(4);
   });
 });
