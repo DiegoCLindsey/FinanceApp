@@ -470,9 +470,12 @@ src/
 > Objetivo: tests unitarios a nivel de línea y rama del núcleo, y de flujo completo de
 > cada feature, antes de construir los módulos nuevos encima.
 
-- [ ] **3.1 Unit tests `core/`** — objetivo cobertura: líneas ≥ 95 %, ramas ≥ 90 %.
-      Casos límite documentados: tipo 0 %, meses 1, amortización > capital pendiente,
-      años bisiestos, `dia:31` en febrero, tramos vacíos, inflación negativa…
+- [x] **3.1 Unit tests `core/`** — COMPLETADA (2026-08-06). Cobertura de `src/core`:
+      **99,73 % de líneas y 93,14 % de ramas**, por encima del objetivo 95/90.
+      Los caminos defensivos (campos ausentes, colecciones vacías, divisiones por
+      cero, tablas de tramos vacías) están juntos en `tests/core/edge-cases.test.ts`
+      en lugar de repartidos: son los que se rompen con un backup viejo o un dato
+      a medio rellenar, y así se ve de un vistazo cuáles están cubiertos.
 - [ ] **3.2 Unit tests `engine/`** — cada provider aislado con fixtures; statement con
       golden files (extractos completos serializados y versionados en `tests/fixtures/`).
 - [ ] **3.3 Tests de flujo por feature** (happy-dom): crear gasto → aparece en extracto
@@ -481,8 +484,17 @@ src/
 - [ ] **3.4 Property-based tests** (fast-check) para invariantes: la tabla de
       amortización siempre liquida el capital; IRPF monótono no decreciente con la base;
       extracto = suma de deltas.
-- [ ] **3.5 Thresholds en CI** — activar en `vitest.config.ts`: core 95/90, global 85/75.
-      Retirar `tests/nomina.test.cjs` (sustituido).
+- [x] **3.5 Thresholds en CI** — COMPLETADA (2026-08-06). `vitest.config.ts` fija
+      global 85/75 y `src/core/**` 95/90; `npm run test:coverage` ya corre en CI,
+      así que un descenso por debajo del suelo pone el build en rojo (verificado
+      subiendo el umbral a propósito). Son SUELOS, no fotos del estado actual: el
+      margen que hay por encima (93,8 / 82,4 global) se puede gastar sin que el
+      CI se queje por un decimal. `src/main.ts` queda excluido — es el arranque
+      del bundle, publica en `window` y solo tiene sentido verificado en
+      navegador. Retirado `tests/nomina.test.cjs`: probaba COPIAS EN LÍNEA de las
+      funciones, no el código real, y ni siquiera lo recogía el `include` de
+      vitest (`.cjs`), así que llevaba tiempo sin ejecutarse. Lo sustituyen
+      `tests/core/nomina-grupo.test.ts`, `renta.test.ts` y `parity.test.ts`.
 
 ## Fase 4 — Módulo de contabilidad real
 
