@@ -346,6 +346,16 @@ src/
         la fecha estimada como mucho un mes. Además el fin de mes se calcula con
         `formatLocalDate`: el legacy usaba `toISOString()` sobre medianoche local
         y en España evaluaba el saldo el día 30 en vez del 31.
+      **Dashboard (en curso).** Antes de tocar la plantilla se ha extraído su
+      aritmética a `engine/dashboard.ts`: totales del periodo, métricas de
+      flujo (mes en curso y media), resumen de préstamos e intereses por
+      cuenta. Eran ~160 líneas dentro de `render()`, mezcladas con el HTML y
+      sin un solo test; ahora son funciones puras que reciben el extracto ya
+      proyectado. De paso salieron dos errores de huso horario más: el rango
+      del mes en curso y el de `_cuotasDelMes` se calculaban con
+      `new Date(y, m+1, 0).toISOString()`, que en España devuelve el día
+      ANTERIOR — el último día del mes se quedaba fuera de los KPIs, con todo
+      lo que cayera en él.
       **Fiscalidad** quedó en cuatro ficheros (`index`, `declaracion`, `tabs`,
       `tramos-table`) más `core/tax/renta.ts` para el borrador de la
       declaración, y `desgloseBaseTrabajo` en `core/tax/irpf.ts` para que el

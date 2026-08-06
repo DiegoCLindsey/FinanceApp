@@ -50,7 +50,9 @@ export function dibujarComparativa(canvas: HTMLCanvasElement, series: SerieGrafi
       plugins: {
         legend: { labels: { color: 'var(--text2)', font: { size: 11 } } },
         tooltip: {
-          callbacks: { label: (c: { dataset: { label: string }; parsed: { y: number } }) => `${c.dataset.label}: ${formatEUR(c.parsed.y)}` },
+          callbacks: {
+            label: (c: { dataset: { label: string }; parsed: { y: number } }) => `${c.dataset.label}: ${formatEUR(c.parsed.y)}`,
+          },
         },
       },
       scales: {

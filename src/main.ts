@@ -15,6 +15,7 @@ import * as engine from './engine/statement';
 import * as analysis from './engine/analysis';
 import * as margins from './engine/margins';
 import * as optimizer from './engine/optimizer';
+import * as dashboard from './engine/dashboard';
 import { proyectarGastos } from './engine/providers/expenses';
 import { proyectarPrestamos } from './engine/providers/loans';
 import { proyectarTransferencias } from './engine/providers/transfers';
@@ -68,6 +69,7 @@ export interface FinanceAppNamespace {
     analysis: typeof analysis;
     margins: typeof margins;
     optimizer: typeof optimizer;
+    dashboard: typeof dashboard;
   };
   /** Store tipado ya cargado (migraciones aplicadas). */
   store: Store;
@@ -198,6 +200,7 @@ function bootstrap(): FinanceAppNamespace {
       analysis,
       margins,
       optimizer,
+      dashboard,
     },
     store,
     flags,

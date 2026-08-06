@@ -40,12 +40,10 @@ export interface EntradaFiltro<L, E, N, A> {
  * escenario aunque el préstamo sea de base — es el caso de uso principal
  * ("¿y si amortizo agresivamente?").
  */
-export function filtrarPorEscenario<
-  L extends LoanConAmortizaciones,
-  E extends Asignable,
-  N extends Asignable,
-  A extends Asignable,
->(entrada: EntradaFiltro<L, E, N, A>, escenarioId: string | null): EntradaFiltro<L, E, N, A> {
+export function filtrarPorEscenario<L extends LoanConAmortizaciones, E extends Asignable, N extends Asignable, A extends Asignable>(
+  entrada: EntradaFiltro<L, E, N, A>,
+  escenarioId: string | null,
+): EntradaFiltro<L, E, N, A> {
   const visible = (i: Asignable) => visibleEnEscenario(i, escenarioId);
   return {
     loans: entrada.loans.filter(visible).map((l) => ({ ...l, amortizaciones: (l.amortizaciones || []).filter(visible) })),
