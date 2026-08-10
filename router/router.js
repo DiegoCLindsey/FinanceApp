@@ -34,12 +34,17 @@ const Router = (() => {
   function navigate(view) {
     if (!views.includes(view) && !_esNueva(view)) {
       // Nunca en silencio: un botón que no hace nada es lo más difícil de
-      // diagnosticar. Puede ser una vista desactivada, o un despliegue servido
-      // a medias desde la caché del navegador.
-      if (_desactivada(view)) {
+      // diagnosticar. Hay tres motivos posibles y conviene distinguirlos.
+      if (!_nuevas()) {
+        // El paquete nuevo no está: TODAS las vistas salvo el dashboard viven
+        // en él, así que no es cosa de esta vista. Recargar no arregla nada si
+        // el bundle no se ha publicado; hay que decirlo tal cual.
+        console.error(`[Router] "${view}" vive en el paquete nuevo, que no se ha cargado (window.FinanceApp no existe).`);
+        _abrirFuncionalidades();
+      } else if (_desactivada(view)) {
         UI.toast('Esa funcionalidad está desactivada. Actívala en Funcionalidades.', 'warn');
       } else {
-        console.error(`[Router] La vista "${view}" no está disponible. Suele indicar que el navegador ha mezclado ficheros de dos versiones; recarga sin caché.`);
+        console.error(`[Router] La vista "${view}" no existe. Suele indicar que el navegador ha mezclado ficheros de dos versiones; recarga sin caché.`);
         UI.toast('Esta vista no se ha podido cargar. Recarga la página.', 'err');
       }
       return;
@@ -87,9 +92,30 @@ const Router = (() => {
     });
   }
 
+  /** Banner permanente cuando el paquete nuevo no ha llegado a cargarse. */
+  function _avisarPaqueteAusente() {
+    if (document.getElementById('aviso-core')) return;
+    const host = document.querySelector('.view-container');
+    if (!host) return;
+    const div = document.createElement('div');
+    div.id = 'aviso-core';
+    div.className = 'card mb-14';
+    div.style.cssText = 'border:1px solid var(--red);background:rgba(255,77,109,0.07);padding:12px 16px;display:flex;align-items:center;gap:12px';
+    div.innerHTML = `<span style="font-size:18px">⚠</span>
+      <div style="flex:1;font-size:13px">
+        <strong>Solo está disponible el Dashboard.</strong>
+        El módulo principal de la aplicación no se ha cargado, así que el resto de
+        secciones no aparecen en el menú. Tus datos están intactos.
+      </div>
+      <button class="btn-secondary btn-sm" id="btn-aviso-core">Ver detalles</button>`;
+    host.parentElement?.insertBefore(div, host);
+    document.getElementById('btn-aviso-core')?.addEventListener('click', _abrirFuncionalidades);
+  }
+
   function init() {
     // Las vistas nuevas insertan su contenedor y su botón antes de cablear clicks
     _nuevas()?.attachToShell();
+    if (!_nuevas()) _avisarPaqueteAusente();
     document.querySelectorAll('.nav-btn[data-view]').forEach(btn=>btn.onclick=()=>navigate(btn.dataset.view));
     document.getElementById('btn-features')?.addEventListener('click',_abrirFuncionalidades);
     // Mobile menu

@@ -152,6 +152,48 @@ aislamiento funciona; el pintado en sí hay que mirarlo en el navegador real.
 solo el bloque. Y nunca encadenar efectos independientes en un mismo bloque sin
 aislarlos.
 
+### P.6 — Sin bundle, la aplicación se quedaba llena de botones muertos
+
+**Síntoma (reportado por el usuario, 2026-08-06):** al pulsar "Cuentas y Ahorro"
+la consola escupía `[Router] La vista "accounts" no está disponible` y no pasaba
+nada. (Los otros dos errores del informe —`A listener indicated an asynchronous
+response…`— son ruido de una extensión del navegador, no de la aplicación.)
+
+**Causa:** ese mensaje solo puede salir si `window.FinanceApp.app` es `null`, es
+decir si `assets/financeapp-core.js` no está. Y no estaba: el bundle NO se
+versiona en el repositorio (está en `.gitignore`), lo construye el workflow de
+despliegue. GitHub tuvo una incidencia esa tarde —`Failed to resolve action
+download info. Error: Service Unavailable`— que tumbó varios despliegues
+seguidos, así que producción se quedó sirviendo el shell sin su bundle.
+
+El problema de diseño que eso destapó: `index.html` codificaba a mano los
+botones del menú y los contenedores de las NUEVE vistas, incluidas las ocho que
+ya sirve el paquete nuevo. Sin bundle, el usuario veía el menú completo y ocho
+de las nueve entradas no hacían nada.
+
+**Arreglo:**
+  · el shell solo declara ya el Dashboard (la única vista que sigue siendo
+    legacy). Los botones y contenedores del resto los crea el registro de
+    features. Si el bundle falta, la entrada no existe, en lugar de existir y no
+    responder;
+  · el ORDEN DE REGISTRO en `main.ts` pasa a ser significativo — el registro
+    añade cada botón al final de su sección — y se ha fijado al orden que el
+    menú ya tenía, para que al usuario no se le mueva nada de sitio;
+  · el router distingue los tres motivos por los que una vista puede no estar
+    (paquete ausente / flag apagada / ruta inexistente) en vez de dar el mismo
+    mensaje para los tres. Cuando el paquete falta abre directamente la ventana
+    de diagnóstico, porque recargar no arregla nada si el bundle no se ha
+    publicado;
+  · y aparece un banner permanente explicando que solo está el Dashboard y que
+    los datos están intactos.
+
+**Verificación:** en Chromium, con bundle salen los diez botones en el orden de
+siempre y todas las vistas activas montan; sin bundle queda solo el Dashboard,
+las dos secciones vacías y el banner.
+
+**Lección:** el shell y el paquete no pueden declarar la misma información por
+duplicado. Lo que sirve el paquete, lo declara el paquete.
+
 ## Fase 1 — Refactor SOLID + modularización (TypeScript, ESM)
 
 > Objetivo: migrar a `src/` con módulos ES tipados y build de Vite, manteniendo paridad

@@ -150,8 +150,10 @@ function bootstrap(): FinanceAppNamespace {
     (globalThis as { State?: { load?: () => unknown } }).State?.load?.();
   };
 
-  app.register(createMarginsFeature({ store, onDatosCambiados: refrescarLegacy }));
-  app.register(createInflationFeature({ store, onDatosCambiados: refrescarLegacy }));
+  // El ORDEN IMPORTA: el registro añade cada botón al final de su sección, así
+  // que este es el orden en que aparecen en el menú. Se mantiene el que el
+  // usuario ya conocía cuando los botones estaban escritos en index.html.
+  // Mi dinero:
   app.register(createExpensesFeature({ store, onDatosCambiados: refrescarLegacy }));
   app.register(createLoansFeature({ store, onDatosCambiados: refrescarLegacy }));
   app.register(createSalariesFeature({ store, onDatosCambiados: refrescarLegacy }));
@@ -163,9 +165,6 @@ function bootstrap(): FinanceAppNamespace {
       onDatosCambiados: refrescarLegacy,
     }),
   );
-  app.register(createTaxesFeature({ store }));
-  app.register(createScenariosFeature({ store, onDatosCambiados: refrescarLegacy }));
-
   app.register(
     createAccountingFeature({
       ledger,
@@ -177,6 +176,11 @@ function bootstrap(): FinanceAppNamespace {
       onDatosCambiados: refrescarLegacy,
     }),
   );
+  // Planificación:
+  app.register(createScenariosFeature({ store, onDatosCambiados: refrescarLegacy }));
+  app.register(createInflationFeature({ store, onDatosCambiados: refrescarLegacy }));
+  app.register(createTaxesFeature({ store }));
+  app.register(createMarginsFeature({ store, onDatosCambiados: refrescarLegacy }));
 
   return {
     version: SCHEMA_VERSION,

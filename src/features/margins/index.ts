@@ -14,7 +14,7 @@
 // que es quien consume hoy el colchón.
 
 import { formatEUR } from '@/core/money';
-import { todayISO, type ISODate } from '@/core/dates';
+import { parseLocalDate, todayISO, type ISODate } from '@/core/dates';
 import {
   calcGastoBasicoMensual,
   calcMargenEnFecha,
@@ -38,6 +38,13 @@ export interface MarginsStoreLike {
 export interface MarginsViewDeps {
   store: MarginsStoreLike;
   onDatosCambiados?: () => void;
+  /**
+   * "Hoy" de la vista. Inyectable, y no `todayISO()`/`new Date()` sueltos: el
+   * umbral de un margen "de N meses" se calcula proyectando el gasto básico
+   * desde hoy, así que sin fijarlo el resultado cambia según el día en que se
+   * mire (y el test que lo cubre pasaba o fallaba según la fecha).
+   */
+  hoy?: () => ISODate;
 }
 
 const ICONO =
@@ -49,6 +56,8 @@ function uid(): string {
 
 export function createMarginsFeature(deps: MarginsViewDeps): FeatureManifest {
   const { store } = deps;
+  const hoy = deps.hoy ?? todayISO;
+  const hoyDate = () => parseLocalDate(hoy());
 
   const margenes = (): MargenSeguridad[] => store.get('config').margenesSeguridad ?? [];
 
@@ -67,7 +76,7 @@ export function createMarginsFeature(deps: MarginsViewDeps): FeatureManifest {
 
   function umbralHoy(m: MargenSeguridad): string {
     const cfg = store.get('config');
-    const valor = calcMargenEnFecha(m, store.get('expenses'), cfg, store.get('loans'), todayISO());
+    const valor = calcMargenEnFecha(m, store.get('expenses'), cfg, store.get('loans'), hoy(), false, hoyDate());
     return formatEUR(valor);
   }
 
@@ -271,7 +280,7 @@ export function createMarginsFeature(deps: MarginsViewDeps): FeatureManifest {
   function render(container: HTMLElement): void {
     const lista = margenes();
     const cuentas = store.get('accounts');
-    const gastoMensual = calcGastoBasicoMensual(store.get('expenses'));
+    const gastoMensual = calcGastoBasicoMensual(store.get('expenses'), hoyDate());
 
     container.innerHTML = `
       <div class="page-header">

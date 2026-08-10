@@ -55,7 +55,7 @@ function entorno(margenes: MargenSeguridad[] = []) {
   flags.setEnabled('margenes', true);
   const onDatosCambiados = vi.fn();
   const registry = createFeatureRegistry({ isEnabled: (id) => flags.isEnabled(id) });
-  registry.register(createMarginsFeature({ store, onDatosCambiados }));
+  registry.register(createMarginsFeature({ store, onDatosCambiados, hoy: () => '2026-07-30' }));
   return { store, flags, registry, onDatosCambiados };
 }
 
