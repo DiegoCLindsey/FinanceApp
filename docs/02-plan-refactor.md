@@ -191,8 +191,28 @@ de las nueve entradas no hacían nada.
 siempre y todas las vistas activas montan; sin bundle queda solo el Dashboard,
 las dos secciones vacías y el banner.
 
+**Continuación (el usuario seguía viendo el banner tras el despliegue bueno):**
+reproducido el pipeline entero en local —mismas exclusiones y mismo sellado
+`?v=<sha>`— el bundle carga sin problema y salen los diez botones, así que lo
+publicado es correcto. Quedan dos causas posibles en el navegador del usuario:
+una caché envenenada durante las horas en que el bundle daba 404, o que el
+bundle SÍ se descargue y reviente al arrancar con sus datos reales (una
+migración, por ejemplo), en cuyo caso `publicar()` lo captura en
+`window.FinanceAppError` y `FinanceApp` queda sin definir — el banner sale
+igual en ambos casos. Por eso ahora:
+  · el banner MUESTRA el motivo directamente (descarga fallida vs. error de
+    arranque, con el mensaje), en lugar de esconderlo tras un botón. Distinguir
+    las dos causas es lo primero que hace falta para diagnosticar;
+  · si el paquete no está, se recarga UNA vez con una URL distinta (`?_r=…`)
+    para forzar a pedir el documento de nuevo y con él los scripts vigentes. La
+    marca va en `sessionStorage` para no entrar en bucle, y se descarta cuando
+    el paquete carga bien, de modo que un fallo futuro pueda reintentar también.
+Verificado en Chromium: con bundle, una sola carga y sin banner; sin bundle, dos
+cargas (la segunda con `?_r=`) y luego el banner con su motivo.
+
 **Lección:** el shell y el paquete no pueden declarar la misma información por
-duplicado. Lo que sirve el paquete, lo declara el paquete.
+duplicado. Lo que sirve el paquete, lo declara el paquete. Y un fallo de carga
+tiene que decir POR QUÉ, no solo QUÉ.
 
 ## Fase 1 — Refactor SOLID + modularización (TypeScript, ESM)
 

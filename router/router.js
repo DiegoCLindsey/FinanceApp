@@ -92,6 +92,27 @@ const Router = (() => {
     });
   }
 
+  // Un despliegue roto puede dejar el navegador con un index.html cacheado que
+  // apunta a un bundle que entonces daba 404. Recargar con una URL distinta
+  // fuerza a pedir el documento otra vez, y con él el juego de scripts vigente.
+  // Una sola vez por sesión: si el bundle de verdad no está publicado, el
+  // reintento no arregla nada y hay que enseñar el aviso, no entrar en bucle.
+  const _CLAVE_REINTENTO = 'financeapp_reintento_core';
+  function _recargarSinCache() {
+    const u = new URL(window.location.href);
+    u.searchParams.set('_r', Date.now().toString(36));
+    window.location.replace(u.toString());
+  }
+  function _reintentarUnaVez() {
+    try {
+      if (sessionStorage.getItem(_CLAVE_REINTENTO)) return false;
+      sessionStorage.setItem(_CLAVE_REINTENTO, '1');
+    } catch { return false; } // sin sessionStorage no hay forma de evitar el bucle
+    console.warn('[FinanceApp] El módulo principal no está; recargando sin caché (una vez).');
+    _recargarSinCache();
+    return true;
+  }
+
   /** Banner permanente cuando el paquete nuevo no ha llegado a cargarse. */
   function _avisarPaqueteAusente() {
     if (document.getElementById('aviso-core')) return;
@@ -101,21 +122,38 @@ const Router = (() => {
     div.id = 'aviso-core';
     div.className = 'card mb-14';
     div.style.cssText = 'border:1px solid var(--red);background:rgba(255,77,109,0.07);padding:12px 16px;display:flex;align-items:center;gap:12px';
+    // Distinguir "no se descargó" de "se descargó y reventó al arrancar" es lo
+    // primero que hace falta para diagnosticar, así que el motivo va en el
+    // propio banner en vez de escondido detrás de un botón.
+    const err = window.FinanceAppError;
+    const motivo = err
+      ? `Arrancó con un error: <span style="font-family:var(--font-mono);color:var(--red);word-break:break-word">${_escapar(err.mensaje)}</span>`
+      : 'No se ha llegado a descargar (copia antigua en el navegador o conexión interrumpida).';
     div.innerHTML = `<span style="font-size:18px">⚠</span>
       <div style="flex:1;font-size:13px">
         <strong>Solo está disponible el Dashboard.</strong>
         El módulo principal de la aplicación no se ha cargado, así que el resto de
         secciones no aparecen en el menú. Tus datos están intactos.
+        <div style="margin-top:6px;color:var(--text3)">${motivo}</div>
       </div>
+      <button class="btn-primary btn-sm" id="btn-aviso-recargar">Recargar sin caché</button>
       <button class="btn-secondary btn-sm" id="btn-aviso-core">Ver detalles</button>`;
     host.parentElement?.insertBefore(div, host);
+    document.getElementById('btn-aviso-recargar')?.addEventListener('click', _recargarSinCache);
     document.getElementById('btn-aviso-core')?.addEventListener('click', _abrirFuncionalidades);
   }
 
   function init() {
     // Las vistas nuevas insertan su contenedor y su botón antes de cablear clicks
     _nuevas()?.attachToShell();
-    if (!_nuevas()) _avisarPaqueteAusente();
+    if (_nuevas()) {
+      // Cargó bien: se descarta la marca para que un fallo futuro pueda
+      // reintentar también una vez.
+      try { sessionStorage.removeItem(_CLAVE_REINTENTO); } catch { /* da igual */ }
+    } else {
+      if (_reintentarUnaVez()) return; // la página se está recargando
+      _avisarPaqueteAusente();
+    }
     document.querySelectorAll('.nav-btn[data-view]').forEach(btn=>btn.onclick=()=>navigate(btn.dataset.view));
     document.getElementById('btn-features')?.addEventListener('click',_abrirFuncionalidades);
     // Mobile menu
