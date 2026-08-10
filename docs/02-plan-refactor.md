@@ -352,14 +352,15 @@ src/
       el CI en rojo por dos ficheros sin pasar por Prettier — el `--write` se
       había lanzado solo sobre `tests/`. Ni tipos ni tests fallaban; el
       pipeline se paró en el formato y el despliegue quedó cancelado.
-      **TESTS QUE DEPENDEN DEL DÍA EN QUE SE EJECUTAN:** ya han aparecido tres
-      (contabilidad, precisión y el comparador de frecuencias del optimizador).
-      El patrón es siempre el mismo: la vista o el motor llaman a `new Date()`
-      por dentro y el test fija una fecha distinta. La regla es que TODO lo que
-      dependa de "hoy" se inyecte — `hoy?: () => ISODate` en las deps de la
-      vista, `hoy?: Date` en las funciones del motor — y que el test lo pase
-      siempre. El último caso (2026-08-06) afirmaba que el memo del comparador
-      no da aciertos: solo era cierto pasado el día 15 del mes.
+      **TESTS QUE DEPENDEN DEL DÍA EN QUE SE EJECUTAN:** van ya CUATRO
+      (contabilidad, precisión, el comparador de frecuencias del optimizador y
+      el umbral "de N meses" de los márgenes, que proyecta el gasto básico desde
+      hoy y por tanto cambia de valor según el día). El patrón es siempre el
+      mismo: la vista o el motor llaman a `new Date()` por dentro y el test fija
+      una fecha distinta. La regla es que TODO lo que dependa de "hoy" se
+      inyecte — `hoy?: () => ISODate` en las deps de la vista, `hoy?: Date` en
+      las funciones del motor — y que el test lo pase siempre. El del comparador
+      afirmaba que el memo no da aciertos: solo era cierto pasado el día 15.
       **TRAMPA DEL ENTORNO DE TESTS:** happy-dom (v15 y v20) ignora el atributo
       `selected` al parsear `innerHTML` — el `selectedIndex` de un `<select>`
       creado así se queda en 1 (o −1), marque lo que marque el HTML. Los
