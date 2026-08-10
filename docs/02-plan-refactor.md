@@ -214,6 +214,40 @@ cargas (la segunda con `?_r=`) y luego el banner con su motivo.
 duplicado. Lo que sirve el paquete, lo declara el paquete. Y un fallo de carga
 tiene que decir POR QUÉ, no solo QUÉ.
 
+### P.7 — CAUSA RAÍZ: Pages servía la rama, no el artefacto del workflow
+
+**Síntoma (2026-08-10):** tras un despliegue verde, la consola del usuario daba
+404 en `assets/financeapp-core.js` y en `firebase/firebase-config.js`, y en
+ningún otro fichero.
+
+**Causa:** esos dos son EXACTAMENTE los únicos ficheros que están en
+`.gitignore` y genera el pipeline. Que fallen solo ellos significa que lo
+servido es el contenido crudo de la rama, no el `_site/` que arma el workflow
+(`assets/` ni siquiera existe en `main`). GitHub Pages estaba configurado como
+**"Deploy from a branch"**, así que en cada push corrían DOS despliegues: el
+nativo (`pages build and deployment`, `event: dynamic`, publica la rama tal
+cual) y el nuestro (`Deploy FinanceApp to GitHub Pages`, que compila el bundle).
+Compiten, y cuando ganaba el nativo el sitio se quedaba sin bundle → todas las
+vistas portadas muertas. De ahí que el fallo fuera intermitente y que a ratos
+pareciera un problema de caché: no lo era.
+
+**Arreglo:** Settings → Pages → Source, de "Deploy from a branch" a
+**"GitHub Actions"**. Solo lo puede hacer quien administra el repositorio; no se
+puede corregir desde el código. Se descartó versionar el bundle en la rama
+—que también habría funcionado, porque el build es determinista y se podía
+verificar en CI— para no meter 300 KB de artefacto compilado en cada commit que
+toque `src/`.
+
+**Cómo reconocerlo si vuelve:** si fallan SOLO los ficheros de `.gitignore` que
+genera el pipeline, no es caché ni es el código: es que Pages está sirviendo la
+rama. Un despliegue "verde" del workflow propio NO garantiza que sea el que se
+está sirviendo.
+
+**Lección:** un workflow que reporta "Reported success!" solo dice que subió su
+artefacto, no que ese artefacto sea el que el usuario recibe. Cuando el síntoma
+no cuadre con lo desplegado, comprobar QUIÉN publica antes de sospechar del
+código.
+
 ## Fase 1 — Refactor SOLID + modularización (TypeScript, ESM)
 
 > Objetivo: migrar a `src/` con módulos ES tipados y build de Vite, manteniendo paridad

@@ -383,7 +383,10 @@
      legacy para que puedan consumirlo. Si el fichero no existe (repo servido
      sin `npm run build`), la app legacy sigue funcionando igual.
      ──────────────────────────────────────────────────────────────────────── -->
-<script src="assets/financeapp-core.js" onerror="console.info('[FinanceApp] core no compilado — ejecuta npm run build para habilitar los módulos nuevos')"></script>
+<!-- El bundle NO está versionado (.gitignore): lo construye el workflow de
+     despliegue. Si da 404 en producción es que GitHub Pages está sirviendo la
+     rama en vez del artefacto del workflow — ver docs/02-plan-refactor.md, P.7. -->
+<script src="assets/financeapp-core.js" onerror="console.error('[FinanceApp] No se ha podido cargar el módulo principal (404). En local: ejecuta npm run build. En producción: el despliegue no ha publicado assets/financeapp-core.js.')"></script>
 
 <!-- ── Common services (no dependencies) ── -->
 <script src="common/crypto.js"></script>
