@@ -57,3 +57,38 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 7
+
+  # ── El bundle versionado no puede desincronizarse del fuente ────────────────
+  # `assets/financeapp-core.js` se versiona a propósito (ver docs/02-plan-refactor.md,
+  # incidencia P.7): si Pages sirve la rama en vez del artefacto del workflow, un
+  # fichero que solo existiera en CI da 404 y tumba la aplicación entera. El precio
+  # es que hay que recompilar a mano al tocar `src/`; este job es quien lo vigila.
+  bundle:
+    name: Bundle al día
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rebuild and compare
+        run: |
+          set -euo pipefail
+          COMMITTED=$(sha256sum assets/financeapp-core.js | cut -d' ' -f1)
+          npm run build
+          REBUILT=$(sha256sum assets/financeapp-core.js | cut -d' ' -f1)
+          if [ "$COMMITTED" != "$REBUILT" ]; then
+            echo "::error file=assets/financeapp-core.js::El bundle versionado no coincide con el fuente. Ejecuta 'npm run build' y añade assets/financeapp-core.js al commit."
+            echo "  commiteado: $COMMITTED"
+            echo "  recompilado: $REBUILT"
+            git --no-pager diff --stat -- assets/financeapp-core.js || true
+            exit 1
+          fi
+          echo "Bundle al día ($COMMITTED)."

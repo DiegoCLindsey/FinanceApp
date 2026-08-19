@@ -231,12 +231,35 @@ Compiten, y cuando ganaba el nativo el sitio se quedaba sin bundle → todas las
 vistas portadas muertas. De ahí que el fallo fuera intermitente y que a ratos
 pareciera un problema de caché: no lo era.
 
-**Arreglo:** Settings → Pages → Source, de "Deploy from a branch" a
-**"GitHub Actions"**. Solo lo puede hacer quien administra el repositorio; no se
-puede corregir desde el código. Se descartó versionar el bundle en la rama
-—que también habría funcionado, porque el build es determinista y se podía
-verificar en CI— para no meter 300 KB de artefacto compilado en cada commit que
-toque `src/`.
+**Arreglo definitivo (pendiente, solo lo puede hacer quien administra el repo):**
+Settings → Pages → Source, de "Deploy from a branch" a **"GitHub Actions"**. No
+se puede corregir desde el código.
+
+**Mitigación aplicada (2026-08-19), porque el arreglo definitivo no llegó a
+surtir efecto en tres rondas y la aplicación seguía caída en producción:** se
+versiona `assets/financeapp-core.js` en la rama. Así el bundle está sirva quien
+sirva, rama o artefacto. Condiciones que lo hacen viable y salvaguardas:
+
+- El build es **determinista**: dos ejecuciones seguidas dan el mismo SHA256
+  (`c4f953f…3226f8` en la ejecución que motivó esto).
+- El job **`Bundle al día`** de `ci.yml` recompila y compara con el fichero
+  commiteado; si no coinciden, falla con el comando exacto a ejecutar. Es la
+  única defensa contra que el artefacto se desincronice del fuente, que es el
+  riesgo real de versionar un compilado.
+- El **sourcemap NO se versiona** (`assets/financeapp-core.js.map`, 916 KB).
+- Se añade **`.nojekyll`** en la raíz para que, mientras Pages sirva la rama, el
+  builder de Jekyll copie los ficheros tal cual en vez de procesarlos.
+
+**Coste aceptado:** ~300 KB de compilado por cada commit que toque `src/`, y hay
+que acordarse de `npm run build` antes de commitear (el job lo recuerda). Es
+reversible: en cuanto Pages pase a "GitHub Actions", se vuelve a ignorar el
+bundle y se borra el job.
+
+**Lo que la mitigación NO arregla:** `firebase/firebase-config.js` y la
+inyección de `GDRIVE_CLIENT_ID`/`GDRIVE_CLIENT_SECRET` salen de secretos del
+repositorio y **no pueden versionarse**. Mientras Pages sirva la rama, esa
+configuración seguirá ausente y el usuario tendrá que introducirla por la UI.
+Otra razón por la que cambiar el Source sigue siendo lo correcto.
 
 **Cómo reconocerlo si vuelve:** si fallan SOLO los ficheros de `.gitignore` que
 genera el pipeline, no es caché ni es el código: es que Pages está sirviendo la

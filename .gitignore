@@ -1,7 +1,10 @@
 node_modules/
 dist/
-# Bundle generado por Vite desde src/ (se compila en CI y en local con npm run build)
-assets/financeapp-core.js
+# El BUNDLE SÍ se versiona (ver docs/02-plan-refactor.md, P.7): GitHub Pages
+# puede estar sirviendo la rama en vez del artefacto del workflow, y entonces un
+# fichero solo generado en CI da 404 y tumba la aplicación entera. Un paso de CI
+# recompila y compara para que no pueda desincronizarse del fuente.
+# El sourcemap no: son 900 KB que nadie necesita en producción.
 assets/financeapp-core.js.map
 coverage/
 _site/
