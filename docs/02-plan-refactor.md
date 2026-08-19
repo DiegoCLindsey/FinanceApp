@@ -479,7 +479,14 @@ src/
         la fecha estimada como mucho un mes. Además el fin de mes se calcula con
         `formatLocalDate`: el legacy usaba `toISOString()` sobre medianoche local
         y en España evaluaba el saldo el día 30 en vez del 31.
-      **Dashboard (en curso).** Antes de tocar la plantilla se ha extraído su
+      **Dashboard (en curso).** Se construye por piezas SIN tocar el router: el
+      dashboard legacy sigue sirviendo la vista hasta que la nueva esté
+      completa, porque es la única que queda y no puede quedarse a medias.
+      Piezas hechas: `features/dashboard/salud.ts` (los tres indicadores y el
+      formulario de umbrales, con los valores saneados al leerlos — el legacy
+      los guardaba crudos y un umbral fuera de [0,100] dejaba el semáforo en un
+      estado imposible de interpretar).
+      Antes de tocar la plantilla se extrajo su
       aritmética a `engine/dashboard.ts`: totales del periodo, métricas de
       flujo (mes en curso y media), resumen de préstamos e intereses por
       cuenta. Eran ~160 líneas dentro de `render()`, mezcladas con el HTML y
