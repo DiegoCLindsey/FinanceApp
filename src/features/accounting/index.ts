@@ -92,7 +92,7 @@ export function createAccountingFeature(deps: AccountingViewDeps): FeatureManife
       </div>
 
       <div id="acc-transacciones"></div>
-      <div id="acc-precision"></div>`;
+      <div id="acc-precision" data-feature="precision-estimaciones"></div>`;
 
     const zonaTx = container.querySelector<HTMLElement>('#acc-transacciones') as HTMLElement;
     const zonaPrec = container.querySelector<HTMLElement>('#acc-precision') as HTMLElement;

@@ -192,3 +192,82 @@ describe('gating del shell', () => {
     }
   });
 });
+
+describe('gating de sub-funcionalidades (data-feature)', () => {
+  // El sidebar solo cubre vistas. Lo que vive DENTRO de una vista —el botón de
+  // optimizar amortizaciones, los paneles del dashboard— no tenía gating, y
+  // salía en pantalla aunque su funcionalidad estuviera apagada.
+  beforeEach(() => {
+    montarShell();
+  });
+
+  const gate = () => {
+    const { flags } = nuevoEntorno();
+    return { flags, gating: createGating({ flags }) };
+  };
+
+  const pon = (html: string) => {
+    const zona = document.createElement('div');
+    zona.innerHTML = html;
+    document.body.appendChild(zona);
+    return zona;
+  };
+
+  it('oculta y deshabilita lo marcado cuando el flag está apagado', () => {
+    const { flags, gating } = gate();
+    flags.setEnabled('optimizador', false);
+    const zona = pon('<button data-feature="optimizador">Optimizar</button>');
+    gating.apply();
+
+    const btn = zona.querySelector('button') as HTMLButtonElement;
+    expect(btn.style.display).toBe('none');
+    // Ocultar no basta: con display:none un .click() programático sigue
+    // llegando, y en algunos navegadores el foco por teclado también.
+    expect(btn.disabled).toBe(true);
+    expect(btn.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('lo deja visible y utilizable cuando el flag está encendido', () => {
+    const { flags, gating } = gate();
+    flags.setEnabled('loans', true);
+    flags.setEnabled('optimizador', true);
+    const zona = pon('<button data-feature="optimizador">Optimizar</button>');
+    gating.apply();
+
+    const btn = zona.querySelector('button') as HTMLButtonElement;
+    expect(btn.style.display).not.toBe('none');
+    expect(btn.disabled).toBe(false);
+    expect(btn.hasAttribute('aria-hidden')).toBe(false);
+  });
+
+  it('vuelve a mostrarlo al reactivar sin necesidad de recargar', () => {
+    const { flags, gating } = gate();
+    flags.setEnabled('optimizador', false);
+    const zona = pon('<button data-feature="optimizador">Optimizar</button>');
+    gating.apply();
+    const btn = zona.querySelector('button') as HTMLButtonElement;
+    expect(btn.style.display).toBe('none');
+
+    flags.setEnabled('loans', true);
+    flags.setEnabled('optimizador', true);
+    gating.apply();
+    expect(btn.style.display).not.toBe('none');
+    expect(btn.disabled).toBe(false);
+  });
+
+  it('cubre varios elementos del mismo flag a la vez', () => {
+    const { flags, gating } = gate();
+    flags.setEnabled('optimizador', false);
+    const zona = pon('<button data-feature="optimizador">A</button><div data-feature="optimizador">B</div>');
+    gating.apply();
+    expect([...zona.querySelectorAll<HTMLElement>('[data-feature]')].every((el) => el.style.display === 'none')).toBe(true);
+  });
+
+  it('no toca lo que no está marcado', () => {
+    const { flags, gating } = gate();
+    flags.setEnabled('optimizador', false);
+    const zona = pon('<button id="otro">Nuevo préstamo</button>');
+    gating.apply();
+    expect((zona.querySelector('#otro') as HTMLElement).style.display).toBe('');
+  });
+});

@@ -28,6 +28,7 @@
 // conserva por paridad; corregirlo requiere un golden test dedicado.
 
 import { formatLocalDate, todayISO, type ISODate } from '@/core/dates';
+import { exigirFeature } from '@/flags/guard';
 import { resumenPrestamo } from '@/core/loan';
 import { saldoRealCuenta } from '@/core/accounts';
 import { generarExtracto, type StatementAccount, type StatementConfig, type StatementInput } from './statement';
@@ -178,6 +179,10 @@ export function optimizarAmortizaciones(
   options: OptimizerOptions = {},
   memo: ReturnType<typeof createStatementMemo> = createStatementMemo(),
 ): OptimizerResult {
+  // Antes de calcular nada: si la funcionalidad está apagada esto no debe
+  // devolver un plan, debe fallar. Ver `flags/guard`.
+  exigirFeature('optimizador', 'calcular el plan de amortizaciones');
+
   const {
     frecuencia = 1,
     mesesHorizonte = 36,
@@ -425,6 +430,8 @@ export function compararFrecuencias(
   options: CompararOptions = {},
   memoExterno?: ReturnType<typeof createStatementMemo>,
 ): { resultados: ComparativaFila[]; saldoBase: number; fechaObjetivo: ISODate } {
+  exigirFeature('comparador-frecuencias', 'comparar frecuencias de amortización');
+
   const {
     horizonte = 60,
     minAmortizable = 500,

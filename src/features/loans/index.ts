@@ -120,7 +120,7 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
         <h1 class="page-title">Mis <span>Préstamos</span></h1>
         <div class="page-actions">
           ${finalizados.size > 0 ? `<button class="btn-secondary btn-sm" data-toggle-finalizados>${mostrarFinalizados ? 'Ocultar' : 'Mostrar'} finalizados (${finalizados.size})</button>` : ''}
-          <button class="btn-secondary" data-optimizar>✨ Optimizar amortizaciones</button>
+          <button class="btn-secondary" data-optimizar data-feature="optimizador">✨ Optimizar amortizaciones</button>
           <button class="btn-primary" data-nuevo-loan>+ Nuevo préstamo</button>
         </div>
       </div>

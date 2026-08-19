@@ -13,6 +13,7 @@ import { saldoRealCuenta } from '@/core/accounts';
 import { compararFrecuencias, optimizarAmortizaciones, type ComparativaFila, type PlanItem } from '@/engine/optimizer';
 import type { Account, AppConfig, Expense, Loan, Nomina } from '@/state/schema';
 import { esc, onChange, onClick, toast } from '../accounting/dom';
+import { featureActiva } from '@/flags/guard';
 import { campo, selector } from './forms';
 
 export interface OptimizerModalDeps {
@@ -67,7 +68,28 @@ export function createOptimizerModal(deps: OptimizerModalDeps) {
 
   // ── Formulario de parámetros ────────────────────────────────────────────────
 
+  /**
+   * Ejecuta un cálculo del motor y convierte el corte por feature flag en un
+   * aviso, en vez de dejar que reviente por dentro sin que se vea nada.
+   *
+   * El motor lanza cuando la funcionalidad está desactivada (ver `flags/guard`).
+   * Aquí no se distingue "apagado" de cualquier otro fallo a propósito: en ambos
+   * casos lo correcto es no pintar resultados y decir por qué.
+   */
+  function conAviso<T>(fn: () => T): T | null {
+    try {
+      return fn();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'No se ha podido completar el cálculo', 'err');
+      return null;
+    }
+  }
+
   function abrir(): void {
+    if (!featureActiva('optimizador')) {
+      toast('El optimizador de amortizaciones está desactivado. Actívalo en ⚙ Funcionalidades.', 'err');
+      return;
+    }
     const loans = deps.loans().filter((l) => l.activo && !l.simulacion);
     if (loans.length === 0) {
       toast('No hay préstamos activos para optimizar', 'err');
@@ -144,7 +166,7 @@ export function createOptimizerModal(deps: OptimizerModalDeps) {
       </div>
       <div class="flex gap-8 mt-16" style="justify-content:flex-end;flex-wrap:wrap">
         <button class="btn-secondary" data-cancelar>Cancelar</button>
-        <button class="btn-secondary" data-opt-comparar>📊 Comparar frecuencias</button>
+        <button class="btn-secondary" data-opt-comparar data-feature="comparador-frecuencias">📊 Comparar frecuencias</button>
         <button class="btn-primary" data-opt-calcular>Calcular plan manual</button>
       </div>`,
     );
@@ -242,17 +264,20 @@ export function createOptimizerModal(deps: OptimizerModalDeps) {
     if (limpiarPlanPrevio()) toast('Plan anterior eliminado, recalculando…');
     const { loans, expenses, accounts, config, nominas } = datosMotor();
 
-    const resultado = optimizarAmortizaciones(loans, expenses, accounts, config, {
-      frecuencia: p.frecuencia,
-      mesesHorizonte: p.horizonte,
-      minAmortizable: p.minAmortizable,
-      tipoAmort: p.tipoAmort,
-      fechaPrimeraAmort: p.fechaPrimeraAmort,
-      loanIds: p.loanIds,
-      nominas,
-      sourceAccountId: p.sourceAccountId,
-      selectedMarginIds: p.selectedMarginIds,
-    });
+    const resultado = conAviso(() =>
+      optimizarAmortizaciones(loans, expenses, accounts, config, {
+        frecuencia: p.frecuencia,
+        mesesHorizonte: p.horizonte,
+        minAmortizable: p.minAmortizable,
+        tipoAmort: p.tipoAmort,
+        fechaPrimeraAmort: p.fechaPrimeraAmort,
+        loanIds: p.loanIds,
+        nominas,
+        sourceAccountId: p.sourceAccountId,
+        selectedMarginIds: p.selectedMarginIds,
+      }),
+    );
+    if (!resultado) return;
 
     if (resultado.plan.length === 0) {
       sinResultados(
@@ -306,18 +331,21 @@ export function createOptimizerModal(deps: OptimizerModalDeps) {
     limpiarPlanPrevio();
     const { loans, expenses, accounts, config, nominas } = datosMotor();
 
-    const resultado = compararFrecuencias(loans, expenses, accounts, config, {
-      horizonte: p.horizonte,
-      minAmortizable: p.minAmortizable,
-      tipoAmort: p.tipoAmort,
-      fechaObjetivo: p.fechaObjetivo,
-      frecuencias: [1, 2, 3, 6, 12],
-      fechaPrimeraAmort: p.fechaPrimeraAmort,
-      loanIds: p.loanIds,
-      nominas,
-      sourceAccountId: p.sourceAccountId,
-      selectedMarginIds: p.selectedMarginIds,
-    });
+    const resultado = conAviso(() =>
+      compararFrecuencias(loans, expenses, accounts, config, {
+        horizonte: p.horizonte,
+        minAmortizable: p.minAmortizable,
+        tipoAmort: p.tipoAmort,
+        fechaObjetivo: p.fechaObjetivo,
+        frecuencias: [1, 2, 3, 6, 12],
+        fechaPrimeraAmort: p.fechaPrimeraAmort,
+        loanIds: p.loanIds,
+        nominas,
+        sourceAccountId: p.sourceAccountId,
+        selectedMarginIds: p.selectedMarginIds,
+      }),
+    );
+    if (!resultado) return;
 
     if (resultado.resultados.length === 0) {
       sinResultados('No hay excedente suficiente en ninguna frecuencia.');

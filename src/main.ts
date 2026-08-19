@@ -31,6 +31,7 @@ import { createFlags, type Flags } from './flags/service';
 import { FEATURES, featuresPorGrupo } from './flags/registry';
 import { createFeaturesModal } from './ui/features-modal';
 import { createGating } from './ui/gating';
+import { instalarConsultaFlags } from './flags/guard';
 import { createFeatureRegistry, type FeatureRegistry } from './app/feature-registry';
 import { createAccountingFeature } from './features/accounting';
 import { createMarginsFeature } from './features/margins';
@@ -81,6 +82,11 @@ export interface FinanceAppNamespace {
     openFeatures: () => void;
     /** Re-aplica el gating de los flags al shell (sidebar y vista activa). */
     applyGating: () => void;
+    /**
+     * Arranca la vigilancia del DOM para que lo marcado con `data-feature`
+     * siga oculto tras cada repintado. Devuelve el `detener`.
+     */
+    watchGating: () => () => void;
   };
   /** Registro de vistas del paquete nuevo; lo consulta el router del shell. */
   app: FeatureRegistry;
@@ -115,6 +121,10 @@ function bootstrap(): FinanceAppNamespace {
     console.info(`[FinanceApp] Migraciones aplicadas: ${applied.join(', ')} (esquema v${SCHEMA_VERSION})`);
   }
   const flags = createFlags(store);
+  // Segunda línea de defensa: a partir de aquí, las operaciones de las
+  // funcionalidades opcionales fallan si su flag está apagado en vez de
+  // devolver resultados que nadie debería estar viendo. Ver `flags/guard`.
+  instalarConsultaFlags((id) => flags.isEnabled(id));
   // El límite se lee en cada comprobación, no se captura: mientras el modal de
   // datos siga siendo legacy, es `State` quien tiene la copia recién escrita y
   // la del store se queda atrás hasta la siguiente recarga. Puente temporal,
@@ -209,7 +219,7 @@ function bootstrap(): FinanceAppNamespace {
     store,
     flags,
     featureRegistry: { all: FEATURES, porGrupo: featuresPorGrupo },
-    ui: { openFeatures: featuresModal.open, applyGating: gating.apply },
+    ui: { openFeatures: featuresModal.open, applyGating: gating.apply, watchGating: () => gating.observar() },
     app,
     session: Object.assign(sesion, {
       vigilar: (onCaducada: () => void) => vigilarInactividad({ sesion, onCaducada }),
@@ -254,9 +264,16 @@ if (app) {
   // El shell legacy se monta después de este script (y el sidebar se revela al
   // pasar la autenticación), así que el gating se aplica cuando el DOM está listo
   // y de nuevo tras cada navegación.
+  let vigilando = false;
   const aplicarGating = () => {
     app.app.attachToShell();
     app.ui.applyGating();
+    // Las vistas se repintan con innerHTML, así que un barrido puntual no basta:
+    // el observador mantiene oculto lo desactivado tras cada repintado.
+    if (!vigilando) {
+      vigilando = true;
+      app.ui.watchGating();
+    }
   };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', aplicarGating, { once: true });

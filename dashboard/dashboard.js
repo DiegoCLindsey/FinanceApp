@@ -442,11 +442,11 @@ const DashboardModule = (() => {
       </div>
 
       <!-- Exec summary strip -->
-      <div class="flex justify-between items-center mb-8">
+      <div class="flex justify-between items-center mb-8" data-feature="resumen-ejecutivo">
         <div class="card-title" style="margin:0">Resumen ejecutivo</div>
         <button class="btn-secondary btn-sm" onclick="DashboardModule.toggleExecSummary()">${config.showExecSummary!==false?'Ocultar':'Mostrar'}</button>
       </div>
-      ${config.showExecSummary!==false?`<div class="exec-summary mb-14">
+      ${config.showExecSummary!==false?`<div class="exec-summary mb-14" data-feature="resumen-ejecutivo">
         <div class="exec-item">
           <div class="exec-item-label">Saldo hoy</div>
           <div class="exec-item-val ${saldoHoy>=0?'pos':'neg'}">${FinanceMath.eur(saldoHoy)}</div>
@@ -765,7 +765,7 @@ const DashboardModule = (() => {
               <button class="period-btn ${chartMode==='stacked'?'active':''}" onclick="DashboardModule.setChartMode('stacked')" title="Apilado — más área debajo">▲ Apilado</button>
               <button class="period-btn ${chartMode==='stacked-rev'?'active':''}" onclick="DashboardModule.setChartMode('stacked-rev')" title="Apilado — menos área debajo">▽ Apilado</button>
             </div>
-            ${alertas.length>0?`<button class="btn-secondary btn-sm" style="font-size:11px;color:${config.showCriticos!==false?'var(--yellow)':'var(--text3)'}" onclick="DashboardModule.toggleCriticos()">
+            ${alertas.length>0?`<button class="btn-secondary btn-sm" data-feature="puntos-criticos" style="font-size:11px;color:${config.showCriticos!==false?'var(--yellow)':'var(--text3)'}" onclick="DashboardModule.toggleCriticos()">
               ⚠️ ${alertas.length} punto${alertas.length>1?'s':''} crítico${alertas.length>1?'s':''} ${config.showCriticos!==false?'(visible)':'(oculto)'}
             </button>`:''}
           </div>
@@ -783,7 +783,7 @@ const DashboardModule = (() => {
       ${config.analisisCollapsed ? '' : `
 
       <!-- Salud financiera -->
-      <div class="card mb-14">
+      <div class="card mb-14" data-feature="salud-financiera">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
           <div class="card-title" style="margin:0">Salud financiera</div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -806,7 +806,7 @@ const DashboardModule = (() => {
           <div class="card-title">Ingresos vs Gastos por categoría (mensual)</div>
           <div class="chart-wrap-lg"><canvas id="chart-breakdown-mensual"></canvas></div>
         </div>
-        <div class="card">
+        <div class="card" data-feature="graficos-etiquetas">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
             <div class="card-title" style="margin:0">Gastos por etiqueta</div>
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -829,7 +829,7 @@ const DashboardModule = (() => {
       </div>
       <!-- Charts row 3 -->
       <div class="grid-2 mb-14">
-        <div class="card">
+        <div class="card" data-feature="graficos-etiquetas">
           <div class="card-title">Media mensual de gastos por etiqueta <span style="font-size:11px;color:var(--text3);font-weight:400">(${tagGroupsMode==='porgrupos'?'por grupos':'desglosado'})</span></div>
           <div class="chart-wrap"><canvas id="chart-media-mensual"></canvas></div>
         </div>
@@ -861,7 +861,7 @@ const DashboardModule = (() => {
       </div>
 
       <!-- Flujo de caja mensual -->
-      <div class="card mt-14">
+      <div class="card mt-14" data-feature="flujo-mensual">
         <div class="card-title mb-12">Flujo de caja mensual</div>
         ${(()=>{
           const dSfc = new Date(config.dashboardStart+'T00:00:00');
@@ -929,7 +929,7 @@ const DashboardModule = (() => {
         const desv = FinanceMath.calcDesviacion(extracto, accounts);
         if (!desv.length) return '';
         const mape = desv.reduce((s,r)=>s+Math.abs(r.pct),0)/desv.length;
-        return `<div class="card mt-14">
+        return `<div class="card mt-14" data-feature="desviacion">
           <div class="card-title">Desviación real vs estimado</div>
           <div class="text-sm mb-8" style="color:var(--text2)">Precisión del modelo: <span class="num" style="color:${(100-mape)>90?'var(--accent)':(100-mape)>75?'var(--yellow)':'var(--red)'}">${(100-mape).toFixed(1)}%</span></div>
           <div class="dev-row dev-head"><span>Fecha</span><span>Estimado</span><span>Real</span><span>Desviación</span><span>%</span></div>

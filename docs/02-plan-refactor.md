@@ -632,11 +632,38 @@ src/
       aplica al cargar, tras cada navegación y tras cada cambio en la ventana de
       funcionalidades. Mapa `VISTA_POR_FEATURE` con test que verifica que solo
       referencia ids del catálogo.
-      Pendiente: (a) gating de las secciones del dashboard y (b) de los providers
-      del motor — ambos requieren que el dashboard y el statement se consuman desde
-      el paquete nuevo, es decir la tarea 1.7. Al portar cada vista, su manifest
-      declarará su flag y este módulo pasará a leer el registro de vistas en vez
-      del DOM.
+      **Gating de sub-funcionalidades (2026-08-19).** El gating por vista solo
+      cubría el sidebar, así que todo lo que vive DENTRO de una vista salía en
+      pantalla aunque su flag estuviera apagado. Lo reportó el usuario: con
+      `optimizador` desactivado, el botón "✨ Optimizar amortizaciones" seguía ahí,
+      abría el modal y devolvía un plan. Números que nadie debería estar viendo y
+      sin ninguna señal de que no valían. Dos capas nuevas:
+
+      1. **Visual** — cualquier elemento con `data-feature="<flagId>"` se oculta
+         (`display:none` + `disabled` + `aria-hidden`) si su flag está apagado.
+         Ocultar sin `disabled` no basta: con `display:none` un `.click()` por
+         programación sigue llegando. Un `MutationObserver` repite el barrido tras
+         cada repintado, porque las vistas se rehacen con `innerHTML` y un barrido
+         único en el arranque se pierde en la primera navegación. Esto cubre
+         también el dashboard legacy, que no consulta los flags al pintar.
+      2. **Funcional** (`src/flags/guard.ts`) — las operaciones de funcionalidades
+         opcionales llaman a `exigirFeature()` antes de calcular y lanzan
+         `FeatureDeshabilitadaError` si están apagadas. Ocultar un botón no impide
+         ejecutar la función (DOM viejo, consola, un fallo del propio gating), y
+         **devolver un resultado es peor que fallar**: el usuario no tiene forma de
+         saber que no es de fiar. Sin consulta instalada el guarda deja pasar todo,
+         para que el motor y el dominio se sigan probando sin arrancar los flags.
+
+      Marcados hasta ahora: `optimizador` (2 botones), `comparador-frecuencias`,
+      `precision-estimaciones`, y en el dashboard legacy `salud-financiera`,
+      `resumen-ejecutivo`, `graficos-etiquetas`, `flujo-mensual`, `desviacion` y
+      `puntos-criticos`. Verificado en Chromium real, no solo en happy-dom.
+
+      Pendiente: (a) gating de los providers del motor, que requiere consumir el
+      statement desde el paquete nuevo (tarea 1.7), y (b) `sync-nube` /
+      `autoguardado`, que viven en el shell legacy de datos. Al portar cada vista,
+      su manifest declarará su flag y este módulo pasará a leer el registro de
+      vistas en vez del DOM.
 
 ## Fase 3 — QA: cobertura de tests completa
 

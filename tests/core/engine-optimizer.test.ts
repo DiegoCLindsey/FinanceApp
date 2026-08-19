@@ -5,6 +5,7 @@ import { optimizarAmortizaciones, compararFrecuencias, createStatementMemo } fro
 import type { StatementAccount } from '@/engine/statement';
 import type { LoanItem } from '@/engine/providers/loans';
 import type { BasicoExpense, MargenSeguridad } from '@/engine/margins';
+import { FeatureDeshabilitadaError, instalarConsultaFlags } from '@/flags/guard';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 let FM: any;
@@ -256,5 +257,47 @@ describe('memoización del extracto (tarea 1.5)', () => {
     expect(misses).toBeGreaterThan(0);
     // Cuatro frecuencias reaprovechan lo que proyectó la primera
     expect(hits).toBe(4);
+  });
+});
+
+describe('el optimizador respeta su feature flag', () => {
+  // Ocultar el botón no impide llamar a la función: basta un DOM viejo en
+  // pantalla o una llamada desde la consola. Y devolver un plan cuando la
+  // funcionalidad está apagada es peor que no responder, porque el usuario no
+  // tiene forma de saber que esos números no valen.
+  it('lanza si "optimizador" está desactivado', () => {
+    const quitar = instalarConsultaFlags((id) => id !== 'optimizador');
+    try {
+      expect(() => optimizarAmortizaciones(loans, expenses, accounts, config, { mesesHorizonte: 12 })).toThrow(FeatureDeshabilitadaError);
+    } finally {
+      quitar();
+    }
+  });
+
+  it('lanza si "comparador-frecuencias" está desactivado', () => {
+    const quitar = instalarConsultaFlags((id) => id !== 'comparador-frecuencias');
+    try {
+      expect(() => compararFrecuencias(loans, expenses, accounts, config, { horizonte: 12 })).toThrow(FeatureDeshabilitadaError);
+    } finally {
+      quitar();
+    }
+  });
+
+  it('el comparador también cae si lo que falta es el optimizador del que depende', () => {
+    const quitar = instalarConsultaFlags((id) => id !== 'optimizador');
+    try {
+      expect(() => compararFrecuencias(loans, expenses, accounts, config, { horizonte: 12 })).toThrow(FeatureDeshabilitadaError);
+    } finally {
+      quitar();
+    }
+  });
+
+  it('con los flags puestos calcula con normalidad', () => {
+    const quitar = instalarConsultaFlags(() => true);
+    try {
+      expect(() => optimizarAmortizaciones(loans, expenses, accounts, config, { mesesHorizonte: 12 })).not.toThrow();
+    } finally {
+      quitar();
+    }
   });
 });
