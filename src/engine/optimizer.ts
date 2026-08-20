@@ -2,7 +2,12 @@
 // Planificador de amortizaciones anticipadas: mes a mes calcula el excedente
 // disponible en la cuenta origen (respetando los márgenes de seguridad) y lo
 // asigna a los préstamos con mayor TIN primero.
-// Paridad exacta con FinanceMath.optimizarAmortizaciones / compararFrecuencias.
+// Paridad con FinanceMath.optimizarAmortizaciones / compararFrecuencias, con una
+// corrección aplicada a AMBOS lados (ver `capPendienteAntes`): el capital vivo se
+// leía descartando las filas de amortización, y eso congelaba el capital de los
+// préstamos cancelados por una amortización anticipada. El legacy ya no lo usa
+// ninguna vista, pero se arregló también para que los tests de paridad no fijen
+// una referencia equivocada.
 //
 // OPTIMIZACIÓN (tarea 1.5) — medida: ~1,8× más rápido que el legacy en
 // compararFrecuencias con 5 frecuencias y horizonte de 36 meses. La ganancia
@@ -243,12 +248,32 @@ export function optimizarAmortizaciones(
     return { label, dia15 };
   }
 
-  /** Capital pendiente justo antes de una fecha, con el plan ya acumulado. */
+  /**
+   * Capital pendiente justo antes de una fecha, con el plan ya acumulado.
+   *
+   * CORRECCIÓN (divergencia deliberada del legacy). Antes esto miraba solo las
+   * filas ORDINARIAS (`!r.esAmortizacion`), y ahí está el fallo: cuando un
+   * préstamo se cancela con una amortización en vez de agotando su cuadro, la
+   * última fila ordinaria conserva el capital de ANTES de esa amortización, y la
+   * fila que lo deja a cero es justamente la que se descartaba. Resultado: el
+   * capital pendiente se quedaba congelado en un valor fantasma para siempre.
+   *
+   * Lo que provocaba, sobre un préstamo ya pagado: 59 amortizaciones
+   * planificadas por 1.185.782 €, "Cap. antes" idéntico mes tras mes porque el
+   * plan acumulado no lo movía, y un ahorro de intereses de 0,00 € — la única
+   * cifra honesta del cuadro, porque efectivamente no se ahorraba nada. El
+   * guardarraíl `capActual < 1` no llegaba a saltar nunca.
+   *
+   * La tabla se construye en orden cronológico no decreciente (las filas AMORT
+   * se emiten con el mes cuya fecha de pago las alcanza, antes de la ordinaria
+   * de ese mes), así que la última fila con `fecha <= fechaAmort` es el capital
+   * vivo en esa fecha, venga de una cuota o de una amortización.
+   */
   function capPendienteAntes(loan: LoanItem, fechaAmort: ISODate): number {
     const amortizaciones = [...(loan.amortizaciones || []), ...amortsPorLoan[loan._id]];
     // resumenPrestamo aplica la misma tablaAmortizacion, pero con caché.
     const { tabla } = resumenPrestamo({ ...loan, amortizaciones });
-    const filas = tabla.filter((r) => !r.esAmortizacion && r.fecha <= fechaAmort);
+    const filas = tabla.filter((r) => r.fecha <= fechaAmort);
     if (filas.length > 0) return filas[filas.length - 1].capitalPendiente;
     const yaAmort = amortizaciones.filter((a) => a.fecha <= fechaAmort).reduce((s, a) => s + a.cantidad, 0);
     return Math.max(0, loan.capital - yaAmort);

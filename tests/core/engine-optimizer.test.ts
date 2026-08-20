@@ -6,6 +6,7 @@ import type { StatementAccount } from '@/engine/statement';
 import type { LoanItem } from '@/engine/providers/loans';
 import type { BasicoExpense, MargenSeguridad } from '@/engine/margins';
 import { FeatureDeshabilitadaError, instalarConsultaFlags } from '@/flags/guard';
+import { resumenPrestamo } from '@/core/loan';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 let FM: any;
@@ -296,6 +297,90 @@ describe('el optimizador respeta su feature flag', () => {
     const quitar = instalarConsultaFlags(() => true);
     try {
       expect(() => optimizarAmortizaciones(loans, expenses, accounts, config, { mesesHorizonte: 12 })).not.toThrow();
+    } finally {
+      quitar();
+    }
+  });
+});
+
+describe('capital pendiente de un préstamo cancelado por una amortización', () => {
+  // Un préstamo puede acabar de dos formas: agotando su cuadro, o cancelado por
+  // una amortización. En el segundo caso la ÚLTIMA FILA ORDINARIA conserva el
+  // capital de ANTES de esa amortización, y la fila que lo deja a cero es la de
+  // amortización. Mirando solo las ordinarias, el capital vivo se quedaba
+  // congelado en ese valor fantasma para siempre.
+  //
+  // Con datos reales del usuario eso producía 59 amortizaciones planificadas por
+  // 1.185.782 € sobre un préstamo que no debía nada, con "Cap. antes" idéntico
+  // mes tras mes y un ahorro de intereses de 0,00 € — la única cifra honesta,
+  // porque efectivamente no se ahorraba nada.
+  const cancelado: LoanItem = {
+    _id: 'lc',
+    nombre: 'Coche (cancelado antes de tiempo)',
+    capital: 30000,
+    tin: 9.82,
+    meses: 48,
+    fechaInicio: '2023-01-10',
+    activo: true,
+    simulacion: false,
+    comisionAmort: 1,
+    cuenta: 'a1',
+    tags: [],
+    amortizaciones: [{ _id: 'm1', fecha: '2024-06-20', cantidad: 25000, tipo: 'plazo' }],
+  } as LoanItem;
+
+  const conSaldoDeSobra: StatementAccount[] = [
+    {
+      _id: 'a1',
+      nombre: 'Corriente',
+      activo: true,
+      esCuentaPrincipal: true,
+      saldoInicial: 600000,
+      fechaInicialSaldo: '2026-01-01',
+      historicoSaldos: [],
+      aportaciones: [],
+      modeloFondo: 'cuenta',
+      interes: 0,
+    } as unknown as StatementAccount,
+  ];
+
+  const cfg = { ...config, dashboardStart: '2026-08-01', margenesSeguridad: [] };
+  const opciones = { mesesHorizonte: 60, minAmortizable: 500, tipoAmort: 'plazo', hoy: new Date(2026, 7, 19) };
+
+  it('la tabla deja el préstamo a cero, aunque la última cuota ordinaria no lo diga', () => {
+    const { tabla } = resumenPrestamo(cancelado);
+    const ordinarias = tabla.filter((r) => !r.esAmortizacion);
+    expect(ordinarias[ordinarias.length - 1].capitalPendiente).toBeGreaterThan(20000);
+    expect(tabla[tabla.length - 1].esAmortizacion).toBe(true);
+    expect(tabla[tabla.length - 1].capitalPendiente).toBeLessThan(0.01);
+  });
+
+  it('no planifica ni una amortización sobre un préstamo ya pagado', () => {
+    const quitar = instalarConsultaFlags(() => true);
+    try {
+      const r = optimizarAmortizaciones([cancelado], [], conSaldoDeSobra, cfg, opciones);
+      expect(r.plan).toHaveLength(0);
+      expect(r.totalAmortizado).toBe(0);
+      expect(r.resumenPorLoan).toHaveLength(0);
+    } finally {
+      quitar();
+    }
+  });
+
+  it('sobre un préstamo vivo sí planifica, y el capital baja de una a otra', () => {
+    // La contraprueba: el arreglo no puede haber dejado el optimizador mudo.
+    const vivo = { ...cancelado, _id: 'lv', capital: 120000, meses: 240, fechaInicio: '2024-01-10', amortizaciones: [] } as LoanItem;
+    const quitar = instalarConsultaFlags(() => true);
+    try {
+      const r = optimizarAmortizaciones([vivo], [], conSaldoDeSobra, cfg, { ...opciones, mesesHorizonte: 6 });
+      expect(r.plan.length).toBeGreaterThan(0);
+      expect(r.totalAhorroIntereses).toBeGreaterThan(0);
+      // Lo que el pantallazo enseñaba clavado: cada amortización parte de menos
+      // capital que la anterior.
+      const capitales = r.plan.map((p) => p.capitalAntes);
+      for (let i = 1; i < capitales.length; i++) {
+        expect(capitales[i]).toBeLessThan(capitales[i - 1]);
+      }
     } finally {
       quitar();
     }

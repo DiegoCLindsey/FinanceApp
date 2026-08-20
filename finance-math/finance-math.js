@@ -1272,8 +1272,15 @@ const FinanceMath = (() => {
         loanActual.capital, loanActual.tin, loanActual.meses, loanActual.fechaInicio,
         loanActual.comisionAmort || 0, loanActual.amortizaciones, loanActual
       );
-      // Última fila de cuota ordinaria anterior a la fecha (no amortizaciones)
-      const filas = tabla.filter(r => !r.esAmortizacion && r.fecha <= fechaAmort);
+      // Última fila de la tabla anterior a la fecha, sea cuota o amortización.
+      // NO se pueden descartar las filas de amortización: cuando un préstamo se
+      // cancela con una amortización en vez de agotando su cuadro, la última
+      // fila ordinaria conserva el capital de ANTES de esa amortización, y es la
+      // fila descartada la que lo deja a cero. Descartándolas, el capital
+      // pendiente se quedaba congelado en un valor fantasma y el optimizador
+      // planificaba amortizaciones sobre un préstamo ya pagado (ahorro de
+      // intereses 0,00 €, que era la única cifra correcta del resultado).
+      const filas = tabla.filter(r => r.fecha <= fechaAmort);
       if (filas.length > 0) return filas[filas.length - 1].capitalPendiente;
       // Sin filas pasadas: el préstamo aún no ha pagado ninguna cuota
       // Devolver capital original menos amortizaciones ya registradas
