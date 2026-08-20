@@ -1,4 +1,13 @@
 // Depends on: State, UI
+
+// Fecha civil de HOY en local. `new Date().toISOString().slice(0,10)` devuelve
+// AYER entre medianoche y las 01:00/02:00 en husos con desfase positivo, que es
+// el nuestro. Ver la nota larga en finance-math.js.
+function _hoyLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 const OnboardingModule = (() => {
   let step = 0;
   const STEPS = [
@@ -30,7 +39,7 @@ const OnboardingModule = (() => {
     let fields = '';
     if (s.fields === 'step-account') {
       const def = State.get('accounts').find(a=>a._id==='default')||{};
-      fields = `<div class="grid-2">${UI.input('wiz-saldo','Saldo inicial de tu cuenta principal (€)','number',def.saldoInicial||0,'5000')}${UI.input('wiz-fecha','Fecha de referencia','date',def.fechaInicialSaldo||new Date().toISOString().slice(0,10))}</div>`;
+      fields = `<div class="grid-2">${UI.input('wiz-saldo','Saldo inicial de tu cuenta principal (€)','number',def.saldoInicial||0,'5000')}${UI.input('wiz-fecha','Fecha de referencia','date',def.fechaInicialSaldo||_hoyLocal())}</div>`;
     } else if (s.fields === 'step-income') {
       fields = `<div class="grid-2">${UI.input('wiz-inc-concepto','Nombre del ingreso','text','','Ej: Salario nómina')}${UI.input('wiz-inc-cuantia','Cuantía mensual (€)','number','','2500')}</div>`;
     } else if (s.fields === 'step-expense') {
@@ -57,18 +66,18 @@ const OnboardingModule = (() => {
     const s = STEPS[step];
     if (s.fields === 'step-account') {
       const saldo = parseFloat(document.getElementById('wiz-saldo')?.value)||0;
-      const fecha = document.getElementById('wiz-fecha')?.value||new Date().toISOString().slice(0,10);
+      const fecha = document.getElementById('wiz-fecha')?.value||_hoyLocal();
       const acc = State.get('accounts').find(a=>a._id==='default');
       if (acc) State.updateItem('accounts','default',{ saldoInicial:saldo, fechaInicialSaldo:fecha, saldo });
     } else if (s.fields === 'step-income') {
       const concepto = document.getElementById('wiz-inc-concepto')?.value.trim();
       const cuantia  = parseFloat(document.getElementById('wiz-inc-cuantia')?.value)||0;
-      if (concepto && cuantia) State.addItem('expenses',{ concepto, tipo:'ingreso', cuantia, frecuencia:1, tipoFrecuencia:'mensual', fechaInicio:new Date().toISOString().slice(0,10), fechaFin:null, diaPago:'', cuenta:'default', activo:true, basico:false, sujetoIRPF:false, tags:[] });
+      if (concepto && cuantia) State.addItem('expenses',{ concepto, tipo:'ingreso', cuantia, frecuencia:1, tipoFrecuencia:'mensual', fechaInicio:_hoyLocal(), fechaFin:null, diaPago:'', cuenta:'default', activo:true, basico:false, sujetoIRPF:false, tags:[] });
     } else if (s.fields === 'step-expense') {
       const concepto = document.getElementById('wiz-exp-concepto')?.value.trim();
       const cuantia  = parseFloat(document.getElementById('wiz-exp-cuantia')?.value)||0;
       const basico   = document.getElementById('wiz-exp-basico')?.checked||false;
-      if (concepto && cuantia) State.addItem('expenses',{ concepto, tipo:'gasto', cuantia, frecuencia:1, tipoFrecuencia:'mensual', fechaInicio:new Date().toISOString().slice(0,10), fechaFin:null, diaPago:'', cuenta:'default', activo:true, basico, sujetoIRPF:false, tags:[] });
+      if (concepto && cuantia) State.addItem('expenses',{ concepto, tipo:'gasto', cuantia, frecuencia:1, tipoFrecuencia:'mensual', fechaInicio:_hoyLocal(), fechaFin:null, diaPago:'', cuenta:'default', activo:true, basico, sujetoIRPF:false, tags:[] });
     } else if (s.fields === 'step-colchon') {
       const meses = parseInt(document.getElementById('wiz-colchon')?.value)||6;
       const cfg = State.get('config');

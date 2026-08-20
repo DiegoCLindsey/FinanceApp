@@ -5,6 +5,13 @@ const DashboardModule = (() => {
   const _TAG_PROMO_PALETTE = ['#f97316','#eab308','#22d3ee','#a78bfa','#34d399','#fb7185','#60a5fa','#c084fc','#4ade80','#f472b6'];
   // colchon + historial toggles driven from config, no local state needed
 
+  // Fecha civil (YYYY-MM-DD) de un Date LOCAL. Ver la nota larga en
+  // finance-math.js: toISOString() convierte a UTC y corre las fechas un día
+  // atrás en husos con desfase positivo, que es el nuestro.
+  function _fechaLocal(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
   function destroyCharts() { Object.values(charts).forEach(c=>{try{c.destroy();}catch{}}); charts={}; }
 
   /**
@@ -159,10 +166,10 @@ const DashboardModule = (() => {
     // Los KPIs del "mes actual" usan un extracto propio para ese mes, independiente
     // del rango del dashboard. Así funcionan aunque el mes actual esté fuera del rango.
     // La media del intervalo sí usa el extracto del dashboard.
-    const hoyStr        = new Date().toISOString().slice(0,10);
+    const hoyStr        = _fechaLocal(new Date());
     const mesActualLabel = hoyStr.slice(0,7);
     const mesIni = mesActualLabel + '-01';
-    const mesFin = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).toISOString().slice(0,10);
+    const mesFin = _fechaLocal(new Date(new Date().getFullYear(), new Date().getMonth()+1, 0));
 
     // Extracto específico del mes actual (misma lógica: filtroAccounts, saldoReal, sin transferencias)
     const cfgMesActual = { ...config, dashboardStart: mesIni, dashboardEnd: mesFin };
@@ -238,7 +245,7 @@ const DashboardModule = (() => {
     const _tablasAmort = loansActivos.map(l => FinanceMath.resumenPrestamo(l).tabla);
     const _cuotasDelMes = (mes) => {
       const ini = mes+'-01';
-      const fin = new Date(parseInt(mes.slice(0,4)), parseInt(mes.slice(5,7)), 0).toISOString().slice(0,10);
+      const fin = _fechaLocal(new Date(parseInt(mes.slice(0,4)), parseInt(mes.slice(5,7)), 0));
       return _tablasAmort.reduce((s, tabla) => {
         const row = tabla.find(r => !r.esAmortizacion && r.fecha >= ini && r.fecha <= fin);
         return s + (row ? row.cuota : 0);
@@ -334,7 +341,7 @@ const DashboardModule = (() => {
         <div class="dash-hero-item">
           <div class="dash-hero-label">Saldo actual</div>
           <div class="dash-hero-val ${saldoHoy>=0?'pos':'neg'}">${FinanceMath.eur(saldoHoy)}</div>
-          <div class="dash-hero-sub">${new Date().toISOString().slice(0,10)}</div>
+          <div class="dash-hero-sub">${_fechaLocal(new Date())}</div>
         </div>
         <div class="dash-hero-item">
           <div class="dash-hero-label">Ingresos este mes</div>
@@ -357,8 +364,8 @@ const DashboardModule = (() => {
       </div>
 
       ${(()=>{
-        const hoyD = new Date().toISOString().slice(0,10);
-        const en7D  = new Date(Date.now()+7*86400000).toISOString().slice(0,10);
+        const hoyD = _fechaLocal(new Date());
+        const en7D  = _fechaLocal(new Date(Date.now()+7*86400000));
         const prox  = extracto.filter(e=>e.fecha>=hoyD&&e.fecha<=en7D&&e.tipo==='gasto'&&e.sourceType!=='transfer-out').slice(0,6);
         if (!prox.length) return '';
         return `<div class="card mb-14" style="padding:12px 16px">
@@ -382,7 +389,7 @@ const DashboardModule = (() => {
         <div class="grid-2" style="gap:10px">
           <div class="form-group">
             <label class="form-label">Fecha referencia</label>
-            <input class="form-input" type="date" id="cfg-ref" value="${config.fechaReferencia||new Date().toISOString().slice(0,10)}"/>
+            <input class="form-input" type="date" id="cfg-ref" value="${config.fechaReferencia||_fechaLocal(new Date())}"/>
             <div class="text-sm mt-4" style="color:var(--text3)">Saldo conocido en esta fecha</div>
           </div>
         </div>
@@ -488,7 +495,7 @@ const DashboardModule = (() => {
                 <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:${diffColor}">${diffSign}${FinanceMath.eur(diff)} <span style="font-size:10px">(${diffSign}${diffPct.toFixed(1)}%)</span></span>
               </div>
             </div>
-            <div class="stat-sub" style="margin-top:4px">${new Date().toISOString().slice(0,10)} · ${cuentasActivas.length} cuenta${cuentasActivas.length!==1?'s':''}</div>
+            <div class="stat-sub" style="margin-top:4px">${_fechaLocal(new Date())} · ${cuentasActivas.length} cuenta${cuentasActivas.length!==1?'s':''}</div>
           </div>`;
         })()}
         ${(()=>{
@@ -516,7 +523,7 @@ const DashboardModule = (() => {
           </div>`;
         })()}
         ${(()=>{
-          const today = new Date().toISOString().slice(0, 10);
+          const today = _fechaLocal(new Date());
           const evExtraord = extracto.filter(e =>
             e.tipo === 'gasto' && e.sourceType === 'expense' &&
             e.fecha >= config.dashboardStart && e.fecha <= today
@@ -559,7 +566,7 @@ const DashboardModule = (() => {
         // cifras. El resto del dashboard sigue funcionando.
         const _core = window.FinanceApp?.core;
         if (!_core?.saldoParaObjetivo) return '';
-        const colchonHoy = FinanceMath.calcColchonEnFecha(expenses, config, loans, new Date().toISOString().slice(0,10));
+        const colchonHoy = FinanceMath.calcColchonEnFecha(expenses, config, loans, _fechaLocal(new Date()));
         const goalsActivos = goals.filter(g=>!g.completado).slice().sort((a,b)=>(a.prioridad||99)-(b.prioridad||99)).slice(0,3);
         if (!goalsActivos.length) return '';
         return `<div class="card mb-14" style="padding:12px">
@@ -949,8 +956,8 @@ const DashboardModule = (() => {
     const MARGEN_COLORS = ['rgba(251,146,60,0.8)','rgba(244,114,182,0.8)','rgba(167,139,250,0.8)','rgba(52,211,153,0.8)','rgba(96,165,250,0.8)','rgba(250,204,21,0.8)'];
     const margenDatasets = margenesSeguridad.map((mg, idx) => {
       const color = MARGEN_COLORS[idx % MARGEN_COLORS.length];
-      const data = saldoXY.map(({x}) => ({ x, y: FinanceMath.calcMargenEnFecha(mg, expenses, config, loans, new Date(x).toISOString().slice(0,10)) }));
-      const valorHoy = FinanceMath.calcMargenEnFecha(mg, expenses, config, loans, new Date().toISOString().slice(0,10));
+      const data = saldoXY.map(({x}) => ({ x, y: FinanceMath.calcMargenEnFecha(mg, expenses, config, loans, _fechaLocal(new Date(x))) }));
+      const valorHoy = FinanceMath.calcMargenEnFecha(mg, expenses, config, loans, _fechaLocal(new Date()));
       return { label: `${mg.nombre} — ${FinanceMath.eur(valorHoy)}`, data, borderColor: color, backgroundColor: 'transparent', borderWidth: 1.5, borderDash: [3,3], pointRadius: 0, tension: 0, fill: false, order: 4 };
     });
 
@@ -1032,13 +1039,13 @@ const DashboardModule = (() => {
       const dEb = new Date(config.dashboardEnd+'T00:00:00');
       let _db = new Date(dSb.getFullYear(), dSb.getMonth(), 1);
       while (_db <= dEb) {
-        const fechaSim = _db.toISOString().slice(0,10);
+        const fechaSim = _fechaLocal(_db);
         const ts = _db.getTime();
         // Calcular fondos bloqueados en esa fecha simulando el estado del fondo
         let totalBloq = 0;
         for (const acc of pensionesActivas) {
           const bloqueo = acc.bloqueoMeses || 120;
-          const fechaLim = new Date(_db.getFullYear(), _db.getMonth() - bloqueo, _db.getDate()).toISOString().slice(0,10);
+          const fechaLim = _fechaLocal(new Date(_db.getFullYear(), _db.getMonth() - bloqueo, _db.getDate()));
           const apBlq = (acc.aportaciones||[]).filter(ap => ap.fecha > fechaLim).reduce((s,ap)=>s+ap.cantidad,0);
           totalBloq += apBlq;
         }
@@ -1358,7 +1365,7 @@ const DashboardModule = (() => {
     for (const mesLabel of months) {
       const mesIni = mesLabel + '-01';
       const [_my, _mm] = mesLabel.split('-').map(Number);
-      const mesFin = new Date(_my, _mm, 0).toISOString().slice(0,10);
+      const mesFin = _fechaLocal(new Date(_my, _mm, 0));
 
       // Misma fuente que los KPIs: el extracto proyectado, sin transferencias
       const evsMes = extracto.filter(e =>
@@ -1566,7 +1573,7 @@ const DashboardModule = (() => {
     const existing = State.get('config');
     const config={
       ...existing,
-      fechaReferencia: document.getElementById('cfg-ref')?.value || existing.fechaReferencia || new Date().toISOString().slice(0,10),
+      fechaReferencia: document.getElementById('cfg-ref')?.value || existing.fechaReferencia || _fechaLocal(new Date()),
       showHistorico:   document.getElementById('cfg-show-hist')?.checked??true,
     };
     State.set('config',config); render();

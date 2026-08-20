@@ -1,4 +1,13 @@
 // Depends on: State, UI, Router, OnboardingModule, FirebaseService, DropboxService
+
+// Fecha civil de HOY en local. `new Date().toISOString().slice(0,10)` devuelve
+// AYER entre medianoche y las 01:00/02:00 en husos con desfase positivo, que es
+// el nuestro. Ver la nota larga en finance-math.js.
+function _hoyLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 const DataIO = (() => {
 
   let _autoSaveTimer = null;
@@ -22,7 +31,7 @@ const DataIO = (() => {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `financeapp-backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.download = `financeapp-backup-${_hoyLocal()}.json`;
     a.click();
     URL.revokeObjectURL(url);
     UI.toast('Exportado correctamente ✓');
@@ -75,7 +84,7 @@ const DataIO = (() => {
 
     State.ensureDefaultAccount();
     const accs = (State.get('accounts')||[]).map(a => ({
-      saldoInicial:0, fechaInicialSaldo:new Date().toISOString().slice(0,10), historicoSaldos:[], ...a
+      saldoInicial:0, fechaInicialSaldo:_hoyLocal(), historicoSaldos:[], ...a
     }));
     State.set('accounts', accs);
     const cfg = State.get('config');
@@ -100,7 +109,7 @@ const DataIO = (() => {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `financeapp-firebase-${new Date().toISOString().slice(0,10)}.json`;
+    a.download = `financeapp-firebase-${_hoyLocal()}.json`;
     a.click();
     URL.revokeObjectURL(url);
     UI.toast('Backup de Firebase exportado ✓');

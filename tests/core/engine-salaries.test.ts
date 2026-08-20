@@ -99,3 +99,77 @@ describe('paridad provider de nóminas', () => {
     }
   });
 });
+
+describe('nóminas encadenadas con cobro el día 1 (caso reportado)', () => {
+  // El usuario puso que su nómina acababa en octubre y la siguiente empezaba en
+  // noviembre, y los ingresos desaparecieron de octubre en adelante.
+  //
+  // Eran dos fallos sumados, ambos invisibles en UTC:
+  //   1. resolverDiaEfectivo devolvía el día ANTERIOR, así que el cobro del
+  //      día 1 de noviembre aterrizaba el 31 de octubre.
+  //   2. La gráfica de categorías cerraba cada mes con toISOString(), o sea el
+  //      penúltimo día, así que octubre terminaba el 30.
+  // El cobro caía en el hueco entre los dos meses y no salía en ninguno.
+  const A = {
+    _id: 'nA',
+    nombre: 'Nómina actual',
+    bruto: 42000,
+    nPagas: 12,
+    irpfModo: 'auto',
+    representacion: 'detallado',
+    fechaInicio: '2024-11-01',
+    fechaFin: '2026-10-31',
+    cuenta: 'a1',
+    activo: true,
+    tags: [],
+    grupoNomina: '',
+    ssPct: 6.35,
+  };
+  const B = {
+    _id: 'nB',
+    nombre: 'Nómina nueva',
+    bruto: 48000,
+    nPagas: 12,
+    irpfModo: 'auto',
+    representacion: 'detallado',
+    fechaInicio: '2026-11-01',
+    fechaFin: null,
+    cuenta: 'a1',
+    activo: true,
+    tags: [],
+    grupoNomina: '',
+    ssPct: 6.35,
+  };
+
+  const ingresosPorMes = () => {
+    const evs = proyectarNominas([A, B] as never[], { start: '2026-08-01', end: '2027-02-28' });
+    const m: Record<string, number> = {};
+    for (const e of evs) {
+      if (e.tipo !== 'ingreso') continue;
+      m[e.fecha.slice(0, 7)] = (m[e.fecha.slice(0, 7)] || 0) + e.cuantia;
+    }
+    return m;
+  };
+
+  it('no deja ningún mes sin ingreso al empalmar una nómina con la siguiente', () => {
+    const m = ingresosPorMes();
+    for (const mes of ['2026-08', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02']) {
+      expect(m[mes], `${mes} se ha quedado sin ingresos`).toBeGreaterThan(0);
+    }
+  });
+
+  it('el cobro del día 1 cae el día 1, no el último del mes anterior', () => {
+    const evs = proyectarNominas([B] as never[], { start: '2026-11-01', end: '2026-12-31' });
+    const fechas = evs.filter((e) => e.tipo === 'ingreso').map((e) => e.fecha);
+    expect(fechas).toContain('2026-11-01');
+    expect(fechas).toContain('2026-12-01');
+    expect(fechas).not.toContain('2026-10-31');
+  });
+
+  it('cada nómina cobra en su tramo y no se solapan', () => {
+    const evs = proyectarNominas([A, B] as never[], { start: '2026-08-01', end: '2027-02-28' });
+    const de = (id: string) => evs.filter((e) => e.sourceId === id && e.tipo === 'ingreso').map((e) => e.fecha);
+    expect(de('nA').every((f) => f <= '2026-10-31')).toBe(true);
+    expect(de('nB').every((f) => f >= '2026-11-01')).toBe(true);
+  });
+});

@@ -271,6 +271,51 @@ artefacto, no que ese artefacto sea el que el usuario recibe. Cuando el síntoma
 no cuadre con lo desplegado, comprobar QUIÉN publica antes de sospechar del
 código.
 
+### P.8 — CAUSA RAÍZ: los tests corrían en UTC y no veían los desfases de fecha
+
+**Síntoma (2026-08-20):** el usuario encadena dos nóminas —una acaba en octubre,
+la siguiente empieza en noviembre— y los ingresos desaparecen de octubre en
+adelante, en las cifras y en las gráficas. El saldo proyectado se va por debajo
+de los márgenes sin que se haya añadido ningún gasto.
+
+**Causa: dos fallos sumados, ambos invisibles en UTC.**
+
+1. `resolverDiaEfectivo` resolvía **todos** los días de pago con
+   `toISOString().slice(0,10)` sobre una fecha construida en local. Una fecha
+   `new Date(a, m, d)` es medianoche LOCAL; en husos con desfase positivo —el
+   nuestro— esa medianoche cae el día ANTERIOR en UTC. Resultado medido en
+   Europe/Madrid: `dia:1` de noviembre → **2026-10-31**; `dia:1` de enero →
+   **2025-12-31**, o sea el ejercicio fiscal anterior; `dia:ultimo` → el
+   penúltimo. Cada cobro y cada gasto del usuario colocado un día antes.
+2. La gráfica de categorías cerraba cada mes con el mismo patrón, así que
+   octubre terminaba el **30**.
+
+Combinados: el cobro del día 1 de noviembre aterrizaba el 31 de octubre, y el
+cubo de octubre acababa el 30. **Caía en el hueco entre dos meses y no aparecía
+en ninguno.** Por eso desaparecían las barras verdes.
+
+**Por qué sobrevivió a 626 tests:** el entorno de tests corría en **UTC**, donde
+`toISOString()` sobre una fecha local coincide con la fecha local y toda esta
+familia de errores es matemáticamente invisible. La suite no podía detectarlo,
+por muchos casos que se añadieran.
+
+**Arreglo.** 45 conversiones `toISOString().slice(0,10)` sustituidas por
+formateo local (`_fechaLocal` en el legacy, `formatLocalDate` en `src/`) en
+finance-math, dashboard, state, data-io y onboarding. Además apareció un
+segundo error de la misma familia: `calcFactorInflacion` contaba días restando
+milisegundos, y en los cambios de hora un día dura 23 o 25 horas, así que la
+capitalización compuesta arrastraba el desvío. Nuevo `diasEntre()` que
+normaliza a UTC las componentes de calendario, donde la resta sí es exacta.
+
+**Arreglo de fondo, que es el que importa:** `vitest.config.ts` fija
+**`TZ: 'Europe/Madrid'`**. Desfase positivo y horario de verano: detecta las dos
+cosas. Hay un test que comprueba que el entorno NO corre en UTC, para que quitar
+esa línea rompa la suite en vez de dejarla ciega otra vez.
+
+**Lección:** un test verde en UTC no dice nada sobre fechas civiles. Si un test
+falla en Europe/Madrid y pasa en UTC, el fallo es real y lo sufre el usuario —
+no se arregla cambiando el huso.
+
 ## Fase 1 — Refactor SOLID + modularización (TypeScript, ESM)
 
 > Objetivo: migrar a `src/` con módulos ES tipados y build de Vite, manteniendo paridad

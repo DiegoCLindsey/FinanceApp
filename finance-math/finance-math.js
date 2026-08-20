@@ -28,16 +28,30 @@ const FinanceMath = (() => {
   //   'nthweekday:N:W' → N-ésimo (1-5) día de la semana W (0=Dom…6=Sáb)
   //                      N=-1 → último de ese weekday en el mes
 
+  // Fecha civil (YYYY-MM-DD) de un Date LOCAL.
+  //
+  // NUNCA uses toISOString().slice(0,10) para esto. toISOString() convierte a
+  // UTC, y una fecha construida con `new Date(a, m, d)` es medianoche LOCAL: en
+  // husos con desfase positivo —el nuestro— esa medianoche cae el día ANTERIOR
+  // en UTC. Todos los días de pago salían corridos un día: `dia:1` de noviembre
+  // aterrizaba el 31 de octubre, y `dia:1` de enero en el 31 de diciembre del
+  // año anterior, con lo que eso implica para el ejercicio fiscal.
+  //
+  // Los tests corrían en UTC, donde el fallo es invisible; por eso sobrevivió.
+  function _fechaLocal(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
   // Dado año y mes (0-based), devuelve la fecha ISO del día efectivo
   function resolverDiaEfectivo(year, month0, diaPago) {
     if (!diaPago) return null;
     if (diaPago.startsWith('dia:')) {
       const spec = diaPago.slice(4);
-      if (spec === 'ultimo') return new Date(year, month0+1, 0).toISOString().slice(0,10);
+      if (spec === 'ultimo') return _fechaLocal(new Date(year, month0+1, 0));
       const n = parseInt(spec);
       if (!isNaN(n)) {
         const maxDay = new Date(year, month0+1, 0).getDate();
-        return new Date(year, month0, Math.min(n, maxDay)).toISOString().slice(0,10);
+        return _fechaLocal(new Date(year, month0, Math.min(n, maxDay)));
       }
     }
     if (diaPago.startsWith('nthweekday:')) {
@@ -46,13 +60,13 @@ const FinanceMath = (() => {
       if (nth === -1) {
         const last = new Date(year, month0+1, 0);
         while (last.getDay() !== wd) last.setDate(last.getDate()-1);
-        return last.toISOString().slice(0,10);
+        return _fechaLocal(last);
       }
       const d = new Date(year, month0, 1);
       while (d.getDay() !== wd) d.setDate(d.getDate()+1);
       d.setDate(d.getDate() + (nth-1)*7);
       if (d.getMonth() !== month0) d.setDate(d.getDate()-7);
-      return d.toISOString().slice(0,10);
+      return _fechaLocal(d);
     }
     return null;
   }
@@ -94,7 +108,7 @@ const FinanceMath = (() => {
     for (let mes=1; mes<=meses*2 && cap>0.01; mes++) {
       const fd = new Date(cur);
       cur.setMonth(cur.getMonth()+1);
-      const fs = ajustarFechaPago(fd.toISOString().slice(0,10), loan.diaPago||'');
+      const fs = ajustarFechaPago(_fechaLocal(fd), loan.diaPago||'');
       while (ai<amorts.length && amorts[ai].fecha<=fs) {
         const am = amorts[ai];
         const cost = am.cantidad*(comAmort/100);
@@ -162,7 +176,7 @@ const FinanceMath = (() => {
             (() => {
               const dayOfMonth = dI.getDate();
               const lastDay = new Date(year, month+1, 0).getDate();
-              return new Date(year, month, Math.min(dayOfMonth, lastDay)).toISOString().slice(0,10);
+              return _fechaLocal(new Date(year, month, Math.min(dayOfMonth, lastDay)));
             })();
           const dEfect = new Date(fechaEfectiva+'T00:00:00');
           // Salir si superamos el fin del rango o de la vigencia
@@ -182,7 +196,7 @@ const FinanceMath = (() => {
           d = new Date(dI.getTime() + steps * stepMs);
         }
         while (d <= dE && d <= dF) {
-          push(d.toISOString().slice(0,10));
+          push(_fechaLocal(d));
           d = new Date(d.getTime() + stepMs);
         }
       }
@@ -274,7 +288,7 @@ const FinanceMath = (() => {
         let year = dI.getFullYear(), month = dI.getMonth();
         const maxIter = Math.ceil(240/freq)+2;
         for (let i=0; i<maxIter; i++) {
-          const fe = resolverDiaEfectivo(year,month,exp.diaPago||'') || (() => { const d=dI.getDate(),l=new Date(year,month+1,0).getDate(); return new Date(year,month,Math.min(d,l)).toISOString().slice(0,10); })();
+          const fe = resolverDiaEfectivo(year,month,exp.diaPago||'') || (() => { const d=dI.getDate(),l=new Date(year,month+1,0).getDate(); return _fechaLocal(new Date(year,month,Math.min(d,l))); })();
           const dE2 = new Date(fe+'T00:00:00');
           if (dE2 > dE || dE2 > dF) break;
           if (dE2 >= dS && dE2 >= dI) pushPair(fe);
@@ -284,7 +298,7 @@ const FinanceMath = (() => {
         const stepMs = Math.max(1,exp.frecuencia)*86400000;
         let d = new Date(Math.max(dI.getTime(),dS.getTime()));
         if (dI<dS){const st=Math.ceil((dS-dI)/stepMs);d=new Date(dI.getTime()+st*stepMs);}
-        while(d<=dE&&d<=dF){pushPair(d.toISOString().slice(0,10));d=new Date(d.getTime()+stepMs);}
+        while(d<=dE&&d<=dF){pushPair(_fechaLocal(d));d=new Date(d.getTime()+stepMs);}
       }
     }
     return events;
@@ -324,7 +338,7 @@ const FinanceMath = (() => {
           ? new Date(d.getFullYear(), d.getMonth()+1, d.getDate())
           : new Date(d.getTime() + periodoMsFixed);
         const periodoFin = new Date(Math.min(dNext.getTime(), dE.getTime() + 1));
-        const periodoFinStr = periodoFin.toISOString().slice(0, 10);
+        const periodoFinStr = _fechaLocal(periodoFin);
 
         let deltaTotal = 0;
         while (movIdx < movsCuenta.length && movsCuenta[movIdx].fecha < periodoFinStr) {
@@ -342,7 +356,7 @@ const FinanceMath = (() => {
         const ip = saldoMedio * (Math.pow(1 + acc.interes / 100, pa) - 1);
         if (ip > 0.001) {
           events.push({
-            fecha: d.toISOString().slice(0, 10),
+            fecha: _fechaLocal(d),
             concepto: `Interés ${acc.nombre}`,
             cuantia: ip,
             tipo: 'ingreso',
@@ -429,8 +443,7 @@ const FinanceMath = (() => {
     const saldo   = saldoRealCuenta(acc);
 
     // Fecha límite: aportaciones anteriores a esta fecha ya están disponibles
-    const fechaLimite = new Date(hoy.getFullYear(), hoy.getMonth() - bloqueo, hoy.getDate())
-      .toISOString().slice(0, 10);
+    const fechaLimite = _fechaLocal(new Date(hoy.getFullYear(), hoy.getMonth() - bloqueo, hoy.getDate()));
 
     // Ordenar aportaciones FIFO (más antigua primero)
     const aportaciones = [...(acc.aportaciones || [])].sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -516,9 +529,9 @@ const FinanceMath = (() => {
 
   // Retorna el gasto básico mensual (base para el colchón)
   function calcGastoBasicoMensual(expenses) {
-    const hoy = new Date().toISOString().slice(0,10);
+    const hoy = _fechaLocal(new Date());
     const finMes = new Date(); finMes.setMonth(finMes.getMonth()+1);
-    const finMesStr = finMes.toISOString().slice(0,10);
+    const finMesStr = _fechaLocal(finMes);
     const gastosBasicos = expenses.filter(e => e.basico && e.activo && e.tipo==='gasto');
     const expEvents = proyectarGastos(gastosBasicos, hoy, finMesStr);
     return expEvents.reduce((s,e)=>s+Math.abs(e.cuantia),0);
@@ -705,7 +718,7 @@ const FinanceMath = (() => {
       }
       if (nUpdates === 0) return nom.bruto || 0;
       // Compound nUpdates full years of inflation from the nómina start
-      const toDate = new Date(startD.getFullYear() + nUpdates, 0, 1).toISOString().slice(0, 10);
+      const toDate = _fechaLocal(new Date(startD.getFullYear() + nUpdates, 0, 1));
       return (nom.bruto || 0) * calcFactorInflacion(inflacionPeriodos, startStr, toDate);
     }
 
@@ -788,7 +801,7 @@ const FinanceMath = (() => {
           const lastDay = new Date(year, month+1, 0).getDate();
           const d = new Date(year, month, Math.min(dayOfMonth, lastDay));
           if (d > dE || d > dF) break;
-          if (d >= dS && d >= dI) pushPago(d.toISOString().slice(0,10));
+          if (d >= dS && d >= dI) pushPago(_fechaLocal(d));
           month += step;
           if (month >= 12) { year += Math.floor(month/12); month = month % 12; }
         }
@@ -801,7 +814,7 @@ const FinanceMath = (() => {
           const lastDay = new Date(year, month+1, 0).getDate();
           const d = new Date(year, month, Math.min(dayOfMonth, lastDay));
           if (d > dE || d > dF) break;
-          if (d >= dS && d >= dI) pushPago(d.toISOString().slice(0,10));
+          if (d >= dS && d >= dI) pushPago(_fechaLocal(d));
           month++;
           if (month >= 12) { year++; month = 0; }
         }
@@ -811,7 +824,7 @@ const FinanceMath = (() => {
         for (let y = yStart; y <= yEnd; y++) {
           for (const em of _EXTRA_PAGA_MONTHS.slice(0, nExtra)) {
             const d = new Date(y, em, 15);
-            if (d >= dS && d <= dE && d >= dI && d <= dF) pushPago(d.toISOString().slice(0,10));
+            if (d >= dS && d <= dE && d >= dI && d <= dF) pushPago(_fechaLocal(d));
           }
         }
       }
@@ -827,7 +840,7 @@ const FinanceMath = (() => {
     if (!inflacionPeriodos || inflacionPeriodos.length === 0) return events;
     const dS      = new Date(dateStart + 'T00:00:00');
     const dE      = new Date(dateEnd   + 'T00:00:00');
-    const hoyStr  = new Date().toISOString().slice(0, 10);
+    const hoyStr  = _fechaLocal(new Date());
     const gastosMensuales = expenses.filter(e =>
       e.activo && e.tipo === 'gasto' && e.tipoFrecuencia === 'mensual'
     );
@@ -836,8 +849,8 @@ const FinanceMath = (() => {
       const year = d.getFullYear(), month = d.getMonth();
       const mesLabel = year + '-' + String(month + 1).padStart(2, '0');
       const mesIni   = mesLabel + '-01';
-      const mesFin   = new Date(year, month + 1, 0).toISOString().slice(0, 10);
-      const mesMid   = new Date(year, month, 15).toISOString().slice(0, 10);
+      const mesFin   = _fechaLocal(new Date(year, month + 1, 0));
+      const mesMid   = _fechaLocal(new Date(year, month, 15));
       let totalInflacion = 0;
       for (const exp of gastosMensuales) {
         if (filtroAccounts && filtroAccounts.length > 0 && !filtroAccounts.includes(exp.cuenta || 'default')) continue;
@@ -873,7 +886,7 @@ const FinanceMath = (() => {
     while (d <= dE) {
       const year = d.getFullYear(), month = d.getMonth();
       const mesLabel = year + '-' + String(month + 1).padStart(2, '0');
-      const mesMid   = new Date(year, month, 15).toISOString().slice(0, 10);
+      const mesMid   = _fechaLocal(new Date(year, month, 15));
       const candidates = sorted.filter(r => r.year <= year);
       const record     = candidates.length > 0 ? candidates[candidates.length - 1] : sorted[0];
       const tasaAnual  = record ? record.tasa / 100 : 0;
@@ -917,7 +930,7 @@ const FinanceMath = (() => {
         const maxIter = Math.ceil(240/freq)+2;
         for (let i=0; i<maxIter; i++) {
           const maxDay = new Date(year, month+1, 0).getDate();
-          const fe = new Date(year, month, Math.min(dI.getDate(), maxDay)).toISOString().slice(0,10);
+          const fe = _fechaLocal(new Date(year, month, Math.min(dI.getDate(), maxDay)));
           const dE2 = new Date(fe+'T00:00:00');
           if (dE2 > dE || dE2 > dF) break;
           if (dE2 >= dS && dE2 >= dI) pushAport(fe);
@@ -954,7 +967,7 @@ const FinanceMath = (() => {
   }
 
   function saldoHoy(extracto, accounts, filtroAccounts=null) {
-    const today = new Date().toISOString().slice(0,10);
+    const today = _fechaLocal(new Date());
     // Saldo base = último histórico real (o saldoInicial si no hay histórico)
     const cuentasActivas = accounts.filter(a => a.activo && (!filtroAccounts || filtroAccounts.length===0 || filtroAccounts.includes(a._id)));
     let saldo = cuentasActivas.reduce((s, a) => s + saldoRealCuenta(a), 0);
@@ -1004,6 +1017,17 @@ const FinanceMath = (() => {
   // periodos: [{year, tasa}] — tasa en %. Calcula el factor de inflación
   // acumulada entre fromDate y toDate (compuesto año a año).
   // Si toDate <= fromDate devuelve 1. Usa el último tipo conocido para años futuros.
+  // Días de CALENDARIO entre dos fechas locales. Restar milisegundos no vale: en
+  // los cambios de hora un día dura 23 o 25 horas y la cuenta se desvía una
+  // fracción de día por transición, error que la capitalización compuesta luego
+  // arrastra. UTC no tiene horario de verano, así que normalizando ahí la resta
+  // es exacta.
+  function _diasEntre(desde, hasta) {
+    const a = Date.UTC(desde.getFullYear(), desde.getMonth(), desde.getDate());
+    const b = Date.UTC(hasta.getFullYear(), hasta.getMonth(), hasta.getDate());
+    return Math.round((b - a) / 86400000);
+  }
+
   function calcFactorInflacion(periodos, fromDate, toDate) {
     if (!periodos || periodos.length === 0) return 1;
     const from = new Date(fromDate + 'T00:00:00');
@@ -1026,7 +1050,7 @@ const FinanceMath = (() => {
       const yearEnd   = new Date(year + 1, 0, 1);
       const periodEnd = yearEnd < to ? yearEnd : to;
 
-      const dias = (periodEnd - current) / (1000 * 60 * 60 * 24);
+      const dias = _diasEntre(current, periodEnd);
       factor *= Math.pow(1 + tasa, dias / 365.25);
       current = periodEnd;
     }
@@ -1042,7 +1066,7 @@ const FinanceMath = (() => {
     const to   = new Date(toDate   + 'T00:00:00');
     if (to <= from) return defaultInflacion;
 
-    const totalDias = (to - from) / 86400000;
+    const totalDias = _diasEntre(from, to);
     const sorted    = periodos ? [...periodos].sort((a, b) => a.year - b.year) : [];
     let weightedSum = 0;
     let current     = new Date(from);
@@ -1051,7 +1075,7 @@ const FinanceMath = (() => {
       const year    = current.getFullYear();
       const yearEnd = new Date(year + 1, 0, 1);
       const segEnd  = yearEnd < to ? yearEnd : to;
-      const dias    = (segEnd - current) / 86400000;
+      const dias    = _diasEntre(current, segEnd);
 
       const candidates = sorted.filter(r => r.year <= year);
       const record     = candidates.length > 0 ? candidates[candidates.length - 1] : null;
@@ -1210,7 +1234,7 @@ const FinanceMath = (() => {
   } = {}) {
 
     const hoy       = new Date();
-    const hoyStr    = hoy.toISOString().slice(0, 10);
+    const hoyStr    = _fechaLocal(hoy);
     const horizonte = Math.min(120, Math.max(1, mesesHorizonte));
 
     const activeAccs   = accounts.filter(a => a.activo);
@@ -1255,9 +1279,9 @@ const FinanceMath = (() => {
       const label = `${year}-${String(month + 1).padStart(2, '0')}`;
       const ini   = `${label}-01`;
       // Último día del mes: día 0 del mes siguiente
-      const fin   = new Date(year, month + 1, 0).toISOString().slice(0, 10);
+      const fin   = _fechaLocal(new Date(year, month + 1, 0));
       // Día 15 del mes para la amortización (o último día si el mes es corto)
-      const dia15 = new Date(year, month, Math.min(15, new Date(year, month + 1, 0).getDate())).toISOString().slice(0, 10);
+      const dia15 = _fechaLocal(new Date(year, month, Math.min(15, new Date(year, month + 1, 0).getDate())));
       return { label, ini, fin, dia15 };
     }
 
@@ -1453,7 +1477,7 @@ const FinanceMath = (() => {
     // Fecha objetivo para medir el saldo
     const hoy = new Date();
     const fechaObj = fechaObjetivo ||
-      new Date(hoy.getFullYear(), hoy.getMonth() + horizonte, 1).toISOString().slice(0, 10);
+      _fechaLocal(new Date(hoy.getFullYear(), hoy.getMonth() + horizonte, 1));
 
     // Función interna: saldo proyectado a fechaObj con un plan de amortizaciones dado
     function saldoConPlan(amortsPorLoan) {
@@ -1462,7 +1486,7 @@ const FinanceMath = (() => {
         amortizaciones: [...(l.amortizaciones || []), ...(amortsPorLoan[l._id] || [])]
       }));
       // Calcular extracto hasta fechaObj
-      const cfgObj = { ...config, dashboardStart: hoy.toISOString().slice(0, 10), dashboardEnd: fechaObj };
+      const cfgObj = { ...config, dashboardStart: _fechaLocal(hoy), dashboardEnd: fechaObj };
       const extracto = generarExtracto(loansConPlan, expenses, accounts, cfgObj, null, nominas);
       if (extracto.length === 0) {
         return accounts.filter(a => a.activo).reduce((s, a) => s + saldoRealCuenta(a), 0);
@@ -1559,7 +1583,7 @@ const FinanceMath = (() => {
   }
 
   function calcDesviacion(extracto, accounts) {
-    const today = new Date().toISOString().slice(0,10);
+    const today = _fechaLocal(new Date());
 
     // Collect all unique dates across all accounts (past only), per-account deduplicated.
     // Same floor logic as saldoEnFecha: saldoInicial at fechaInicialSaldo is the anchor.

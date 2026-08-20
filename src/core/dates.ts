@@ -94,3 +94,20 @@ export function labelDiaPago(diaPago: DiaPago): string {
   }
   return diaPago;
 }
+
+/**
+ * Días de calendario entre dos fechas locales.
+ *
+ * Restar milisegundos y dividir por 86 400 000 NO da días de calendario: en los
+ * cambios de hora un día dura 23 o 25 horas, así que la cuenta se desvía una
+ * fracción de día por cada transición atravesada. Sobre una capitalización
+ * compuesta ese error se arrastra. Normalizando a UTC las tres componentes de
+ * cada fecha la resta es exacta, porque UTC no tiene horario de verano.
+ *
+ * Los tests corrían en UTC, donde el fallo es invisible.
+ */
+export function diasEntre(desde: Date, hasta: Date): number {
+  const a = Date.UTC(desde.getFullYear(), desde.getMonth(), desde.getDate());
+  const b = Date.UTC(hasta.getFullYear(), hasta.getMonth(), hasta.getDate());
+  return Math.round((b - a) / 86400000);
+}

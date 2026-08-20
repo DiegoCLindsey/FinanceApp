@@ -2,7 +2,7 @@
 // Inflación por periodos anuales [{year, tasa%}]. Paridad exacta con
 // FinanceMath (calcFactorInflacion, calcInflacionMediaAnual, Fisher, deflactor).
 
-import { parseLocalDate, type ISODate } from './dates';
+import { diasEntre, parseLocalDate, type ISODate } from './dates';
 
 export interface PeriodoInflacion {
   _id?: string;
@@ -34,7 +34,7 @@ export function calcFactorInflacion(periodos: PeriodoInflacion[] | null | undefi
     const yearEnd = new Date(year + 1, 0, 1);
     const periodEnd = yearEnd < to ? yearEnd : to;
 
-    const dias = (periodEnd.getTime() - current.getTime()) / (1000 * 60 * 60 * 24);
+    const dias = diasEntre(current, periodEnd);
     factor *= Math.pow(1 + tasa, dias / 365.25);
     current = periodEnd;
   }
@@ -52,7 +52,7 @@ export function calcInflacionMediaAnual(
   const to = parseLocalDate(toDate);
   if (to <= from) return defaultInflacion;
 
-  const totalDias = (to.getTime() - from.getTime()) / 86400000;
+  const totalDias = diasEntre(from, to);
   const sorted = periodos ? [...periodos].sort((a, b) => a.year - b.year) : [];
   let weightedSum = 0;
   let current = new Date(from);
@@ -61,7 +61,7 @@ export function calcInflacionMediaAnual(
     const year = current.getFullYear();
     const yearEnd = new Date(year + 1, 0, 1);
     const segEnd = yearEnd < to ? yearEnd : to;
-    const dias = (segEnd.getTime() - current.getTime()) / 86400000;
+    const dias = diasEntre(current, segEnd);
 
     const candidates = sorted.filter((r) => r.year <= year);
     const record = candidates.length > 0 ? candidates[candidates.length - 1] : null;

@@ -1,12 +1,21 @@
 // ==================== STATE_MANAGER ====================
 // Depends on: StorageAdapter (common/storage.js)
+
+// Fecha civil de HOY en local. `new Date().toISOString().slice(0,10)` devuelve
+// AYER entre medianoche y las 01:00/02:00 en husos con desfase positivo, que es
+// el nuestro. Ver la nota larga en finance-math.js.
+function _hoyLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 const State = (() => {
   const SCHEMA_VERSION = 4;
   // Cuenta Default siempre presente
   // saldo        = saldo actual (para intereses)
   // saldoInicial = saldo en fechaInicialSaldo (punto de arranque del extracto)
   // historicoSaldos = [{_id, fecha, saldo, nota}] puntos de control reales
-  const DEFAULT_ACCOUNT = { _id: 'default', nombre: 'Default', saldo: 0, saldoInicial: 0, fechaInicialSaldo: new Date().toISOString().slice(0,10), interes: 0, periodoCobro: 'mensual', descripcion: 'Cuenta principal', activo: true, simulacion: false, historicoSaldos: [], esCuentaPrincipal: true };
+  const DEFAULT_ACCOUNT = { _id: 'default', nombre: 'Default', saldo: 0, saldoInicial: 0, fechaInicialSaldo: _hoyLocal(), interes: 0, periodoCobro: 'mensual', descripcion: 'Cuenta principal', activo: true, simulacion: false, historicoSaldos: [], esCuentaPrincipal: true };
   const DEFAULT_STATE = {
     loans: [], expenses: [], accounts: [DEFAULT_ACCOUNT],
     nominas: [],    // [{_id,nombre,bruto,nPagas,irpfModo,irpfPct,representacion,fechaInicio,fechaFin,cuenta,activo,tags}]
@@ -16,9 +25,9 @@ const State = (() => {
     tramosIRPFHistorico: [],             // [{_id, año, tramos: [[min,pct],...]}] — tramos IRPF por ejercicio
     escenarios: [], // [{_id,nombre,color,descripcion,fechaFin,inversiones:[]}]
     config: {
-      dashboardStart: new Date().toISOString().slice(0,10),
-      dashboardEnd: new Date(Date.now() + 365*24*60*60*1000).toISOString().slice(0,10),
-      fechaReferencia: new Date().toISOString().slice(0,10),
+      dashboardStart: _hoyLocal(),
+      dashboardEnd: (() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(),
+      fechaReferencia: _hoyLocal(),
       colchonMeses: 6, showColchon: true, showHistorico: true, histCuenta: '',
       usarInflacion: false, // activar módulo de inflación por periodos
       tramos_irpf: [[0,19],[12450,24],[20200,30],[35200,37],[60000,45],[300000,47]],
@@ -59,7 +68,7 @@ const State = (() => {
     // Migrate: ensure accounts have new fields
     state.accounts = (state.accounts || []).map(a => {
       const base = {
-        saldoInicial: 0, fechaInicialSaldo: new Date().toISOString().slice(0,10), historicoSaldos: [],
+        saldoInicial: 0, fechaInicialSaldo: _hoyLocal(), historicoSaldos: [],
         esFondoPension: false, bloqueoMeses: 120, impuestoRetirada: 0, aportaciones: [],
         esCuentaPrincipal: false, planAportaciones: [], grupoNomina: '',
         ...a
@@ -86,7 +95,7 @@ const State = (() => {
       tramosGananciasCapital:[[0,19],[6000,21],[50000,23],[200000,27],[300000,28]],
       onboardingDone:false, showExecSummary:true, showCriticos:true,
       colchonTipo:'meses', colchonFijo:0,
-      fechaReferencia: new Date().toISOString().slice(0,10),
+      fechaReferencia: _hoyLocal(),
       usarInflacion: false,
       escenarioActivo: null,
       storageMode: 'local',   // 'local' | 'firebase' | 'dropbox'
