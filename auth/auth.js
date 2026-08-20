@@ -372,13 +372,60 @@ const AuthModule = (() => {
     window.location.reload();
   }
 
+  // ── Pantalla de carga ─────────────────────────────────────────────────────────
+  // La pinta index.html antes que nada (ver el bloque #carga). Se retira cuando
+  // ya se sabe qué enseñar: la aplicación o el selector de método de acceso.
+  let _cargaRetirada = false;
+  const _cargaDesde = Date.now();
+  /**
+   * Tiempo mínimo en pantalla.
+   *
+   * Sin sesión que reanudar la decisión es inmediata, y entonces la pantalla de
+   * carga aparecía y se iba en ~50 ms: un parpadeo, que es exactamente lo que
+   * veníamos a quitar. No es una espera artificial —si decidir cuesta más de
+   * 400 ms no se añade ni un milisegundo—, es evitar el destello.
+   */
+  const CARGA_MIN_MS = 400;
+
+  function _quitarCarga() {
+    if (_cargaRetirada) return;
+    _cargaRetirada = true;
+    clearTimeout(_cargaSalvavidas);
+    const el = document.getElementById('carga');
+    if (!el) return;
+    const espera = Math.max(0, CARGA_MIN_MS - (Date.now() - _cargaDesde));
+    setTimeout(() => {
+      el.classList.add('se-va');
+      // Se retira del DOM al acabar el fundido; con `hidden` bastaría, pero así
+      // no queda un elemento a pantalla completa capturando clics si el CSS
+      // no llegara a cargar.
+      setTimeout(() => el.remove(), 320);
+    }, espera);
+  }
+
+  /**
+   * Salvavidas. Si `_reanudar()` se queda colgado —Firebase sin responder, red
+   * caída a medias— la pantalla de carga se quedaría eternamente y el usuario
+   * no tendría ni forma de entrar en modo local. A los 8 segundos se rinde y
+   * enseña el selector de acceso.
+   */
+  const _cargaSalvavidas = setTimeout(() => {
+    if (_cargaRetirada) return;
+    console.warn('[auth] La reanudación tarda demasiado; se muestra el selector de acceso.');
+    document.getElementById('auth-overlay')?.classList.remove('hidden');
+    _showStep('auth-step-select');
+    _quitarCarga();
+  }, 8000);
+
   // ── Init ──────────────────────────────────────────────────────────────────────
   async function init() {
-    // Reanudar antes de enseñar nada: evita el parpadeo de la pantalla de acceso
+    // Reanudar antes de enseñar nada. El overlay de acceso nace oculto, así que
+    // mientras esto decide solo se ve la pantalla de carga.
     if (await _reanudar()) return;
 
-    // Mostrar overlay de auth al arrancar
+    // No hay sesión que reanudar: hay que pedir método de acceso.
     document.getElementById('auth-overlay').classList.remove('hidden');
+    _quitarCarga();
 
     // ── Modal de instrucciones Dropbox ────────────────────────────────────────
     document.getElementById('btn-dbx-help')?.addEventListener('click', () => {
@@ -701,6 +748,7 @@ const AuthModule = (() => {
 
     document.getElementById('auth-overlay').classList.add('hidden');
     document.getElementById('main-shell').classList.remove('hidden');
+    _quitarCarga();
     PeriodBar.init(State.get('config'));
 
     if (mode === 'firebase' && FirebaseService.isConnected()) {
