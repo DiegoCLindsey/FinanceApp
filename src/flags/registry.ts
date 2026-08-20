@@ -134,13 +134,6 @@ export const FEATURES: FeatureDefinition[] = [
 
   // ── Análisis del dashboard ──────────────────────────────────────────────────
   {
-    id: 'salud-financiera',
-    nombre: 'Salud financiera',
-    descripcion: 'Tasa de ahorro, ratio de endeudamiento y regla 50/30/20 con semáforos.',
-    grupo: GRUPOS.analisis,
-    porDefecto: true,
-  },
-  {
     id: 'resumen-ejecutivo',
     nombre: 'Resumen ejecutivo',
     descripcion: 'Titulares del periodo: ingresos, gastos, ahorro y saldo final estimado.',
@@ -162,26 +155,11 @@ export const FEATURES: FeatureDefinition[] = [
     porDefecto: true,
   },
   {
-    id: 'flujo-mensual',
-    nombre: 'Flujo de caja mensual',
-    descripcion: 'Entradas y salidas mes a mes del periodo analizado.',
-    grupo: GRUPOS.analisis,
-    porDefecto: true,
-  },
-  {
     id: 'puntos-criticos',
     nombre: 'Puntos críticos',
     descripcion: 'Avisos de saldo negativo o por debajo del colchón en la proyección.',
     grupo: GRUPOS.analisis,
     porDefecto: true,
-  },
-  {
-    id: 'desviacion',
-    nombre: 'Desviación real vs estimado',
-    descripcion: 'Compara el saldo real registrado con el proyectado en cada fecha.',
-    grupo: GRUPOS.analisis,
-    porDefecto: true,
-    dependencias: ['contabilidad'],
   },
   {
     id: 'precision-estimaciones',

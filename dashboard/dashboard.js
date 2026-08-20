@@ -1,6 +1,6 @@
 // Depends on: State, FinanceMath, UI
 const DashboardModule = (() => {
-  let charts={}, activeTags=new Set(), filtroAccounts=[], chartMode='summed', tagGroupsMode='desglosado', saludView='mes', ventanaVelas='mes';
+  let charts={}, activeTags=new Set(), filtroAccounts=[], chartMode='summed', tagGroupsMode='desglosado', ventanaVelas='mes';
   // Stable color palette for promoted tags (index 0 reserved for base categories)
   const _TAG_PROMO_PALETTE = ['#f97316','#eab308','#22d3ee','#a78bfa','#34d399','#fb7185','#60a5fa','#c084fc','#4ade80','#f472b6'];
   // colchon + historial toggles driven from config, no local state needed
@@ -56,119 +56,6 @@ const DashboardModule = (() => {
   /** Momento del último repintado completo, para poder mostrarlo. */
   let _ultimaActualizacion = null;
 
-  const _SEM_COLOR = { verde:'#00e5a0', amarillo:'#ffd166', rojo:'#ff4d6d', neutral:'var(--text3)' };
-  function _dot(sem) {
-    return `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_SEM_COLOR[sem]};flex-shrink:0"></span>`;
-  }
-  function _pct(v) { return v !== null && v !== undefined ? v.toFixed(1)+'%' : '—'; }
-
-  function renderSaludFinanciera(s) {
-    if (!s || s.ingresos < 0.01) return '<div class="text-sm" style="text-align:center;padding:20px;color:var(--text3)">Sin ingresos proyectados en el período seleccionado.</div>';
-    const e = FinanceMath.eur;
-    return `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">
-
-      <!-- Ahorro -->
-      <div style="background:var(--bg3);border-radius:var(--radius);padding:14px;border:1px solid var(--border)">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-          ${_dot(s.semAhorro)}
-          <span style="font-size:12px;font-weight:600;color:var(--text2)">Capacidad de ahorro</span>
-        </div>
-        <div style="font-family:var(--font-mono);font-size:24px;font-weight:700;color:${_SEM_COLOR[s.semAhorro]};line-height:1">${_pct(s.tasaAhorro)}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:3px">${e(s.ahorroReal)}/mes</div>
-        <div style="margin-top:8px;font-size:10px;color:var(--text3)">🟢 ≥${s.umbralAhorroVerde}% &nbsp;🟡 ≥${s.umbralAhorroAmarillo}% &nbsp;🔴 debajo</div>
-      </div>
-
-      <!-- DTI -->
-      <div style="background:var(--bg3);border-radius:var(--radius);padding:14px;border:1px solid var(--border)">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-          ${_dot(s.semDTI)}
-          <span style="font-size:12px;font-weight:600;color:var(--text2)">Endeudamiento (DTI)</span>
-        </div>
-        <div style="font-family:var(--font-mono);font-size:24px;font-weight:700;color:${_SEM_COLOR[s.semDTI]};line-height:1">${_pct(s.dti)}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:3px">Cuotas: ${e(s.excluyeHipoteca ? s.cuotas - s.cuotasHipoteca : s.cuotas)}/mes</div>
-        ${s.excluyeHipoteca && s.cuotasHipoteca > 0.01 ? `
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text3)">
-          DTI total (con hipoteca): ${_pct(s.dtiTotal)}<br>
-          Hipoteca: ${e(s.cuotasHipoteca)}/mes
-        </div>` : ''}
-        <div style="margin-top:8px;font-size:10px;color:var(--text3)">🟢 &lt;${s.umbralDTIVerde}% &nbsp;🟡 &lt;${s.umbralDTIAmarillo}% &nbsp;🔴 encima</div>
-      </div>
-
-      <!-- Distribución 50/30/20 -->
-      <div style="background:var(--bg3);border-radius:var(--radius);padding:14px;border:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px">Distribución (regla ${s.regla.join('/')})</div>
-        ${[
-          { label:'Necesidades', val:s.pctNecesidades, sem:s.semNecesidades, obj:`≤${s.regla[0]}%`, eur:s.gastosBasicos+s.cuotas },
-          { label:'Deseos',      val:s.pctDeseos,      sem:s.semDeseos,      obj:`≤${s.regla[1]}%`, eur:s.gastosOtros },
-          { label:'Ahorro',      val:s.tasaAhorro,     sem:s.semAhorroRegla, obj:`≥${s.regla[2]}%`, eur:s.ahorroReal },
-        ].map(r=>`
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
-          <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2)">${_dot(r.sem)} ${r.label}</span>
-          <span style="font-family:var(--font-mono);font-size:12px">
-            <span style="color:${_SEM_COLOR[r.sem]}">${_pct(r.val)}</span>
-            <span style="color:var(--text3);font-size:10px;margin-left:3px">${r.obj}</span>
-          </span>
-        </div>`).join('')}
-        <div style="font-size:10px;color:var(--text3);margin-top:4px">Ajustable en ⚙ Umbrales</div>
-      </div>
-
-    </div>`;
-  }
-
-  function renderSaludConfig(config) {
-    const r = config.saludRegla || [50,30,20];
-    return `
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px">Configurar umbrales</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
-        <div>
-          <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Tasa de ahorro</div>
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-            <span style="font-size:11px;color:var(--text2)">🟢 ≥</span>
-            <input type="number" class="form-input" id="salud-ahorro-verde" value="${config.saludUmbralAhorroVerde??20}" min="0" max="100" style="width:60px;font-size:12px;padding:3px 6px">
-            <span style="font-size:11px;color:var(--text2)">% &nbsp;🔴 &lt;</span>
-            <input type="number" class="form-input" id="salud-ahorro-rojo" value="${config.saludUmbralAhorroAmarillo??10}" min="0" max="100" style="width:60px;font-size:12px;padding:3px 6px">
-            <span style="font-size:11px;color:var(--text2)">%</span>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Endeudamiento (DTI)</div>
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-            <span style="font-size:11px;color:var(--text2)">🟢 &lt;</span>
-            <input type="number" class="form-input" id="salud-dti-verde" value="${config.saludUmbralDTIVerde??30}" min="0" max="100" style="width:60px;font-size:12px;padding:3px 6px">
-            <span style="font-size:11px;color:var(--text2)">% &nbsp;🔴 ≥</span>
-            <input type="number" class="form-input" id="salud-dti-rojo" value="${config.saludUmbralDTIAmarillo??40}" min="0" max="100" style="width:60px;font-size:12px;padding:3px 6px">
-            <span style="font-size:11px;color:var(--text2)">%</span>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Regla de distribución <span style="color:var(--text3)">(Nec./Deseos/Ahorro — recomendado: 50/30/20)</span></div>
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-            <input type="number" class="form-input" id="salud-regla-0" value="${r[0]}" min="0" max="100" style="width:55px;font-size:12px;padding:3px 6px">
-            <span style="color:var(--text3)">/</span>
-            <input type="number" class="form-input" id="salud-regla-1" value="${r[1]}" min="0" max="100" style="width:55px;font-size:12px;padding:3px 6px">
-            <span style="color:var(--text3)">/</span>
-            <input type="number" class="form-input" id="salud-regla-2" value="${r[2]}" min="0" max="100" style="width:55px;font-size:12px;padding:3px 6px">
-          </div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Hipoteca en el DTI</div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-            <label class="toggle"><input type="checkbox" id="salud-excl-hipoteca" ${config.saludExcluirHipoteca?'checked':''}><span class="toggle-slider"></span></label>
-            <span style="font-size:12px;color:var(--text2)">Excluir hipoteca del DTI principal</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px">
-            <span style="font-size:11px;color:var(--text3)">Tag hipoteca:</span>
-            <input type="text" class="form-input" id="salud-tag-hipoteca" value="${config.saludTagHipoteca||'hipoteca'}" style="width:100px;font-size:12px;padding:3px 6px">
-          </div>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:14px;align-items:center">
-        <button class="btn-primary btn-sm" onclick="DashboardModule.applySaludConfig()">Guardar</button>
-        <button class="btn-secondary btn-sm" onclick="DashboardModule.resetSaludConfig()">Restaurar recomendados (50/30/20)</button>
-      </div>
-    `;
-  }
 
   // Salir del escenario activo. Vivía en EscenariosModule, que ya está portado
   // a src/features/scenarios; el dashboard es la última vista legacy y toca su
@@ -318,9 +205,7 @@ const DashboardModule = (() => {
     const cuotasHipotecaMedia = evSinTransf.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto'&&_hipotecaIds.has(e.sourceId)).reduce((s,e)=>s+Math.abs(e.cuantia),0)/numMeses;
 
     const _metSaludMes = { ingresos:ingresosMesActual, cuotas:cuotasMesActual, cuotasHipoteca:cuotasHipotecaMesActual, gastosBasicos:gastosBasicosMesActual, gastosOtros:gastosOtrosMesActual, amortizaciones:amortizacionesMesActual };
-    const _metSaludMedia = { ingresos:ingresosMediaMes, cuotas:cuotasMediaMes, cuotasHipoteca:cuotasHipotecaMedia, gastosBasicos:gastosBasicosMediaMes, gastosOtros:gastosDeseoMediaMes, amortizaciones:amortizacionesMediaMes };
     const saludMes   = FinanceMath.calcSaludFinanciera(_metSaludMes, config);
-    const saludMedia = FinanceMath.calcSaludFinanciera(_metSaludMedia, config);
 
     // Alias para los paneles KPI
     const gastosFijosMes    = gastosTosMesActual;
@@ -889,24 +774,6 @@ const DashboardModule = (() => {
       </div>
       ${config.analisisCollapsed ? '' : `
 
-      <!-- Salud financiera -->
-      <div class="card mb-14" data-feature="salud-financiera">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-          <div class="card-title" style="margin:0">Salud financiera</div>
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <div class="period-selector">
-              <button class="period-btn ${saludView==='mes'?'active':''}" onclick="DashboardModule.setSaludView('mes')">Mes actual</button>
-              <button class="period-btn ${saludView==='media'?'active':''}" onclick="DashboardModule.setSaludView('media')">Media período</button>
-            </div>
-            <button class="btn-secondary btn-sm" onclick="DashboardModule.toggleSaludConfig()">⚙ Umbrales</button>
-          </div>
-        </div>
-        ${renderSaludFinanciera(saludView==='mes'?saludMes:saludMedia)}
-        <div id="salud-config-panel" style="display:none;margin-top:14px;padding:14px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border2)">
-          ${renderSaludConfig(config)}
-        </div>
-      </div>
-
       <!-- Charts row 2 -->
       <div class="grid-2 mb-14">
         <div class="card">
@@ -942,118 +809,6 @@ const DashboardModule = (() => {
         </div>
       </div>
 
-      <!-- Extracto -->
-      <div class="card">
-        <div class="card-title">Extracto proyectado (${extracto.length} movimientos)</div>
-        <div class="extr-head"><span>FECHA</span><span>CONCEPTO</span><span>IMPORTE</span><span class="extr-col-hide">CUENTA</span><span class="extr-col-hide">DELTA</span><span>SALDO</span></div>
-        <div style="max-height:360px;overflow-y:auto">
-          ${extracto.slice(0,300).map(ev=>{
-            const srcBadge = ev.sourceType==='nomina'
-              ? '<span style="font-size:9px;background:rgba(0,229,160,0.15);color:var(--accent);padding:1px 5px;border-radius:3px;margin-right:4px;flex-shrink:0">💼</span>'
-              : ev.sourceType==='account-interest'
-              ? '<span style="font-size:9px;background:rgba(77,159,255,0.15);color:#4d9fff;padding:1px 5px;border-radius:3px;margin-right:4px;flex-shrink:0">%</span>'
-              : ev.sourceType==='loan'||ev.sourceType==='loan-amort'
-              ? '<span style="font-size:9px;background:rgba(255,77,109,0.12);color:var(--red);padding:1px 5px;border-radius:3px;margin-right:4px;flex-shrink:0">🔒</span>'
-              : '';
-            return `<div class="extr-row">
-            <span class="num">${ev.fecha}</span>
-            <span style="display:flex;align-items:center;gap:0;min-width:0">${srcBadge}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.concepto}${ev.simulacion?' <span class="badge badge-sim" style="font-size:9px">SIM</span>':''}</span></span>
-            <span class="num ${ev.tipo==='ingreso'?'pos':'neg'}">${FinanceMath.eur(ev.cuantia)}</span>
-            <span class="text-sm extr-col-hide">${State.accountName(ev.cuenta||'default')}</span>
-            <span class="num ${ev.delta>=0?'pos':'neg'} extr-col-hide">${ev.delta>=0?'+':''}${FinanceMath.eur(ev.delta)}</span>
-            <span class="num ${ev.saldoAcum>=0?'':'neg'}">${FinanceMath.eur(ev.saldoAcum)}</span>
-          </div>`;}).join('')}
-          ${extracto.length>300?`<div class="text-sm" style="text-align:center;padding:10px">… y ${extracto.length-300} más</div>`:''}
-        </div>
-      </div>
-
-      <!-- Flujo de caja mensual -->
-      <div class="card mt-14" data-feature="flujo-mensual">
-        <div class="card-title mb-12">Flujo de caja mensual</div>
-        ${(()=>{
-          const dSfc = new Date(config.dashboardStart+'T00:00:00');
-          const dEfc = new Date(config.dashboardEnd+'T00:00:00');
-          const meses = [];
-          let _dm = new Date(dSfc.getFullYear(), dSfc.getMonth(), 1);
-          while (_dm <= dEfc && meses.length < 60) {
-            meses.push(_dm.getFullYear() + '-' + String(_dm.getMonth()+1).padStart(2,'0'));
-            _dm = new Date(_dm.getFullYear(), _dm.getMonth()+1, 1);
-          }
-          if (!meses.length) return '';
-
-          const rows = meses.map(ml => {
-            const ini = ml + '-01';
-            const fin = new Date(parseInt(ml.slice(0,4)), parseInt(ml.slice(5,7)), 0).toISOString().slice(0,10);
-            const evs = extracto.filter(e => e.fecha >= ini && e.fecha <= fin && e.sourceType !== 'transfer-out' && e.sourceType !== 'transfer-in');
-            const ing   = evs.filter(e=>e.tipo==='ingreso').reduce((s,e)=>s+Math.abs(e.cuantia),0);
-            const cuotas= evs.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto').reduce((s,e)=>s+Math.abs(e.cuantia),0);
-            const amorts= evs.filter(e=>e.sourceType==='loan-amort').reduce((s,e)=>s+Math.abs(e.cuantia),0);
-            const basicos= evs.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
-            const otros = evs.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return !ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
-            const totalGasto = cuotas + basicos + otros;
-            const neto  = ing - totalGasto;
-            const esHoy = ml === hoyStr.slice(0,7);
-            const p = 'padding:6px 8px';
-            return '<tr style="' + (esHoy ? 'background:rgba(0,229,160,0.05)' : '') + '">' +
-              '<td class="num" style="' + p + ';font-weight:' + (esHoy?'700':'400') + '">' + ml + (esHoy?' ◉':'') + '</td>' +
-              '<td class="num pos" style="' + p + '">' + FinanceMath.eur(ing) + '</td>' +
-              '<td class="num neg" style="' + p + '">' + FinanceMath.eur(cuotas) + '</td>' +
-              '<td class="num neg" style="' + p + '">' + FinanceMath.eur(basicos) + '</td>' +
-              '<td class="num neg" style="' + p + '">' + FinanceMath.eur(otros) + '</td>' +
-              (amorts > 0 ? '<td class="num neg" style="' + p + ';color:var(--text3)">' + FinanceMath.eur(amorts) + '</td>' : '<td class="num" style="' + p + ';color:var(--text3)">—</td>') +
-              '<td class="num ' + (neto>=0?'pos':'neg') + '" style="' + p + ';font-weight:600">' + (neto>=0?'+':'') + FinanceMath.eur(neto) + '</td>' +
-              '</tr>';
-          }).join('');
-
-          const totIng   = meses.reduce((s,ml)=>{ const ini=ml+'-01',fin=new Date(parseInt(ml.slice(0,4)),parseInt(ml.slice(5,7)),0).toISOString().slice(0,10); return s+extracto.filter(e=>e.fecha>=ini&&e.fecha<=fin&&e.tipo==='ingreso'&&e.sourceType!=='transfer-in').reduce((ss,e)=>ss+Math.abs(e.cuantia),0);},0);
-          const totGasto = meses.reduce((s,ml)=>{ const ini=ml+'-01',fin=new Date(parseInt(ml.slice(0,4)),parseInt(ml.slice(5,7)),0).toISOString().slice(0,10); return s+extracto.filter(e=>e.fecha>=ini&&e.fecha<=fin&&e.tipo==='gasto'&&e.sourceType!=='transfer-out'&&e.sourceType!=='loan-amort').reduce((ss,e)=>ss+Math.abs(e.cuantia),0);},0);
-          const totNeto  = totIng - totGasto;
-
-          return '<div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">' +
-            '<thead><tr style="color:var(--text3);font-size:10px;text-transform:uppercase;font-family:var(--font-mono)">' +
-            '<th style="text-align:left;padding:6px 8px">Mes</th>' +
-            '<th style="text-align:right;padding:6px 8px">Ingresos</th>' +
-            '<th style="text-align:right;padding:6px 8px">Cuotas</th>' +
-            '<th style="text-align:right;padding:6px 8px">Básicos</th>' +
-            '<th style="text-align:right;padding:6px 8px">Otros</th>' +
-            '<th style="text-align:right;padding:6px 8px">Amorts.</th>' +
-            '<th style="text-align:right;padding:6px 8px">Neto</th>' +
-            '</tr></thead>' +
-            '<tbody>' + rows + '</tbody>' +
-            '<tfoot><tr style="border-top:1px solid var(--border2);font-weight:700;font-size:11px">' +
-            '<td style="padding:6px 8px">TOTAL</td>' +
-            '<td class="num pos" style="padding:6px 8px">' + FinanceMath.eur(totIng) + '</td>' +
-            '<td colspan="3" class="num neg" style="padding:6px 8px">' + FinanceMath.eur(totGasto) + '</td>' +
-            '<td></td>' +
-            '<td class="num ' + (totNeto>=0?'pos':'neg') + '" style="padding:6px 8px">' + (totNeto>=0?'+':'') + FinanceMath.eur(totNeto) + '</td>' +
-            '</tr></tfoot>' +
-            '</table></div>';
-        })()}
-      </div>
-
-      <!-- Desviación real vs estimado -->
-      ${(()=>{
-        // El "real" tiene que salir de LAS MISMAS cuentas que el "estimado".
-        // Pasando `accounts` se sumaban todas —inactivas, simuladas y las
-        // excluidas por el filtro de la barra superior— contra un extracto que
-        // solo cubre las activas y filtradas: dos conjuntos distintos, así que
-        // la desviación no podía cuadrar nunca con la gráfica.
-        const desv = FinanceMath.calcDesviacion(extracto, cuentasActivas);
-        if (!desv.length) return '';
-        const mape = desv.reduce((s,r)=>s+Math.abs(r.pct),0)/desv.length;
-        return `<div class="card mt-14" data-feature="desviacion">
-          <div class="card-title">Desviación real vs estimado</div>
-          <div class="text-sm mb-8" style="color:var(--text2)">Precisión del modelo: <span class="num" style="color:${(100-mape)>90?'var(--accent)':(100-mape)>75?'var(--yellow)':'var(--red)'}">${(100-mape).toFixed(1)}%</span></div>
-          <div class="dev-row dev-head"><span>Fecha</span><span>Estimado</span><span>Real</span><span>Desviación</span><span>%</span></div>
-          ${desv.slice(-20).reverse().map(r=>`<div class="dev-row">
-            <span class="num">${r.fecha}</span>
-            <span class="num">${FinanceMath.eur(r.estimado)}</span>
-            <span class="num ${r.real>=r.estimado?'pos':'neg'}">${FinanceMath.eur(r.real)}</span>
-            <span class="num ${r.desv>=0?'pos':'neg'}">${r.desv>=0?'+':''}${FinanceMath.eur(r.desv)}</span>
-            <span class="num ${Math.abs(r.pct)<10?'pos':Math.abs(r.pct)<25?'':'neg'}">${r.pct>=0?'+':''}${r.pct.toFixed(1)}%</span>
-          </div>`).join('')}
-        </div>`;
-      })()}
 
       `}
 `;
@@ -1852,37 +1607,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  function setSaludView(v) { saludView=v; render(); }
-  function toggleSaludConfig() {
-    const p=document.getElementById('salud-config-panel');
-    if(p) p.style.display=p.style.display==='none'?'':'none';
-  }
-  function applySaludConfig() {
-    const cfg=State.get('config');
-    State.set('config',{...cfg,
-      saludUmbralAhorroVerde:   parseFloat(document.getElementById('salud-ahorro-verde')?.value)||20,
-      saludUmbralAhorroAmarillo:parseFloat(document.getElementById('salud-ahorro-rojo')?.value)||10,
-      saludUmbralDTIVerde:      parseFloat(document.getElementById('salud-dti-verde')?.value)||30,
-      saludUmbralDTIAmarillo:   parseFloat(document.getElementById('salud-dti-rojo')?.value)||40,
-      saludRegla:[
-        parseFloat(document.getElementById('salud-regla-0')?.value)||50,
-        parseFloat(document.getElementById('salud-regla-1')?.value)||30,
-        parseFloat(document.getElementById('salud-regla-2')?.value)||20,
-      ],
-      saludExcluirHipoteca: document.getElementById('salud-excl-hipoteca')?.checked||false,
-      saludTagHipoteca: document.getElementById('salud-tag-hipoteca')?.value||'hipoteca',
-    });
-    render();
-  }
-  function resetSaludConfig() {
-    const cfg=State.get('config');
-    State.set('config',{...cfg,
-      saludUmbralAhorroVerde:20, saludUmbralAhorroAmarillo:10,
-      saludUmbralDTIVerde:30, saludUmbralDTIAmarillo:40,
-      saludRegla:[50,30,20], saludExcluirHipoteca:false, saludTagHipoteca:'hipoteca',
-    });
-    render();
-  }
-
-  return { render, actualizar, setVentanaVelas, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis, setSaludView, toggleSaludConfig, applySaludConfig, resetSaludConfig };
+  return { render, actualizar, setVentanaVelas, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis };
 })();
