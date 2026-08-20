@@ -156,8 +156,26 @@ function bootstrap(): FinanceAppNamespace {
   // Recarga del State legacy: comparte las claves de localStorage con el store
   // nuevo, pero mantiene su propia copia en memoria. Hasta portar el dashboard
   // (1.7), tras escribir desde una vista nueva hay que pedirle que relea.
+  //
+  // Y además hay que REPINTAR el dashboard si es la vista abierta: releer el
+  // State no redibuja nada, así que sus gráficas se quedaban con los datos de
+  // antes sin ninguna señal de estar caducadas. Solo el dashboard: las vistas
+  // nuevas se refrescan solas (`deps.refrescar`) y repintarlas aquí duplicaría
+  // el trabajo y les haría perder el estado abierto de sus tarjetas.
   const refrescarLegacy = () => {
-    (globalThis as { State?: { load?: () => unknown } }).State?.load?.();
+    const g = globalThis as {
+      State?: { load?: () => unknown };
+      Router?: { rerender?: () => void; current?: () => string };
+      DashboardModule?: { render?: () => void };
+    };
+    g.State?.load?.();
+    if (g.Router?.current?.() !== 'dashboard') return;
+    try {
+      g.DashboardModule?.render?.();
+    } catch (e) {
+      // Repintar no debe tumbar la operación que acaba de guardar bien.
+      console.error('[FinanceApp] No se ha podido repintar el cuadro de mando tras el cambio:', e);
+    }
   };
 
   // El ORDEN IMPORTA: el registro añade cada botón al final de su sección, así

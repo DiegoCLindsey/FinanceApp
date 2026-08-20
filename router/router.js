@@ -168,7 +168,10 @@ const Router = (() => {
     window.FinanceApp?.ui?.applyGating?.();
     navigate('dashboard');
   }
-  return { init, navigate, rerender };
+  /** Vista abierta ahora mismo. Lo consulta el paquete nuevo para no repintar
+   *  una vista que ya se está refrescando por su cuenta. */
+  function current() { return _current; }
+  return { init, navigate, rerender, current };
 })();
 
 // `const Router` en el ámbito global NO crea `window.Router`: las declaraciones

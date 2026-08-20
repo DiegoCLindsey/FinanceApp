@@ -7,6 +7,16 @@ const DashboardModule = (() => {
 
   function destroyCharts() { Object.values(charts).forEach(c=>{try{c.destroy();}catch{}}); charts={}; }
 
+  // Las seis gráficas se pintan en un temporizador diferido (hay que esperar a
+  // que el navegador dé tamaño a los <canvas> recién insertados). Guardamos el
+  // handle: si llega otro render antes de que dispare, el anterior se cancela.
+  // Si no, dos renders seguidos encolan dos temporizadores y el destroyCharts()
+  // del segundo se cuela entre los `new Chart()` del primero, dejando instancias
+  // huérfanas que ya nadie destruye y gráficas que no cuadran con el DOM.
+  let _chartTimer = null;
+  /** Momento del último repintado completo, para poder mostrarlo. */
+  let _ultimaActualizacion = null;
+
   const _SEM_COLOR = { verde:'#00e5a0', amarillo:'#ffd166', rojo:'#ff4d6d', neutral:'var(--text3)' };
   function _dot(sem) {
     return `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_SEM_COLOR[sem]};flex-shrink:0"></span>`;
@@ -124,6 +134,42 @@ const DashboardModule = (() => {
   // Salir del escenario activo. Vivía en EscenariosModule, que ya está portado
   // a src/features/scenarios; el dashboard es la última vista legacy y toca su
   // propia config directamente hasta que también se porte (1.7).
+  /**
+   * Refresco manual del cuadro de mando.
+   *
+   * Hace falta porque el dashboard solo se repinta al navegar hasta él: los
+   * datos se editan en otras vistas (préstamos, gastos, cuentas…) y esas vistas
+   * recargan el State pero no re-renderizan esta. Además el navegador puede
+   * dejar la pestaña horas abierta, y entonces "hoy" ya no es hoy.
+   *
+   * Relee el State del almacenamiento antes de pintar: si el cambio lo escribió
+   * el paquete nuevo, la copia en memoria del legacy puede estar atrasada.
+   */
+  function actualizar() {
+    const btn = document.querySelector('[data-dash-actualizar]');
+    if (btn) { btn.disabled = true; btn.classList.add('is-loading'); }
+    try {
+      State.load();
+    } catch (e) {
+      console.error('[Dashboard] No se ha podido releer el estado:', e);
+    }
+    try {
+      render();
+      UI?.toast?.('Cuadro de mando actualizado');
+    } catch (e) {
+      console.error('[Dashboard] Fallo al actualizar:', e);
+      UI?.toast?.('No se ha podido actualizar el cuadro de mando', 'err');
+      if (btn) { btn.disabled = false; btn.classList.remove('is-loading'); }
+    }
+  }
+
+  /** Escribe la hora del último repintado bajo el botón de actualizar. */
+  function _pintarSelloActualizacion() {
+    const sello = document.querySelector('[data-dash-sello]');
+    if (!sello || !_ultimaActualizacion) return;
+    sello.textContent = 'Actualizado ' + _ultimaActualizacion.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  }
+
   function salirEscenario() {
     const cfg = State.get('config');
     State.set('config', { ...cfg, escenarioActivo: null });
@@ -144,6 +190,7 @@ const DashboardModule = (() => {
   }
 
   function render() {
+    if (_chartTimer !== null) { clearTimeout(_chartTimer); _chartTimer = null; }
     destroyCharts();
     const view=document.getElementById('view-dashboard');
     const config=State.get('config');
@@ -337,6 +384,10 @@ const DashboardModule = (() => {
     view.innerHTML=`
       <div class="page-header">
         <h1 class="page-title">Cuadro de <span>Mando</span></h1>
+        <div class="page-actions" style="display:flex;align-items:center;gap:10px">
+          <span class="text-sm" data-dash-sello style="color:var(--text3);font-size:11px"></span>
+          <button class="btn-secondary btn-sm" data-dash-actualizar onclick="DashboardModule.actualizar()" title="Volver a calcular con los datos actuales">&#8635; Actualizar</button>
+        </div>
       </div>
 
       ${escenarioActivo ? (() => {
@@ -961,7 +1012,8 @@ const DashboardModule = (() => {
     const _otrosTagData = Object.entries(_otrosTagMap)
       .map(([label, total]) => ({ label, value: total / numMeses }))
       .sort((a, b) => b.value - a.value);
-    setTimeout(()=>{
+    _chartTimer = setTimeout(()=>{
+      _chartTimer = null;
       // Cada gráfica va aislada: un fallo en una no puede dejar sin pintar a las
       // que vienen detrás, que es justo lo que pasó con `_tagMapConGrupos`.
       const _graficas = [
@@ -976,6 +1028,8 @@ const DashboardModule = (() => {
         try { pintar(); }
         catch (e) { console.error(`[Dashboard] La gráfica "${nombre}" no se ha podido pintar:`, e); }
       }
+      _ultimaActualizacion = new Date();
+      _pintarSelloActualizacion();
     }, 60);
   }
 
@@ -1468,11 +1522,14 @@ const DashboardModule = (() => {
       existing.data.labels = segments.map(s=>s.label);
       existing.data.datasets[0].data = segments.map(s=>s.value);
       existing.data.datasets[0].backgroundColor = segments.map(s=>s.color);
+      // El tooltip se recalcula a partir de `existing.data`, NO del `segments`
+      // capturado al crear la gráfica: al actualizar en sitio ese cierre se
+      // queda con los importes viejos y el porcentaje mostrado no cuadraba con
+      // el trozo del donut que estabas señalando.
       existing.update('none');
       return;
     }
     if (existing) { try { existing.destroy(); } catch{} }
-    const total = segments.reduce((s,x)=>s+x.value,0);
     charts['chart-expense-donut'] = new Chart(ctx, {
       type: 'doughnut',
       data: {
@@ -1486,7 +1543,7 @@ const DashboardModule = (() => {
           tooltip: {
             backgroundColor:'#13161e', borderColor:'#252a38', borderWidth:1,
             titleColor:'#8b92a8', bodyColor:'#e8eaf2',
-            callbacks: { label: c => { const t=segments.reduce((s,x)=>s+x.value,0); return ` ${c.label}: ${FinanceMath.eur(c.parsed)} (${(c.parsed/(t||c.parsed)*100).toFixed(1)}%)`; } }
+            callbacks: { label: c => { const d=c.chart.data.datasets[0].data; const t=d.reduce((s,x)=>s+x,0); return ` ${c.label}: ${FinanceMath.eur(c.parsed)} (${(c.parsed/(t||c.parsed)*100).toFixed(1)}%)`; } }
           }
         }
       }
@@ -1656,5 +1713,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis, setSaludView, toggleSaludConfig, applySaludConfig, resetSaludConfig };
+  return { render, actualizar, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis, setSaludView, toggleSaludConfig, applySaludConfig, resetSaludConfig };
 })();
