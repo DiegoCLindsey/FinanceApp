@@ -305,3 +305,77 @@ export function idsHipoteca(loans: LoanDashboard[], tagHipoteca = 'hipoteca'): S
 export function idsPrestamosIniciados(loans: LoanDashboard[], hoy: ISODate): Set<string> {
   return new Set(loans.filter((l) => (l.fechaInicio || '') <= hoy).map((l) => l._id));
 }
+
+// ── Velas OHLC del saldo ──────────────────────────────────────────────────────
+
+export type VentanaOHLC = 'mes' | 'anio';
+
+export interface VelaOHLC {
+  /** '2026-08' para meses, '2026' para años. */
+  periodo: string;
+  /** Primer día del periodo, para poder situarla en un eje temporal. */
+  inicio: ISODate;
+  apertura: number;
+  cierre: number;
+  maximo: number;
+  minimo: number;
+  /** Movimientos agrupados; 0 significa un periodo sin actividad. */
+  eventos: number;
+}
+
+/**
+ * Agrupa la curva de saldo en velas por mes o por año.
+ *
+ * Dos correcciones frente a la versión que se retiró en 8f64dfb:
+ *
+ * 1. **La apertura es el cierre del periodo anterior**, no el saldo del primer
+ *    movimiento del periodo. El primer movimiento YA ha movido el saldo, así que
+ *    tomarlo como apertura se come ese salto y deja las velas descuadradas entre
+ *    sí: el cierre de enero no coincidía con la apertura de febrero. Para la
+ *    primera vela se reconstruye el saldo previo restando su propio delta.
+ * 2. **La ventana semanal desaparece.** Se calculaba con `toISOString()` sobre
+ *    una fecha local, que en husos con desfase positivo devuelve el día anterior
+ *    y podía mandar el lunes a la semana de antes. Mensual y anual se agrupan
+ *    por prefijo de la fecha ISO, que no tiene ese problema.
+ *
+ * El máximo y el mínimo incluyen la apertura: el saldo pasó por ahí.
+ */
+export function agruparOHLC(extracto: CashEvent[], ventana: VentanaOHLC): VelaOHLC[] {
+  if (extracto.length === 0) return [];
+
+  const clave = (fecha: ISODate) => (ventana === 'mes' ? fecha.slice(0, 7) : fecha.slice(0, 4));
+  const primerDia = (periodo: string) => (ventana === 'mes' ? `${periodo}-01` : `${periodo}-01-01`);
+
+  const primero = extracto[0];
+  const deltaPrimero = primero.delta ?? (primero.tipo === 'ingreso' ? Math.abs(primero.cuantia) : -Math.abs(primero.cuantia));
+  let apertura = (primero.saldoAcum ?? 0) - deltaPrimero;
+
+  const velas: VelaOHLC[] = [];
+  let actual: VelaOHLC | null = null;
+
+  for (const ev of extracto) {
+    const periodo = clave(ev.fecha);
+    const saldo = ev.saldoAcum ?? apertura;
+
+    if (!actual || actual.periodo !== periodo) {
+      if (actual) apertura = actual.cierre;
+      actual = {
+        periodo,
+        inicio: primerDia(periodo),
+        apertura,
+        cierre: saldo,
+        maximo: Math.max(apertura, saldo),
+        minimo: Math.min(apertura, saldo),
+        eventos: 0,
+      };
+      velas.push(actual);
+    }
+
+    actual.cierre = saldo;
+    if (saldo > actual.maximo) actual.maximo = saldo;
+    if (saldo < actual.minimo) actual.minimo = saldo;
+    actual.eventos += 1;
+  }
+
+  return velas;
+}

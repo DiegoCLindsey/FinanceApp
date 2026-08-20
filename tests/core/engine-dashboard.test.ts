@@ -3,6 +3,7 @@
 // de huso horario que allí estaban sin detectar.
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
+  agruparOHLC,
   cuentasVisibles,
   gastoPorTagOrdenado,
   idsHipoteca,
@@ -348,5 +349,83 @@ describe('conjuntos auxiliares', () => {
 
   it('un préstamo que empieza en el futuro no está iniciado', () => {
     expect([...idsPrestamosIniciados(loans, '2026-07-31')]).toEqual(['l1']);
+  });
+});
+
+describe('velas OHLC del saldo', () => {
+  const ev = (fecha: string, saldoAcum: number, delta: number): CashEvent => ({
+    fecha,
+    concepto: 'x',
+    cuantia: Math.abs(delta),
+    tipo: delta >= 0 ? 'ingreso' : 'gasto',
+    tags: [],
+    cuenta: 'a1',
+    sourceId: 's',
+    sourceType: 'expense',
+    delta,
+    saldoAcum,
+  });
+
+  const serie = [
+    ev('2026-01-10', 1100, 100), // saldo previo 1000
+    ev('2026-01-20', 900, -200),
+    ev('2026-02-05', 1400, 500),
+    ev('2026-02-25', 1200, -200),
+    ev('2027-03-01', 1500, 300),
+  ];
+
+  it('sin movimientos no hay velas', () => {
+    expect(agruparOHLC([], 'mes')).toEqual([]);
+  });
+
+  it('agrupa por mes con apertura, cierre, máximo y mínimo', () => {
+    const velas = agruparOHLC(serie, 'mes');
+    expect(velas.map((v) => v.periodo)).toEqual(['2026-01', '2026-02', '2027-03']);
+
+    const enero = velas[0];
+    // La apertura se reconstruye restando el delta del primer movimiento
+    expect(enero.apertura).toBe(1000);
+    expect(enero.cierre).toBe(900);
+    expect(enero.maximo).toBe(1100);
+    expect(enero.minimo).toBe(900);
+    expect(enero.eventos).toBe(2);
+  });
+
+  it('la apertura de cada vela es el cierre de la anterior', () => {
+    // El fallo de la versión retirada: tomaba el saldo del PRIMER movimiento del
+    // periodo, que ya lo había movido, y las velas quedaban descolgadas.
+    const velas = agruparOHLC(serie, 'mes');
+    for (let i = 1; i < velas.length; i++) {
+      expect(velas[i].apertura).toBe(velas[i - 1].cierre);
+    }
+  });
+
+  it('el máximo y el mínimo incluyen la apertura', () => {
+    // Un mes que solo baja tiene su máximo en la apertura, no en ningún evento
+    const soloBaja = [ev('2026-05-10', 800, -200), ev('2026-05-20', 700, -100)];
+    const [vela] = agruparOHLC(soloBaja, 'mes');
+    expect(vela.apertura).toBe(1000);
+    expect(vela.maximo).toBe(1000);
+    expect(vela.minimo).toBe(700);
+  });
+
+  it('agrupa por año', () => {
+    const velas = agruparOHLC(serie, 'anio');
+    expect(velas.map((v) => v.periodo)).toEqual(['2026', '2027']);
+    expect(velas[0].apertura).toBe(1000);
+    expect(velas[0].cierre).toBe(1200);
+    expect(velas[0].eventos).toBe(4);
+    expect(velas[1].apertura).toBe(1200);
+  });
+
+  it('sitúa cada vela en el primer día de su periodo', () => {
+    expect(agruparOHLC(serie, 'mes')[0].inicio).toBe('2026-01-01');
+    expect(agruparOHLC(serie, 'anio')[0].inicio).toBe('2026-01-01');
+  });
+
+  it('una vela alcista cierra por encima de su apertura y una bajista por debajo', () => {
+    const velas = agruparOHLC(serie, 'mes');
+    expect(velas[0].cierre).toBeLessThan(velas[0].apertura); // enero, bajista
+    expect(velas[1].cierre).toBeGreaterThan(velas[1].apertura); // febrero, alcista
   });
 });

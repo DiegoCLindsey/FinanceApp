@@ -148,6 +148,13 @@ export const FEATURES: FeatureDefinition[] = [
     porDefecto: true,
   },
   {
+    id: 'velas-saldo',
+    nombre: 'Velas del saldo',
+    descripcion: 'Apertura, cierre, máximo y mínimo del saldo por mes o por año.',
+    grupo: GRUPOS.analisis,
+    porDefecto: true,
+  },
+  {
     id: 'graficos-etiquetas',
     nombre: 'Gráficos por etiqueta',
     descripcion: 'Reparto y media mensual del gasto por etiqueta, con grupos de etiquetas.',

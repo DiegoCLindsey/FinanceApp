@@ -1,11 +1,50 @@
 // Depends on: State, FinanceMath, UI
 const DashboardModule = (() => {
-  let charts={}, activeTags=new Set(), filtroAccounts=[], chartMode='summed', tagGroupsMode='desglosado', saludView='mes';
+  let charts={}, activeTags=new Set(), filtroAccounts=[], chartMode='summed', tagGroupsMode='desglosado', saludView='mes', ventanaVelas='mes';
   // Stable color palette for promoted tags (index 0 reserved for base categories)
   const _TAG_PROMO_PALETTE = ['#f97316','#eab308','#22d3ee','#a78bfa','#34d399','#fb7185','#60a5fa','#c084fc','#4ade80','#f472b6'];
   // colchon + historial toggles driven from config, no local state needed
 
   function destroyCharts() { Object.values(charts).forEach(c=>{try{c.destroy();}catch{}}); charts={}; }
+
+  /**
+   * Modo de interacción "porFecha".
+   *
+   * El modo 'index' de Chart.js empareja las series por POSICIÓN EN EL ARRAY, no
+   * por su valor en el eje. Con series de distinta densidad —el histórico real
+   * tiene un puñado de puntos y el extracto proyectado cientos— el tooltip
+   * cruzaba el punto n-ésimo de una con el n-ésimo de la otra, que caen en
+   * fechas completamente distintas: al señalar julio, el histórico mostraba un
+   * saldo de abril. Comparar real contra estimado así no significa nada.
+   *
+   * Este modo busca, en cada serie, el punto más cercano EN FECHA al cursor, y
+   * lo descarta si se aleja más de `TOLERANCIA_PX`. Así una serie que no llega a
+   * esa fecha simplemente no aparece en el tooltip, en vez de aportar un dato
+   * de otro día.
+   */
+  const TOLERANCIA_PX = 24;
+  function _registrarModoPorFecha() {
+    const I = window.Chart?.Interaction?.modes;
+    if (!I || I.porFecha) return;
+    I.porFecha = (chart, e, options, useFinalPosition) => {
+      const pos = window.Chart.helpers.getRelativePosition(e, chart);
+      const items = [];
+      for (let di = 0; di < chart.data.datasets.length; di++) {
+        const meta = chart.getDatasetMeta(di);
+        if (meta.hidden || !meta.visible) continue;
+        let mejor = null, mejorDist = Infinity;
+        for (let i = 0; i < meta.data.length; i++) {
+          const el = meta.data[i];
+          if (!el || el.skip) continue;
+          const { x } = el.getProps(['x'], useFinalPosition);
+          const dist = Math.abs(x - pos.x);
+          if (dist < mejorDist) { mejorDist = dist; mejor = { element: el, datasetIndex: di, index: i }; }
+        }
+        if (mejor && mejorDist <= TOLERANCIA_PX) items.push(mejor);
+      }
+      return items;
+    };
+  }
 
   // Las seis gráficas se pintan en un temporizador diferido (hay que esperar a
   // que el navegador dé tamaño a los <canvas> recién insertados). Guardamos el
@@ -169,6 +208,8 @@ const DashboardModule = (() => {
     if (!sello || !_ultimaActualizacion) return;
     sello.textContent = 'Actualizado ' + _ultimaActualizacion.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
   }
+
+  function setVentanaVelas(v) { ventanaVelas = v; render(); }
 
   function salirEscenario() {
     const cfg = State.get('config');
@@ -824,6 +865,21 @@ const DashboardModule = (() => {
         <div class="chart-wrap-lg"><canvas id="chart-saldo"></canvas></div>
       </div>
 
+      <!-- Velas del saldo (mensual / anual) -->
+      <div class="card mb-14" data-feature="velas-saldo">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div class="card-title" style="margin:0">Velas del saldo</div>
+          <div class="period-selector">
+            <button class="period-btn ${ventanaVelas==='mes'?'active':''}" onclick="DashboardModule.setVentanaVelas('mes')">Mensual</button>
+            <button class="period-btn ${ventanaVelas==='anio'?'active':''}" onclick="DashboardModule.setVentanaVelas('anio')">Anual</button>
+          </div>
+        </div>
+        <div class="chart-wrap-lg"><canvas id="chart-velas"></canvas></div>
+        <div class="text-sm" style="color:var(--text3);margin-top:6px">
+          Cada vela abre donde cerró la anterior. El cuerpo va de apertura a cierre —verde si el saldo sube, rojo si baja— y la mecha marca el máximo y el mínimo del periodo.
+        </div>
+      </div>
+
       <!-- ── Análisis avanzado (colapsable) ─────────────────────────────────── -->
       <div class="card mb-14" style="padding:12px 16px">
         <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="DashboardModule.toggleAnalisis()">
@@ -977,7 +1033,12 @@ const DashboardModule = (() => {
 
       <!-- Desviación real vs estimado -->
       ${(()=>{
-        const desv = FinanceMath.calcDesviacion(extracto, accounts);
+        // El "real" tiene que salir de LAS MISMAS cuentas que el "estimado".
+        // Pasando `accounts` se sumaban todas —inactivas, simuladas y las
+        // excluidas por el filtro de la barra superior— contra un extracto que
+        // solo cubre las activas y filtradas: dos conjuntos distintos, así que
+        // la desviación no podía cuadrar nunca con la gráfica.
+        const desv = FinanceMath.calcDesviacion(extracto, cuentasActivas);
         if (!desv.length) return '';
         const mape = desv.reduce((s,r)=>s+Math.abs(r.pct),0)/desv.length;
         return `<div class="card mt-14" data-feature="desviacion">
@@ -1014,6 +1075,7 @@ const DashboardModule = (() => {
       .sort((a, b) => b.value - a.value);
     _chartTimer = setTimeout(()=>{
       _chartTimer = null;
+      _registrarModoPorFecha();
       // Cada gráfica va aislada: un fallo en una no puede dejar sin pintar a las
       // que vienen detrás, que es justo lo que pasó con `_tagMapConGrupos`.
       const _graficas = [
@@ -1023,6 +1085,7 @@ const DashboardModule = (() => {
         ['gastos',     () => renderChartExpenseDonut(_donutMetrics)],
         ['otros',      () => renderChartOtrosDonut(_otrosTagData)],
         ['saldos',     () => renderChartSaldosDonut(accounts.filter(a => a.activo && !a.simulacion))],
+        ['velas',      () => renderChartVelas(extracto)],
       ];
       for (const [nombre, pintar] of _graficas) {
         try { pintar(); }
@@ -1066,8 +1129,10 @@ const DashboardModule = (() => {
     // suma el saldo más reciente de CADA cuenta hasta esa fecha.
     let histDataset = null;
     if (config.showHistorico) {
+      // Mismo predicado que el extracto (activa + filtrada). Sin el `activo` se
+      // colaban cuentas cerradas en la serie real y no cuadraba con la estimada.
       const visibles = accounts.filter(a =>
-        filtroAccounts.length === 0 || filtroAccounts.includes(a._id)
+        a.activo && (filtroAccounts.length === 0 || filtroAccounts.includes(a._id))
       );
       // Recoger todas las fechas únicas; deduplicar por cuenta.
       // saldoInicial at fechaInicialSaldo is the anchor — pre-floor entries are excluded.
@@ -1276,7 +1341,7 @@ const DashboardModule = (() => {
       data: { datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
+        interaction: { mode: 'porFecha', intersect: false },
         plugins: {
           legend: {
             display: isStacked || (histDataset != null) || margenDatasets.length>0 || criticoDatasets.length>0 || datasets.some(d=>d.label?.startsWith('🏁')),
@@ -1290,6 +1355,16 @@ const DashboardModule = (() => {
               title: items => {
                 const d = new Date(items[0].parsed.x);
                 return d.toLocaleDateString('es-ES', { year:'numeric', month:'short', day:'numeric' });
+              },
+              // Cada serie aporta su punto más cercano en fecha, y no tienen por
+              // qué caer todas en el mismo día: el histórico real se anota
+              // cuando se anota. Si el punto es de otro día se dice, en vez de
+              // dejar que parezca del día del título.
+              afterLabel: ctx => {
+                const dia = t => new Date(t).toLocaleDateString('es-ES', { year:'numeric', month:'short', day:'numeric' });
+                const propio = dia(ctx.parsed.x);
+                const titulo = dia(ctx.chart.tooltip?.dataPoints?.[0]?.parsed.x ?? ctx.parsed.x);
+                return propio === titulo ? '' : `   ↳ dato del ${propio}`;
               },
               label: ctx => {
                 if (isStacked) {
@@ -1325,6 +1400,102 @@ const DashboardModule = (() => {
           }
         }
       }
+    });
+  }
+
+  /**
+   * Velas del saldo por mes o por año.
+   *
+   * Se dibuja con barras flotantes de Chart.js (`[min, max]`), no con el plugin
+   * `chartjs-chart-financial` que traía la versión retirada en 8f64dfb: aquello
+   * era una dependencia más de CDN, y ya sabemos lo que pasa cuando un recurso
+   * externo no llega. Dos datasets superpuestos: la mecha (mínimo→máximo, fina)
+   * y el cuerpo (apertura→cierre, grueso), coloreados según suba o baje.
+   */
+  function renderChartVelas(extracto) {
+    const ctx = document.getElementById('chart-velas'); if (!ctx) return;
+    const dash = window.FinanceApp?.engine?.dashboard;
+    if (!dash?.agruparOHLC) {
+      ctx.parentElement.innerHTML = '<div class="text-sm" style="text-align:center;padding:40px;color:var(--text3)">Las velas las calcula el módulo principal, que no se ha cargado.</div>';
+      return;
+    }
+    const velas = dash.agruparOHLC(extracto, ventanaVelas);
+    if (velas.length === 0) {
+      ctx.parentElement.innerHTML = '<div class="text-sm" style="text-align:center;padding:40px;color:var(--text3)">Sin movimientos en el período seleccionado.</div>';
+      return;
+    }
+
+    const sube = v => v.cierre >= v.apertura;
+    const VERDE = '#00e5a0', ROJO = '#ff4d6d';
+    const etiquetas = velas.map(v => v.periodo);
+
+    charts.velas = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: etiquetas,
+        datasets: [
+          {
+            label: 'Recorrido',
+            // La mecha: del mínimo al máximo del periodo.
+            data: velas.map(v => [v.minimo, v.maximo]),
+            backgroundColor: velas.map(v => (sube(v) ? VERDE : ROJO) + '55'),
+            barPercentage: 0.12,
+            categoryPercentage: 0.9,
+            order: 2,
+          },
+          {
+            label: 'Apertura → cierre',
+            // El cuerpo. Un periodo plano quedaría invisible como barra de
+            // altura cero, así que se le da un grosor mínimo visible.
+            data: velas.map(v => {
+              const a = v.apertura, c = v.cierre;
+              if (Math.abs(c - a) > 0.005) return [Math.min(a, c), Math.max(a, c)];
+              const eps = Math.max(1, Math.abs(a) * 0.001);
+              return [a - eps, a + eps];
+            }),
+            backgroundColor: velas.map(v => sube(v) ? VERDE : ROJO),
+            barPercentage: 0.6,
+            categoryPercentage: 0.9,
+            order: 1,
+          },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#13161e', borderColor: '#252a38', borderWidth: 1,
+            titleColor: '#8b92a8', bodyColor: '#e8eaf2',
+            // Un tooltip por vela, no uno por dataset: los dos datasets son la
+            // misma vela partida en cuerpo y mecha.
+            filter: item => item.datasetIndex === 0,
+            callbacks: {
+              title: items => items[0].label,
+              label: item => {
+                const v = velas[item.dataIndex];
+                const signo = v.cierre - v.apertura;
+                return [
+                  ` Apertura: ${FinanceMath.eur(v.apertura)}`,
+                  ` Cierre:   ${FinanceMath.eur(v.cierre)}`,
+                  ` Máximo:   ${FinanceMath.eur(v.maximo)}`,
+                  ` Mínimo:   ${FinanceMath.eur(v.minimo)}`,
+                  ` Variación: ${signo >= 0 ? '+' : ''}${FinanceMath.eur(signo)}`,
+                  ` ${v.eventos} movimiento${v.eventos !== 1 ? 's' : ''}`,
+                ];
+              },
+            },
+          },
+        },
+        scales: {
+          x: { ticks: { color: '#555d77', maxTicksLimit: 14 }, grid: { display: false }, stacked: false },
+          y: {
+            ticks: { color: '#555d77', callback: v => FinanceMath.eur(v) },
+            grid: { color: c => c.tick.value === 0 ? 'rgba(255,255,255,0.22)' : '#252a38' },
+          },
+        },
+      },
     });
   }
 
@@ -1713,5 +1884,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, actualizar, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis, setSaludView, toggleSaludConfig, applySaludConfig, resetSaludConfig };
+  return { render, actualizar, setVentanaVelas, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis, setSaludView, toggleSaludConfig, applySaludConfig, resetSaludConfig };
 })();
