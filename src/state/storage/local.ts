@@ -18,6 +18,13 @@ export const VERSION_KEY = 'state__schemaVersion';
 /** Espacio de nombres físico en localStorage, compartido con el State legacy. */
 export const NAMESPACE = 'financeapp_';
 
+/**
+ * Clave del sello de última modificación. La escriben los DOS mundos —este
+ * adapter y `common/storage.js`— porque la pregunta que responde es una sola:
+ * ¿se ha tocado algo aquí desde la última vez que se trajo la copia de la nube?
+ */
+export const CLAVE_SELLO = 'state__modificadoEn';
+
 export function createLocalStorageAdapter(backing: Storage = localStorage, namespace: string = NAMESPACE): StorageAdapter {
   const fisica = (key: string) => `${namespace}${key}`;
   return {
@@ -32,6 +39,11 @@ export function createLocalStorageAdapter(backing: Storage = localStorage, names
     set<T>(key: string, value: T): void {
       try {
         backing.setItem(fisica(key), JSON.stringify(value));
+        // Sello de última modificación, compartido con el StorageAdapter legacy
+        // (common/storage.js). Sin esto, un cambio hecho desde una vista nueva
+        // no movería el sello y la copia de la nube lo pisaría en la siguiente
+        // recarga sin avisar: exactamente el fallo que el sello viene a evitar.
+        if (key !== CLAVE_SELLO) backing.setItem(fisica(CLAVE_SELLO), JSON.stringify(Date.now()));
       } catch (e) {
         // Cuota agotada o modo privado: no debe tumbar la app
         console.error('No se pudo guardar en localStorage:', key, e);

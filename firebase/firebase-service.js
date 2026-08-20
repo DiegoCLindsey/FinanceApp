@@ -296,6 +296,10 @@ const FirebaseService = (() => {
   // ── Subir backup cifrado a Firestore ─────────────────────────────────────────
   // Los datos se cifran con AES-GCM-256 + PBKDF2 ANTES de llegar a Firebase.
   // Firebase solo almacena el ciphertext: "salt_b64:iv_b64:ct_b64"
+  /** Fecha (ms) del backup visto en la última descarga; null si no se sabe. */
+  let _ultimaFechaBackup = null;
+  function ultimaFechaBackup() { return _ultimaFechaBackup; }
+
   async function uploadBackup() {
     if (!isConnected()) throw new Error('No autenticado en Firebase.');
     if (!_passphrase)   throw new Error('Clave de cifrado no disponible.');
@@ -330,7 +334,10 @@ const FirebaseService = (() => {
 
     if (!doc.exists) return null;
 
-    const { cipher } = doc.data();
+    // updatedAt se guardaba en Firestore y se tiraba aquí, así que era imposible
+    // saber si la copia de la nube era más nueva o más vieja que la local.
+    const { cipher, updatedAt } = doc.data();
+    _ultimaFechaBackup = updatedAt?.toMillis ? updatedAt.toMillis() : null;
     try {
       return await CryptoService.decryptPortable(_passphrase, cipher);
     } catch {
@@ -381,7 +388,7 @@ const FirebaseService = (() => {
     isConfigured, getConfig, hasInjectedConfig, hasSavedSession, savedEmail,
     isConnected, currentUserEmail, isAdmin,
     login, register, loginWithGoogle, restoreSession, logout, forget,
-    uploadBackup, downloadBackup, setPassphrase,
+    uploadBackup, downloadBackup, ultimaFechaBackup, setPassphrase,
     listWhitelist, addToWhitelist, removeFromWhitelist, setUserAdmin,
   };
 })();

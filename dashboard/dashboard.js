@@ -105,6 +105,45 @@ const DashboardModule = (() => {
 
   function setVentanaVelas(v) { ventanaVelas = v; render(); }
 
+  /**
+   * Borra todo lo marcado como simulación. Toca datos del usuario, así que
+   * confirma primero y dice exactamente qué va a borrar.
+   *
+   * Las amortizaciones del optimizador entran aquí: hasta ahora solo se podían
+   * quitar volviendo a abrir el optimizador y recalculando, cosa que nadie
+   * adivina.
+   */
+  function limpiarSimulaciones() {
+    const loans = State.get('loans') || [];
+    const expenses = State.get('expenses') || [];
+    const accounts = State.get('accounts') || [];
+
+    const nLoans  = loans.filter(l => l.simulacion).length;
+    const nAmorts = loans.reduce((s,l) => s + (l.amortizaciones||[]).filter(a => a.simulacion).length, 0);
+    const nExp    = expenses.filter(e => e.simulacion).length;
+    const nAcc    = accounts.filter(a => a.simulacion).length;
+    const total   = nLoans + nAmorts + nExp + nAcc;
+    if (total === 0) { UI.toast('No hay nada simulado que quitar'); return; }
+
+    const detalle = [
+      nLoans  ? `${nLoans} préstamo${nLoans!==1?'s':''}` : '',
+      nAmorts ? `${nAmorts} amortización${nAmorts!==1?'es':''}` : '',
+      nExp    ? `${nExp} gasto${nExp!==1?'s':''}` : '',
+      nAcc    ? `${nAcc} cuenta${nAcc!==1?'s':''}` : '',
+    ].filter(Boolean).join(', ');
+
+    if (!window.confirm(`Se va a borrar todo lo marcado como simulación:\n\n${detalle}\n\nEsto no se puede deshacer. ¿Continuar?`)) return;
+
+    State.set('loans', loans
+      .filter(l => !l.simulacion)
+      .map(l => ({ ...l, amortizaciones: (l.amortizaciones||[]).filter(a => !a.simulacion) })));
+    State.set('expenses', expenses.filter(e => !e.simulacion));
+    State.set('accounts', accounts.filter(a => !a.simulacion));
+
+    UI.toast(`Simulaciones eliminadas: ${detalle}`);
+    render();
+  }
+
   function salirEscenario() {
     const cfg = State.get('config');
     State.set('config', { ...cfg, escenarioActivo: null });
@@ -143,6 +182,32 @@ const DashboardModule = (() => {
     const usarInflacion = config.usarInflacion||false;
     const inflPeriodos  = State.get('inflacion') || [];
     const extracto=FinanceMath.generarExtracto(loans,expenses,accountsForExtracto,config, filtroAccounts.length>0?filtroAccounts:null, nominas, inflPeriodos);
+
+    // ── Línea canónica ────────────────────────────────────────────────────────
+    // Además del extracto de arriba —que incluye TODO, también lo marcado como
+    // simulación— se proyecta una segunda versión sin nada simulado. La curva
+    // pinta las dos: así una amortización que el optimizador dejó puesta hace
+    // semanas se ve como lo que es, en vez de aparecer como un gasto grande
+    // imposible de encontrar en la lista de gastos.
+    //
+    // Solo se calcula si de verdad hay algo simulado; si no, las dos líneas
+    // serían idénticas y sobraría el doble de trabajo.
+    // `core` es plano: src/core/index.ts reexporta todo sin sub-namespaces.
+    const _scn = window.FinanceApp?.core;
+    const _entradaSim = { loans, expenses, nominas, accounts: accountsForExtracto };
+    const haySimulaciones = !!_scn?.haySimulaciones?.(_entradaSim);
+    let extractoCanonico = null;
+    if (haySimulaciones && _scn?.sinSimulaciones) {
+      try {
+        const c = _scn.sinSimulaciones(_entradaSim);
+        extractoCanonico = FinanceMath.generarExtracto(
+          c.loans, c.expenses, c.accounts, config,
+          filtroAccounts.length>0?filtroAccounts:null, c.nominas, inflPeriodos,
+        );
+      } catch (e) {
+        console.error('[Dashboard] No se ha podido proyectar la línea canónica:', e);
+      }
+    }
     const cuentasActivas=accountsForExtracto.filter(a=>a.activo&&(filtroAccounts.length===0||filtroAccounts.includes(a._id)));
     const saldoBase=cuentasActivas.reduce((s,a)=>s+FinanceMath.saldoRealCuenta(a),0);
     const saldoFinal=extracto.length>0?extracto[extracto.length-1].saldoAcum:saldoBase;
@@ -738,6 +803,29 @@ const DashboardModule = (() => {
         </div>
       </div>
 
+      ${haySimulaciones ? (()=>{
+        // Inventario de lo que está alterando la proyección. Sin esto, una
+        // amortización que dejó el optimizador es un gasto grande que no
+        // aparece en ninguna lista y no hay forma de dar con él.
+        const sims = [];
+        for (const l of loans) {
+          if (l.simulacion) sims.push(`préstamo «${l.nombre}»`);
+          const na = (l.amortizaciones||[]).filter(a => a.simulacion).length;
+          if (na) sims.push(`${na} amortización${na!==1?'es':''} simulada${na!==1?'s':''} en «${l.nombre}»`);
+        }
+        for (const e of expenses) if (e.simulacion) sims.push(`gasto «${e.concepto||e._id}»`);
+        for (const a of accountsForExtracto) if (a.simulacion) sims.push(`cuenta «${a.nombre}»`);
+        return `<div class="card mb-14" style="padding:11px 16px;background:rgba(255,209,102,0.06);border:1px solid rgba(255,209,102,0.28);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="font-size:15px">🧪</span>
+          <div style="flex:1;min-width:220px;font-size:12px;line-height:1.6">
+            <strong style="color:var(--yellow)">Hay simulaciones activas</strong>
+            <span style="color:var(--text2)"> — la línea gruesa las incluye; la discontinua atenuada es tu saldo sin ellas.</span>
+            <div style="color:var(--text3);margin-top:3px">${sims.join(' · ')}</div>
+          </div>
+          <button class="btn-secondary btn-sm" onclick="DashboardModule.limpiarSimulaciones()">Quitar simulaciones</button>
+        </div>`;
+      })() : ''}
+
       <!-- Charts row 1 -->
       <div class="card mb-14">
         <div class="flex justify-between items-center mb-8" style="flex-wrap:wrap;gap:6px">
@@ -841,7 +929,7 @@ const DashboardModule = (() => {
       // Cada gráfica va aislada: un fallo en una no puede dejar sin pintar a las
       // que vienen detrás, que es justo lo que pasó con `_tagMapConGrupos`.
       const _graficas = [
-        ['saldo',      () => renderChartSaldo(extracto)],
+        ['saldo',      () => renderChartSaldo(extracto, extractoCanonico)],
         ['tags',       () => renderChartTags(extracto, activeTags, grupoTags, tagGroupsMode)],
         ['breakdown',  () => renderChartBreakdown(_metricasGraficos)],
         ['gastos',     () => renderChartExpenseDonut(_donutMetrics)],
@@ -858,7 +946,7 @@ const DashboardModule = (() => {
     }, 60);
   }
 
-  function renderChartSaldo(extracto) {
+  function renderChartSaldo(extracto, extractoCanonico) {
     const ctx=document.getElementById('chart-saldo'); if(!ctx)return;
     const config = State.get('config');
     const expenses = State.get('expenses');
@@ -1028,6 +1116,27 @@ const DashboardModule = (() => {
       ),
     ];
     if (histDataset) datasets.push(histDataset);
+
+    // Línea canónica: el saldo SIN nada de lo marcado como simulación. Va
+    // atenuada y por detrás, como referencia contra la que comparar; la línea
+    // gruesa sigue siendo la que incluye las simulaciones, que es la que
+    // responde a "¿qué pasa si mantengo esto?".
+    if (extractoCanonico && extractoCanonico.length > 0) {
+      datasets.push({
+        label: 'Saldo canónico (sin simulaciones)',
+        data: extractoCanonico.map(e => ({ x: new Date(e.fecha+'T00:00:00').getTime(), y: e.saldoAcum })),
+        borderColor: 'rgba(0,229,160,0.32)',
+        backgroundColor: 'transparent',
+        borderWidth: 1.5,
+        borderDash: [5,4],
+        pointRadius: 0,
+        pointHitRadius: 20,
+        fill: false,
+        tension: 0.3,
+        order: 7,
+      });
+    }
+
     margenDatasets.forEach(d => datasets.push(d));
 
     // Fondos bloqueados en pensiones — línea horizontal por fecha de desbloqueo progresivo
@@ -1106,7 +1215,7 @@ const DashboardModule = (() => {
         interaction: { mode: 'porFecha', intersect: false },
         plugins: {
           legend: {
-            display: isStacked || (histDataset != null) || margenDatasets.length>0 || criticoDatasets.length>0 || datasets.some(d=>d.label?.startsWith('🏁')),
+            display: isStacked || (histDataset != null) || margenDatasets.length>0 || criticoDatasets.length>0 || (extractoCanonico != null) || datasets.some(d=>d.label?.startsWith('🏁')),
             labels: { color:'#8b92a8', font:{size:11}, boxWidth:12, filter: i => !['MC p25','MC p10','MC p75','MC p90'].includes(i.text) }
           },
           tooltip: {
@@ -1614,5 +1723,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, actualizar, setVentanaVelas, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis };
+  return { render, actualizar, setVentanaVelas, limpiarSimulaciones, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis };
 })();

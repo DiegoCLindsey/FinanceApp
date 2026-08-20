@@ -316,6 +316,60 @@ esa línea rompa la suite en vez de dejarla ciega otra vez.
 falla en Europe/Madrid y pasa en UTC, el fallo es real y lo sufre el usuario —
 no se arregla cambiando el huso.
 
+### P.9 — AUDITORÍA: por qué "volvía" un gasto borrado
+
+**Síntoma (2026-08-20):** el usuario borra gastos, y al recargar sigue viendo un
+gasto grande que ya había eliminado; además hay tramos con menos saldo del que
+justifica ningún gasto registrado.
+
+**No era borrado lógico.** `removeItem` borra de verdad en los dos mundos
+(`common/state.js` y `src/state/store.ts`), y todos los proveedores del motor
+filtran `activo`. Eran dos causas independientes:
+
+**1. Lo simulado contaba como real.** `providers/loans.ts` filtraba `activo`
+pero **no** `simulacion`, mientras el dashboard sí excluye los simulados en
+todos sus resúmenes (`l.activo && !l.simulacion`). Las cifras de arriba y la
+curva salían de criterios distintos. El caso concreto: el **optimizador de
+amortizaciones** guarda su plan dentro del préstamo con `simulacion: true`; esas
+amortizaciones no aparecen en la lista de gastos —no son gastos— y solo se
+limpiaban volviendo a abrir el optimizador y recalculando, cosa que nadie
+adivina. Una de ellas explicaba la caída de ~15.000 € del gráfico.
+
+*Solución elegida por el usuario:* **no esconder nada, pintar las dos líneas.**
+La gruesa incluye las simulaciones; la discontinua atenuada (32 % de opacidad)
+es el saldo canónico sin ellas. Más un aviso que inventaría qué hay simulado y
+un botón para borrarlo. `sinSimulaciones()` y `haySimulaciones()` en
+`core/scenarios`, con tests.
+
+**2. La nube pisaba lo local en silencio — pérdida de datos.**
+`_sincronizarDesdeNube` descargaba el backup y lo volcaba sobre localStorage
+**sin comparar nada**, en CUATRO rutas distintas (arranque, migración inicial y
+los dos desbloqueos manuales). Y `autoSave` viene **apagado de fábrica**. Así
+que cualquier cambio no subido a mano se perdía en la siguiente recarga. El
+`updatedAt` estaba guardado en Firestore pero `downloadBackup` lo descartaba
+(`const { cipher } = doc.data()`), de modo que ni siquiera se podía saber cuál
+de las dos copias era más nueva.
+
+*Solución elegida por el usuario:* **preguntar siempre** que no coincidan.
+- Sello local `state__modificadoEn`, escrito por los dos mundos: el
+  `StorageAdapter` legacy y el adapter de `src/state/storage/local.ts`. Si solo
+  lo escribiera uno, un cambio hecho desde una vista nueva no movería el sello y
+  la nube volvería a ganar sin avisar.
+- `setRestaurando()` escribe sin sellar: lo que baja de la nube no es una
+  modificación del usuario.
+- Firebase conserva `updatedAt`; Dropbox lee `server_modified` de la cabecera
+  `Dropbox-API-Result`. Ambos vía `ultimaFechaBackup()`.
+- Las cuatro rutas pasan ahora por `_sincronizarDesdeNube`. Solo aplica sin
+  preguntar cuando no hay nada que perder: primera restauración, o local sin
+  tocar desde la última bajada. Si conservas lo local, se sube.
+
+**3. Riesgo latente:** el `State` legacy y el store nuevo mantienen copias en
+memoria separadas de las mismas claves, y el nuevo solo lee al arrancar. Se
+retira al terminar 1.7.
+
+**Lección:** cuando el usuario dice "esto ya lo había borrado", la primera
+sospecha no debe ser el borrado sino **quién más escribe sobre esos datos**.
+
 ## Fase 1 — Refactor SOLID + modularización (TypeScript, ESM)
 
 > Objetivo: migrar a `src/` con módulos ES tipados y build de Vite, manteniendo paridad

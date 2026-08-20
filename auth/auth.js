@@ -170,6 +170,10 @@ const DropboxService = (() => {
     return resp;
   }
 
+  /** Fecha (ms) del backup visto en la última descarga; null si no se sabe. */
+  let _ultimaFechaBackup = null;
+  function ultimaFechaBackup() { return _ultimaFechaBackup; }
+
   // ── Subir backup cifrado ──────────────────────────────────────────────────────
   // Usa encryptPortable: genera sal+IV frescos y los embebe en el payload.
   // Formato en Dropbox: "salt_b64:iv_b64:ct_b64"
@@ -226,6 +230,13 @@ const DropboxService = (() => {
       throw new Error('Error al descargar de Dropbox: ' + (err?.error_summary || resp.status));
     }
 
+    // Dropbox devuelve los metadatos del fichero en esta cabecera; de ahí sale
+    // la fecha con la que comparar contra la copia local.
+    try {
+      const meta = JSON.parse(resp.headers.get('Dropbox-API-Result') || '{}');
+      _ultimaFechaBackup = meta.server_modified ? Date.parse(meta.server_modified) : null;
+    } catch { _ultimaFechaBackup = null; }
+
     const cipher = await resp.text();
     try {
       return await CryptoService.decryptPortable(_passphrase, cipher);
@@ -236,7 +247,7 @@ const DropboxService = (() => {
 
   return {
     setup, unlock, restore, hasSavedSession, isConnected, forget,
-    uploadBackup, downloadBackup, tokenAgeHours, couldBeExpired,
+    uploadBackup, downloadBackup, ultimaFechaBackup, tokenAgeHours, couldBeExpired,
   };
 })();
 
@@ -279,12 +290,11 @@ const AuthModule = (() => {
 
   // ── Migration helper: si la nube está vacía y hay datos locales, ofrece subirlos
   async function _offerMigration(service, modeName) {
+    // Misma ruta que el arranque: si hay copia en la nube Y datos locales que
+    // no coinciden, se pregunta en vez de pisar. Antes se volcaba a ciegas.
     const backup = await service.downloadBackup();
     if (backup) {
-      for (const [k, v] of Object.entries(backup)) {
-        if (v !== undefined) StorageAdapter.set('state_' + k, v);
-      }
-      UI.toast('Datos cargados desde la nube ✓');
+      await _sincronizarDesdeNube(service, modeName);
       return;
     }
     // No cloud backup — check local data
@@ -352,14 +362,122 @@ const AuthModule = (() => {
     return false;
   }
 
-  /** Descarga el backup y lo vuelca al almacenamiento local, si existe. */
+  /** Escapado para el HTML del diálogo de conflicto. */
+  function _esc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+
+  /** Resumen de una copia, para que el usuario pueda distinguirlas. */
+  function _resumirCopia(datos) {
+    const n = k => Array.isArray(datos?.[k]) ? datos[k].length : 0;
+    return [
+      `${n('expenses')} gastos/ingresos`,
+      `${n('loans')} préstamos`,
+      `${n('accounts')} cuentas`,
+      `${n('nominas')} nóminas`,
+    ].join(' · ');
+  }
+
+  const _fmtFecha = ms => ms
+    ? new Date(ms).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })
+    : 'fecha desconocida';
+
+  /** Vuelca una copia de la nube al almacenamiento local. */
+  function _volcar(backup, fechaNube) {
+    for (const [k, v] of Object.entries(backup)) {
+      // setRestaurando: esto no es una modificación del usuario, así que no
+      // debe mover el sello. Después se sella con la fecha de la copia.
+      if (v !== undefined) StorageAdapter.setRestaurando('state_' + k, v);
+    }
+    StorageAdapter.sellar(fechaNube || Date.now());
+  }
+
+  /**
+   * Sincroniza desde la nube al arrancar.
+   *
+   * ANTES: se descargaba y se volcaba encima del local SIN comparar nada. Como
+   * el autoguardado viene apagado de fábrica, cualquier cambio que no hubieras
+   * subido a mano desaparecía en la siguiente recarga — borrabas un gasto y
+   * volvía. Pérdida de datos en silencio.
+   *
+   * AHORA: si las dos copias no coinciden se pregunta, con las dos fechas y el
+   * contenido de cada una delante. Solo se aplica sin preguntar cuando no hay
+   * nada que perder: primera restauración, o local sin tocar desde la última vez.
+   */
   async function _sincronizarDesdeNube(service, nombre) {
     const backup = await service.downloadBackup();
     if (!backup) return;
-    for (const [k, v] of Object.entries(backup)) {
-      if (v !== undefined) StorageAdapter.set('state_' + k, v);
+
+    const fechaNube  = service.ultimaFechaBackup?.() ?? null;
+    const fechaLocal = StorageAdapter.modificadoEn();
+
+    // Sin sello local no hay nada que proteger: es la primera restauración.
+    if (!fechaLocal) { _volcar(backup, fechaNube); UI.toast(`Datos restaurados desde ${nombre} ✓`); return; }
+
+    // El local no se ha tocado desde que se trajo esta copia: nada que decidir.
+    if (fechaNube && fechaLocal <= fechaNube) { _volcar(backup, fechaNube); return; }
+
+    const eleccion = await _preguntarConflicto({
+      nombre,
+      fechaNube,
+      fechaLocal,
+      resumenNube:  _resumirCopia(backup),
+      resumenLocal: _resumirCopia({
+        expenses: State.get('expenses'), loans: State.get('loans'),
+        accounts: State.get('accounts'), nominas: State.get('nominas'),
+      }),
+    });
+
+    if (eleccion === 'nube') {
+      _volcar(backup, fechaNube);
+      UI.toast(`Datos restaurados desde ${nombre} ✓`);
+    } else {
+      // Se conserva lo local y se sube, para que la nube deje de ir por detrás.
+      try {
+        await service.uploadBackup();
+        UI.toast('Se conservan tus datos de este dispositivo y se han subido ✓');
+      } catch (e) {
+        console.error('[auth] No se ha podido subir la copia local:', e);
+        UI.toast('Se conservan tus datos de este dispositivo (no se han podido subir)', 'warn');
+      }
     }
-    UI.toast(`Datos sincronizados desde ${nombre} ✓`);
+  }
+
+  /** Diálogo de conflicto. Resuelve con 'nube' o 'local'. */
+  function _preguntarConflicto({ nombre, fechaNube, fechaLocal, resumenNube, resumenLocal }) {
+    return new Promise(resolve => {
+      const ov = document.createElement('div');
+      ov.className = 'auth-overlay';
+      ov.style.zIndex = '1200';
+      ov.innerHTML = `
+        <div class="auth-card" style="max-width:520px">
+          <div class="auth-section-title" style="margin-bottom:6px">Hay dos versiones de tus datos</div>
+          <p style="font-size:12px;color:var(--text2);line-height:1.6;margin:0 0 16px">
+            La copia de ${_esc(nombre)} y la de este dispositivo no coinciden. Elige cuál conservar;
+            <strong>la otra se perderá</strong>.
+          </p>
+          <button class="btn-secondary full-width" data-elige="local" style="text-align:left;padding:12px 14px;margin-bottom:10px">
+            <div style="font-weight:700;font-size:13px;margin-bottom:3px">Este dispositivo <span style="color:var(--accent)">— más reciente</span></div>
+            <div style="font-size:11px;color:var(--text3)">${_esc(_fmtFecha(fechaLocal))}</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:3px">${_esc(resumenLocal)}</div>
+          </button>
+          <button class="btn-secondary full-width" data-elige="nube" style="text-align:left;padding:12px 14px">
+            <div style="font-weight:700;font-size:13px;margin-bottom:3px">Copia de ${_esc(nombre)}</div>
+            <div style="font-size:11px;color:var(--text3)">${_esc(_fmtFecha(fechaNube))}</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:3px">${_esc(resumenNube)}</div>
+          </button>
+          <p style="font-size:11px;color:var(--text3);line-height:1.6;margin:14px 0 0">
+            Si conservas las de este dispositivo se subirán a ${_esc(nombre)} para que dejen de ir por detrás.
+          </p>
+        </div>`;
+      ov.addEventListener('click', e => {
+        const b = e.target.closest('[data-elige]');
+        if (!b) return;
+        ov.remove();
+        resolve(b.dataset.elige);
+      });
+      document.body.appendChild(ov);
+    });
   }
 
   /** Cierra la sesión y devuelve al usuario a la pantalla de inicio. */
@@ -538,14 +656,8 @@ const AuthModule = (() => {
       try {
         await DropboxService.unlock(pass);
 
-        // Sincronizar datos desde Dropbox al arrancar
-        const backup = await DropboxService.downloadBackup();
-        if (backup) {
-          for (const [k, v] of Object.entries(backup)) {
-            if (v !== undefined) StorageAdapter.set('state_' + k, v);
-          }
-          UI.toast('Datos sincronizados desde Dropbox ✓');
-        }
+        // Sincronización con comprobación de conflicto (ver _sincronizarDesdeNube)
+        await _sincronizarDesdeNube(DropboxService, 'Dropbox');
 
         await launch('dropbox', { passphrase: pass });
       } catch (err) {
@@ -691,13 +803,7 @@ const AuthModule = (() => {
       _setBusy('btn-firebase-unlock', true, 'Continuar');
       try {
         FirebaseService.setPassphrase(passphrase);
-        const backup = await FirebaseService.downloadBackup();
-        if (backup) {
-          for (const [k, v] of Object.entries(backup)) {
-            if (v !== undefined) StorageAdapter.set('state_' + k, v);
-          }
-          UI.toast('Datos sincronizados desde Firebase ✓');
-        }
+        await _sincronizarDesdeNube(FirebaseService, 'Firebase');
         await launch('firebase', { passphrase });
       } catch (err) {
         _err('fbx-unlock-passphrase-error', err.message);
