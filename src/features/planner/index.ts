@@ -13,10 +13,14 @@ import { todayISO } from '@/core/dates';
 import type { FeatureManifest } from '@/app/feature-registry';
 import type { AppState } from '@/state/schema';
 import { simular } from '@/planner/simulador';
-import type { Objetivo, Plan, ResultadoSimulacion } from '@/planner/tipos';
+import type { Evento, Objetivo, Plan, ResultadoSimulacion } from '@/planner/tipos';
 import { confirmar, esc, onClick, onChange, toast } from '../accounting/dom';
 import { graficoPatrimonio } from './chart';
 import { panelObjetivos } from './objetivos';
+import { formularioEvento, leerCampos, panelEventos, previsualizar } from './eventos-ui';
+import { panelEscenarios } from './escenarios-ui';
+import { duplicarPlan, plantillaPorId } from '@/planner/eventos';
+import { analizarSensibilidad, type EjeSensibilidad } from '@/planner/sensibilidad';
 import { panelSimulacion, serieACsv } from './simulacion';
 import { AYUDA_MODO, MODO_SUGERIDO, capitalDerivado, formularioObjetivo, formularioVehiculo, leerObjetivo, leerVehiculo } from './form';
 
@@ -28,6 +32,7 @@ export interface PlannerStoreLike {
   get(key: 'loans'): AppState['loans'];
   updateItem(col: 'planes', id: string, patch: Partial<Plan>): void;
   addItem(col: 'planes', item: Omit<Plan, '_id'> & { _id?: string }): Plan;
+  removeItem(col: 'planes', id: string): void;
 }
 
 export interface PlannerDeps {
@@ -47,7 +52,11 @@ const aEuros = (c: number): string => (c / 100).toFixed(2);
 
 export function createPlannerFeature(deps: PlannerDeps): FeatureManifest {
   const hoy = deps.hoy ?? todayISO;
-  let pestaña: 'config' | 'objetivos' | 'simulacion' = 'config';
+  let pestaña: 'config' | 'objetivos' | 'simulacion' | 'eventos' | 'escenarios' = 'config';
+  /** Sensibilidad calculada bajo demanda: son diez simulaciones. */
+  let sensibilidad: EjeSensibilidad[] | null = null;
+  /** Página de la tabla mes a mes. */
+  let paginaTabla = 0;
   /** Resultado vivo, para no re-simular al cambiar de pestaña. */
   let ultimo: ResultadoSimulacion | null = null;
 
@@ -79,6 +88,7 @@ export function createPlannerFeature(deps: PlannerDeps): FeatureManifest {
     if (!plan) return;
     deps.store.updateItem('planes', plan._id, patch);
     ultimo = null;
+    sensibilidad = null;
     deps.onDatosCambiados?.();
   }
 
@@ -388,8 +398,8 @@ export function createPlannerFeature(deps: PlannerDeps): FeatureManifest {
           .map((v) => {
             const usos = plan.objetivos.filter((o) => o.vehiculoId === v._id).length;
             return `<button class="btn-secondary btn-sm" data-pl-editar-vehiculo="${esc(v._id)}"
-              style="display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 11px;text-align:left">
-              <span style="font-weight:600;font-size:12px">${esc(v.nombre)}${v.esDeuda ? ' 🔒' : ''}</span>
+              style="display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 11px;text-align:left${v.revisarRentabilidad ? ';border-color:rgba(255,209,102,0.45)' : ''}">
+              <span style="font-weight:600;font-size:12px">${esc(v.nombre)}${v.esDeuda ? ' 🔒' : ''}${v.revisarRentabilidad ? ' ⚠' : ''}</span>
               <span style="font-size:10px;color:var(--text3)">
                 ${esc((v.rentabilidadRealAnual * 100).toFixed(2))} % real · ${usos} objetivo${usos !== 1 ? 's' : ''}
               </span>
@@ -397,7 +407,160 @@ export function createPlannerFeature(deps: PlannerDeps): FeatureManifest {
           })
           .join('')}
       </div>
+      ${
+        plan.vehiculos.some((v) => v.revisarRentabilidad)
+          ? `<div class="text-sm mt-10" style="color:var(--yellow);line-height:1.7;padding-top:10px;border-top:1px solid var(--border)">
+               ⚠ Los vehículos marcados traen la rentabilidad de tus cuentas, que es <strong>nominal</strong>.
+               Este módulo trabaja en términos <strong>reales</strong>: réstale la inflación que esperes
+               (unos 2 puntos) o la simulación te dirá que llegas antes de lo que llegarás. Al guardarlos
+               desde su formulario el aviso desaparece.
+             </div>`
+          : ''
+      }
     </div>`;
+  }
+
+  // ── Eventos ─────────────────────────────────────────────────────────────────
+
+  function editarEvento(container: HTMLElement, plantillaId: string, eventoId: string | null): void {
+    const plan = planActivo();
+    const plantilla = plantillaPorId(plantillaId);
+    if (!plan || !plantilla) return;
+
+    const ev = eventoId ? (plan.eventos.find((e) => e._id === eventoId) ?? null) : null;
+
+    // Las plantillas de cambio necesitan saber el valor ACTUAL para poder
+    // sumarle el incremento: se rellenan con lo que hay en el plan, que es de
+    // donde saldría si no lo hiciéramos nosotros.
+    const porDefecto: Record<string, number> = {};
+    if (plantilla.id === 'hijo') porDefecto.actuales = plan.perfil.gastosFijosMensuales;
+    if (plantilla.id === 'subida-sueldo') porDefecto.actual = plan.perfil.netoMensual;
+
+    const el = abrirModal(ev ? `Editar evento · ${plantilla.nombre}` : plantilla.nombre, formularioEvento(plantilla, ev, plan, porDefecto));
+    if (!el) return;
+
+    const refrescar = () => {
+      const salida = el.querySelector('#ev-resultado');
+      if (salida) salida.textContent = previsualizar(plantilla, leerCampos(el, plantilla));
+    };
+    refrescar();
+    for (const c of plantilla.campos) onChange(el, `#ev-${c.id}`, refrescar);
+
+    onClick(el, '[data-ev-cancelar]', cerrarModal);
+
+    onClick(el, '[data-ev-guardar]', () => {
+      const fecha = (el.querySelector('#ev-fecha') as HTMLInputElement | null)?.value ?? '';
+      if (!fecha) {
+        toast('El evento necesita un mes', 'err');
+        return;
+      }
+      const valores = leerCampos(el, plantilla);
+      const nuevo: Evento = {
+        _id: ev?._id ?? `ev_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+        fecha,
+        tipo: plantilla.tipo,
+        importe: plantilla.calcular(valores),
+        objetivoDestinoId: (el.querySelector('#ev-destino') as HTMLSelectElement | null)?.value || null,
+        notas: plantilla.resumir(valores),
+      };
+      guardar({ eventos: [...plan.eventos.filter((e) => e._id !== nuevo._id), nuevo] });
+      cerrarModal();
+      toast(ev ? 'Evento actualizado' : 'Evento añadido');
+      render(container);
+    });
+
+    onClick(el, '[data-ev-borrar]', () => {
+      if (!ev || !confirmar('¿Borrar este evento?')) return;
+      guardar({ eventos: plan.eventos.filter((e) => e._id !== ev._id) });
+      cerrarModal();
+      toast('Evento borrado');
+      render(container);
+    });
+  }
+
+  /**
+   * Al editar un evento ya guardado hay que saber de qué plantilla salió. No se
+   * almacena, así que se deduce del tipo; para INYECCION_CAPITAL se distingue
+   * por si trae desglose de venta en las notas.
+   */
+  function plantillaDe(ev: Evento): string {
+    switch (ev.tipo) {
+      case 'CAMBIO_GASTOS_FIJOS':
+        return 'hijo';
+      case 'CAMBIO_INGRESOS':
+        return 'subida-sueldo';
+      case 'NUEVA_DEUDA':
+        return 'nueva-hipoteca';
+      case 'INYECCION_CAPITAL':
+        return ev.notas?.includes('hipoteca') ? 'venta-vivienda' : 'inyeccion';
+    }
+  }
+
+  // ── Escenarios y persistencia ───────────────────────────────────────────────
+
+  function exportarPlan(): void {
+    const plan = planActivo();
+    if (!plan) return;
+    const blob = new Blob([JSON.stringify(plan, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `plan-${plan.nombre.replace(/[^\w-]+/g, '_')}-${hoy()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Plan exportado');
+  }
+
+  function importarPlan(container: HTMLElement): void {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.addEventListener('change', async () => {
+      const fichero = input.files?.[0];
+      if (!fichero) return;
+      try {
+        const datos = JSON.parse(await fichero.text()) as Partial<Plan>;
+        // Comprobación mínima: un JSON cualquiera no es un plan, y meterlo
+        // reventaría el simulador con un error incomprensible.
+        if (!datos || !Array.isArray(datos.objetivos) || !Array.isArray(datos.vehiculos) || !datos.perfil) {
+          toast('Ese fichero no es un plan de objetivos', 'err');
+          return;
+        }
+        // Se importa SIEMPRE como plan nuevo e inactivo: nunca se pisa el que
+        // el usuario está usando.
+        const nombre = `${datos.nombre ?? 'Importado'} (importado)`;
+        const creado = deps.store.addItem('planes', {
+          ...(datos as Omit<Plan, '_id'>),
+          nombre,
+          activo: false,
+          creadoEn: hoy(),
+        });
+        ultimo = null;
+        sensibilidad = null;
+        deps.onDatosCambiados?.();
+        toast(`Plan «${creado.nombre}» importado`);
+        render(container);
+      } catch (e) {
+        console.error('[Planner] Importación fallida:', e);
+        toast('No se ha podido leer el fichero', 'err');
+      }
+    });
+    input.click();
+  }
+
+  function cuerpo(plan: Plan, res: ResultadoSimulacion): string {
+    switch (pestaña) {
+      case 'config':
+        return panelConfig(plan);
+      case 'objetivos':
+        return panelObjetivos(plan, res);
+      case 'simulacion':
+        return panelSimulacion(plan, res, paginaTabla);
+      case 'eventos':
+        return panelEventos(plan);
+      case 'escenarios':
+        return panelEscenarios(deps.store.get('planes'), plan._id, sensibilidad);
+    }
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -423,6 +586,8 @@ export function createPlannerFeature(deps: PlannerDeps): FeatureManifest {
         ${pestañaBtn('config', 'Plan')}
         ${pestañaBtn('objetivos', `Objetivos (${plan.objetivos.length})`)}
         ${pestañaBtn('simulacion', 'Simulación')}
+        ${pestañaBtn('eventos', `Eventos (${plan.eventos.length})`)}
+        ${pestañaBtn('escenarios', 'Escenarios')}
       </div>
 
       ${
@@ -435,9 +600,7 @@ export function createPlannerFeature(deps: PlannerDeps): FeatureManifest {
           : ''
       }
 
-      <div id="pl-cuerpo">${
-        pestaña === 'config' ? panelConfig(plan) : pestaña === 'objetivos' ? panelObjetivos(plan, res) : panelSimulacion(plan, res)
-      }</div>`;
+      <div id="pl-cuerpo">${cuerpo(plan, res)}</div>`;
 
     if (pestaña === 'simulacion') {
       const canvas = container.querySelector<HTMLCanvasElement>('#pl-chart');
@@ -489,6 +652,83 @@ export function createPlannerFeature(deps: PlannerDeps): FeatureManifest {
       toast('Plan guardado');
       render(container);
     });
+
+    // ── Eventos (pestaña 4) ───────────────────────────────────────────────────
+    onClick(container, '[data-pl-plantilla]', (el) => editarEvento(container, (el as HTMLElement).dataset.plPlantilla ?? '', null));
+    onClick(container, '[data-pl-editar-evento]', (el) => {
+      const id = (el as HTMLElement).dataset.plEditarEvento ?? '';
+      const ev = planActivo()?.eventos.find((e) => e._id === id);
+      if (ev) editarEvento(container, plantillaDe(ev), id);
+    });
+
+    // ── Escenarios (pestaña 5) ────────────────────────────────────────────────
+    onClick(container, '[data-pl-duplicar]', () => {
+      const plan = planActivo();
+      if (!plan) return;
+      const nombre = window.prompt('Nombre del plan nuevo:', `${plan.nombre} (copia)`);
+      if (!nombre?.trim()) return;
+      const copia = duplicarPlan(plan, nombre.trim(), `plan_${Date.now().toString(36)}`, hoy());
+      deps.store.addItem('planes', copia);
+      deps.onDatosCambiados?.();
+      toast(`Plan «${copia.nombre}» creado. Actívalo para editarlo.`);
+      render(container);
+    });
+
+    onClick(container, '[data-pl-activar]', (el) => {
+      const id = (el as HTMLElement).dataset.plActivar;
+      if (!id) return;
+      // Solo uno activo a la vez: si hubiera dos, `planActivo()` elegiría por
+      // orden de inserción y el usuario editaría un plan distinto del que ve.
+      for (const p of deps.store.get('planes')) deps.store.updateItem('planes', p._id, { activo: p._id === id });
+      ultimo = null;
+      sensibilidad = null;
+      deps.onDatosCambiados?.();
+      toast('Plan activo cambiado');
+      render(container);
+    });
+
+    onClick(container, '[data-pl-renombrar]', (el) => {
+      const id = (el as HTMLElement).dataset.plRenombrar;
+      const plan = deps.store.get('planes').find((p) => p._id === id);
+      if (!plan) return;
+      const nombre = window.prompt('Nuevo nombre:', plan.nombre);
+      if (!nombre?.trim()) return;
+      deps.store.updateItem('planes', plan._id, { nombre: nombre.trim() });
+      deps.onDatosCambiados?.();
+      render(container);
+    });
+
+    onClick(container, '[data-pl-borrar-plan]', (el) => {
+      const id = (el as HTMLElement).dataset.plBorrarPlan;
+      const plan = deps.store.get('planes').find((p) => p._id === id);
+      if (!plan) return;
+      if (!confirmar(`¿Borrar el plan «${plan.nombre}» con sus ${plan.objetivos.length} objetivos? No se puede deshacer.`)) return;
+      deps.store.removeItem('planes', plan._id);
+      // Si se borró el activo, hay que dejar activo a otro o la vista se queda
+      // sin plan y crearía uno vacío en el siguiente render.
+      const quedan = deps.store.get('planes');
+      if (plan.activo && quedan.length > 0) deps.store.updateItem('planes', quedan[0]._id, { activo: true });
+      ultimo = null;
+      sensibilidad = null;
+      deps.onDatosCambiados?.();
+      toast('Plan borrado');
+      render(container);
+    });
+
+    onClick(container, '[data-pl-sensibilidad]', () => {
+      const plan = planActivo();
+      if (!plan) return;
+      sensibilidad = analizarSensibilidad(plan);
+      render(container);
+    });
+
+    onClick(container, '[data-pl-pagina]', (el) => {
+      paginaTabla = Number((el as HTMLElement).dataset.plPagina) || 0;
+      render(container);
+    });
+
+    onClick(container, '[data-pl-exportar]', exportarPlan);
+    onClick(container, '[data-pl-importar]', () => importarPlan(container));
 
     onClick(container, '[data-pl-nuevo-objetivo]', () => editarObjetivo(container, null));
     onClick(container, '[data-pl-nuevo-vehiculo]', () => editarVehiculo(container, null));

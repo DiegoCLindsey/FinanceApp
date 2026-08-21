@@ -67,6 +67,11 @@ export function migrateTo8(raw: RawState, ctx: MigrationContext): RawState {
       cuentaId: texto(a._id, ''),
       prestamoId: null,
       esDeuda: false,
+      // El `interes` de la cuenta es NOMINAL y el plan trabaja en términos
+      // REALES. No podemos restar una inflación que no sabemos, así que se
+      // traslada tal cual y se marca para que la UI pida revisarlo. Sin esta
+      // marca, la simulación diría que llegas años antes de lo que llegarás.
+      revisarRentabilidad: numero(a.interes, 0) > 0,
     };
   });
 

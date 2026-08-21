@@ -4,7 +4,8 @@
 > aquí se registra **qué está hecho, qué decisiones se tomaron y qué queda**,
 > para poder retomarlo en otra sesión sin releerlo todo.
 >
-> Última actualización: 2026-08-21 (segunda sesión: edición completa).
+> Última actualización: 2026-08-21. **El plan de implementación está COMPLETO**:
+> pasos 1 a 7 del §8 del documento de diseño.
 
 ---
 
@@ -30,8 +31,7 @@
 
 ## 1. Qué está hecho
 
-Pasos **1 a 5** del orden sugerido (§8). Los pasos 1-3 son el núcleo y están
-completos con tests.
+**Los siete pasos** del orden sugerido (§8), con 133 tests propios.
 
 ### Núcleo (`src/planner/`, sin DOM ni almacenamiento)
 
@@ -43,6 +43,11 @@ completos con tests.
 - **`simulador.ts`** — bucle mensual del §3.2: eventos → disponible → cascada →
   rentabilidad → estados. Encadenamiento, topes fiscales por año natural,
   detección de inviabilidad y propuestas cuantificadas. 31 tests.
+- **`sensibilidad.ts`** — los tres ejes del §4 (rentabilidad ±2 puntos, disfrute
+  ±10, ingresos ±20 %), medidos en meses de adelanto o retraso del último hito.
+  16 tests.
+- **`eventos.ts`** — plantillas de los casos frecuentes del §2.7 y utilidades de
+  escenarios (duplicar plan, comparar hitos). 20 tests.
 
 ### Persistencia
 
@@ -118,49 +123,51 @@ tiempo, no tarde.
 
 ---
 
-## 3. Qué queda pendiente
+## 3. Estado de cierre
 
-En orden de valor. Los pasos 6 y 7 del §8 del documento, más lo que se recortó
-de las pestañas 1-3.
+Todas las pestañas del §5 están implementadas:
 
-### 3.1 Eventos (paso 6)
+| Pestaña | Estado |
+|---|---|
+| 1 · Configuración | Perfil, deslizador de disfrute en vivo, horizonte, notas |
+| 2 · Objetivos | Alta, edición, borrado, reordenar arrastrando, vehículos |
+| 3 · Simulación | Gráfico apilado, hitos, fases, avisos, propuestas, tabla paginada, CSV |
+| 4 · Eventos | Línea temporal con las cinco plantillas, previsualización del importe |
+| 5 · Escenarios | Lista de planes, activar, renombrar, borrar, duplicar, comparativa A/B/C, sensibilidad, export/import JSON |
+| 6 · Notas | Dentro de la pestaña 1 (texto plano, no Markdown renderizado) |
 
-El motor ya los aplica y están testeados; **falta la pestaña 4**: línea temporal
-editable con plantillas para los casos frecuentes (venta de vivienda,
-nacimiento, subida de sueldo).
+### Decisiones de la última tanda
 
-### 3.2 Escenarios y sensibilidad (paso 7)
+- **La sensibilidad se calcula bajo demanda.** Son diez simulaciones; hacerlas en
+  cada repintado dejaría la pestaña inservible con horizontes de 480 meses.
+- **Duplicar renueva TODOS los identificadores** y reescribe las referencias
+  internas. Si dos planes compartieran ids, editar un objetivo en uno tocaría el
+  del otro en cuanto algo los buscara por id.
+- **El duplicado y el importado nacen inactivos.** Nunca se pisa el plan que el
+  usuario está usando; se cambia cuando él lo dice.
+- **La importación valida antes de aceptar.** Un JSON cualquiera no es un plan, y
+  meterlo reventaría el simulador con un error incomprensible.
+- **Los hitos se comparan por NOMBRE**, que es lo único común entre planes con
+  ids distintos. Si un plan no alcanza un hito, sale `null`, no un cero.
+- **Los vehículos migrados llevan `revisarRentabilidad`.** Su rentabilidad viene
+  del `interes` de una cuenta, que es NOMINAL, y este módulo trabaja en términos
+  reales. La marca se quita al guardarlos desde el formulario, que sí explica la
+  diferencia.
 
-- Pestaña 5: comparativa A/B/C, duplicar plan, tabla de diferencias en fechas de
-  hitos.
-- Análisis de sensibilidad (§4): re-ejecutar variando rentabilidad (−2…+2
-  puntos), `pctDisfrute` (±10) e ingresos (±20 %), y presentarlo como «cuántos
-  años adelanta o retrasa cada palanca».
+### Limitaciones conocidas, deliberadas
 
-### 3.3 Persistencia avanzada (§6)
-
-- Versionado de planes: snapshots con fecha para comparar el plan de hoy con el
-  de hace un año frente a la realidad ejecutada.
-- Export/import JSON del plan completo.
-- Punto de enganche plan vs. real, apoyándose en el módulo de contabilidad.
-
-### 3.4 Detalles menores
-
-- **Pendiente y con riesgo de confundir:** la migración traslada
-  `Account.interes` tal cual a `rentabilidadRealAnual`, pero ese interés es
-  **nominal**. El formulario de vehículo ya explica que debe ser real, pero los
-  vehículos creados por la migración no llevan aviso. Habría que marcarlos o
-  restar una inflación estimada.
-
-- La tabla mes a mes pinta 60 filas; el resto solo por CSV. Con horizontes de
-  480 meses habría que paginar o virtualizar.
-- `perfilSugerido()` estima el neto como el 75 % del bruto. Es deliberadamente
-  burdo: el neto exacto lo calcula el motor fiscal al proyectar, y duplicar esa
-  lógica aquí sería justo lo que el documento pide evitar. Conviene enchufarlo
-  al motor real.
-- El selector de plan activo (§5, pestaña 1) no existe: se usa el primero
-  marcado `activo`.
-- La pestaña 6 (notas en Markdown) está como textarea de texto plano.
+- **`perfilSugerido()` estima el neto como el 75 % del bruto.** Es burdo a
+  propósito: el neto exacto lo calcula el motor fiscal al proyectar, y duplicar
+  esa lógica aquí sería justo lo que el documento pide evitar. Enchufarlo al
+  motor real es la mejora pendiente más clara.
+- **La comparativa se limita a tres planes.** Con más, la tabla deja de leerse.
+- **Las notas son texto plano**, no Markdown renderizado.
+- **Versionado de planes con snapshots** (§6): no implementado. Duplicar un plan
+  cubre el caso práctico —guardar el de hoy antes de cambiarlo— pero no hay
+  comparación automática contra la realidad ejecutada.
+- **Punto de enganche plan vs. real** (§6): tampoco. Requiere decidir cómo se
+  emparejan los objetivos del plan con las transacciones de contabilidad, que es
+  una decisión de producto, no de implementación.
 
 ---
 

@@ -313,6 +313,9 @@ export function leerVehiculo(raiz: HTMLElement, anterior: Vehiculo | null): Vehi
     cuentaId: val('ve-cuenta') || null,
     prestamoId: esDeuda ? val('ve-prestamo') || null : null,
     esDeuda,
+    // `revisarRentabilidad` NO se propaga a propósito: si el usuario ha pasado
+    // por este formulario, que explica la diferencia entre nominal y real, el
+    // aviso ya ha cumplido su función.
   };
 }
 

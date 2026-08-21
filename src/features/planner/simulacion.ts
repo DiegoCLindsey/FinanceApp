@@ -8,7 +8,7 @@ import { esc } from '../accounting/dom';
 
 const eur = (centimos: number): string => formatEUR(centimos / 100);
 
-export function panelSimulacion(plan: Plan, res: ResultadoSimulacion): string {
+export function panelSimulacion(plan: Plan, res: ResultadoSimulacion, pagina = 0): string {
   return `
     ${panelAvisos(res)}
     ${resumen(plan, res)}
@@ -18,7 +18,7 @@ export function panelSimulacion(plan: Plan, res: ResultadoSimulacion): string {
     </div>
     ${panelHitos(res)}
     ${panelFases(plan, res)}
-    ${tablaMensual(plan, res)}`;
+    ${tablaMensual(plan, res, pagina)}`;
 }
 
 // ── Avisos y propuestas (§3.3) ────────────────────────────────────────────────
@@ -137,13 +137,18 @@ function panelFases(plan: Plan, res: ResultadoSimulacion): string {
 
 // ── Tabla mes a mes ───────────────────────────────────────────────────────────
 
-/** Filas que se pintan de golpe. La serie puede tener 480 meses. */
-const FILAS_VISIBLES = 60;
+/**
+ * Filas por página. La serie puede tener 480 meses: pintarlas todas de golpe
+ * mete miles de celdas en el DOM y la pestaña se arrastra al desplazarse.
+ */
+const FILAS_POR_PAGINA = 60;
 
-function tablaMensual(plan: Plan, res: ResultadoSimulacion): string {
+function tablaMensual(plan: Plan, res: ResultadoSimulacion, pagina = 0): string {
   if (res.serieMensual.length === 0) return '';
   const objetivos = [...plan.objetivos].sort((a, b) => a.prioridad - b.prioridad);
-  const filas = res.serieMensual.slice(0, FILAS_VISIBLES);
+  const paginas = Math.ceil(res.serieMensual.length / FILAS_POR_PAGINA);
+  const p = Math.min(Math.max(0, pagina), paginas - 1);
+  const filas = res.serieMensual.slice(p * FILAS_POR_PAGINA, (p + 1) * FILAS_POR_PAGINA);
 
   const cabecera = ['Mes', 'Disponible', ...objetivos.map((o) => o.nombre), 'Sin asignar', 'Patrimonio']
     .map(
@@ -171,9 +176,15 @@ function tablaMensual(plan: Plan, res: ResultadoSimulacion): string {
     })
     .join('');
 
-  const truncada =
-    res.serieMensual.length > FILAS_VISIBLES
-      ? `<div class="text-sm" style="color:var(--text3);margin-top:8px">Se muestran los primeros ${FILAS_VISIBLES} de ${res.serieMensual.length} meses. Exporta el CSV para verlos todos.</div>`
+  const navegacion =
+    paginas > 1
+      ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">
+           <button class="btn-secondary btn-sm" data-pl-pagina="${p - 1}"${p === 0 ? ' disabled' : ''}>← Anteriores</button>
+           <span class="text-sm" style="color:var(--text3)">
+             Meses ${p * FILAS_POR_PAGINA + 1}–${Math.min((p + 1) * FILAS_POR_PAGINA, res.serieMensual.length)} de ${res.serieMensual.length}
+           </span>
+           <button class="btn-secondary btn-sm" data-pl-pagina="${p + 1}"${p >= paginas - 1 ? ' disabled' : ''}>Siguientes →</button>
+         </div>`
       : '';
 
   return `<div class="card">
@@ -187,7 +198,7 @@ function tablaMensual(plan: Plan, res: ResultadoSimulacion): string {
         <tbody>${cuerpo}</tbody>
       </table>
     </div>
-    ${truncada}
+    ${navegacion}
   </div>`;
 }
 

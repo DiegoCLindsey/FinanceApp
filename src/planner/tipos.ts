@@ -44,6 +44,12 @@ export interface Vehiculo {
    * que la UI pueda explicarlo, porque es contraintuitivo (§2.5).
    */
   esDeuda?: boolean;
+  /**
+   * La rentabilidad vino de una fuente NOMINAL (el `interes` de una cuenta) y
+   * nadie la ha revisado todavía. La UI avisa mientras esté puesta; se quita al
+   * guardar el vehículo desde el formulario, que sí explica la diferencia.
+   */
+  revisarRentabilidad?: boolean;
 }
 
 // ── Objetivos (§2.3, §2.4) ────────────────────────────────────────────────────
