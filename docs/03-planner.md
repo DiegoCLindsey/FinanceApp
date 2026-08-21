@@ -4,7 +4,7 @@
 > aquí se registra **qué está hecho, qué decisiones se tomaron y qué queda**,
 > para poder retomarlo en otra sesión sin releerlo todo.
 >
-> Última actualización: 2026-08-21.
+> Última actualización: 2026-08-21 (segunda sesión: edición completa).
 
 ---
 
@@ -54,6 +54,23 @@ completos con tests.
 Pestañas 1-3 del §5: configuración del plan, lista de objetivos y simulación
 (gráfico apilado por vehículo, hitos, fases, avisos, propuestas y tabla mes a
 mes con exportación a CSV). Flag `planner`, activo por defecto.
+
+**Edición completa** (`form.ts`):
+
+- Alta, edición y borrado de **objetivos**, con los campos específicos de cada
+  modo apareciendo solo cuando aplican y una explicación del modo elegido que
+  cambia al vuelo.
+- **Reordenar arrastrando**: el orden ES la prioridad, y tras cada movimiento se
+  renumeran todos de 1 a N. Dejar huecos o empates haría que la cascada
+  dependiera del orden de inserción, que es invisible para el usuario.
+- Alternar entre «defino el capital» y «defino la renta que quiero» en
+  `INVERSION_PERPETUA`, con el capital derivado en vivo y la advertencia del SWR
+  (§2.6). Cuando se deriva, `importeObjetivo` queda a `null`: manda la
+  derivación, que es lo que el usuario está editando.
+- Alta, edición y borrado de **vehículos**, incluido el de `AMORTIZAR_DEUDA`:
+  al elegir un préstamo, su TIN entra como rentabilidad y se propone el nombre.
+  Un vehículo en uso no se puede borrar.
+- Al cambiar el tipo de objetivo se sugiere el modo que le corresponde.
 
 **Los 9 casos de referencia de la §9 están cubiertos por tests.** Dos de ellos
 tenían el valor redondeado en el documento (820 € y 1.100 €); se fijó el exacto
@@ -106,37 +123,13 @@ tiempo, no tarde.
 En orden de valor. Los pasos 6 y 7 del §8 del documento, más lo que se recortó
 de las pestañas 1-3.
 
-### 3.1 Alta y edición de objetivos — **lo más urgente**
-
-Ahora mismo la vista **solo lee**. Los objetivos entran por la migración o
-editando el JSON. Falta:
-
-- Formulario de alta/edición (nombre, tipo, importe, fecha, modo, vehículo,
-  saldo actual, notas).
-- Borrado con confirmación.
-- **Reordenar por arrastre** (§5, pestaña 2): el orden ES la prioridad.
-- Alternar entre «defino el capital» y «defino la renta que quiero» en
-  `INVERSION_PERPETUA`, con la advertencia del SWR (§2.6). El cálculo ya está
-  hecho (`capitalParaRenta`), falta el interruptor en la UI.
-
-### 3.2 Gestión de vehículos
-
-La migración crea uno por cuenta, pero no hay forma de crear, editar ni borrar.
-Falta sobre todo el vehículo de **`AMORTIZAR_DEUDA`**, que apunta a un `Loan` y
-cuya «rentabilidad» es el TIN evitado — y la UI tiene que explicarlo, porque es
-contraintuitivo que pagar deuda aparezca como inversión (§2.5).
-
-**Aviso pendiente:** la migración traslada `Account.interes` tal cual a
-`rentabilidadRealAnual`, pero ese interés es **nominal**. Hay que avisar en la
-UI de que se revise, o restar una inflación estimada.
-
-### 3.3 Eventos (paso 6)
+### 3.1 Eventos (paso 6)
 
 El motor ya los aplica y están testeados; **falta la pestaña 4**: línea temporal
 editable con plantillas para los casos frecuentes (venta de vivienda,
 nacimiento, subida de sueldo).
 
-### 3.4 Escenarios y sensibilidad (paso 7)
+### 3.2 Escenarios y sensibilidad (paso 7)
 
 - Pestaña 5: comparativa A/B/C, duplicar plan, tabla de diferencias en fechas de
   hitos.
@@ -144,14 +137,20 @@ nacimiento, subida de sueldo).
   puntos), `pctDisfrute` (±10) e ingresos (±20 %), y presentarlo como «cuántos
   años adelanta o retrasa cada palanca».
 
-### 3.5 Persistencia avanzada (§6)
+### 3.3 Persistencia avanzada (§6)
 
 - Versionado de planes: snapshots con fecha para comparar el plan de hoy con el
   de hace un año frente a la realidad ejecutada.
 - Export/import JSON del plan completo.
 - Punto de enganche plan vs. real, apoyándose en el módulo de contabilidad.
 
-### 3.6 Detalles menores
+### 3.4 Detalles menores
+
+- **Pendiente y con riesgo de confundir:** la migración traslada
+  `Account.interes` tal cual a `rentabilidadRealAnual`, pero ese interés es
+  **nominal**. El formulario de vehículo ya explica que debe ser real, pero los
+  vehículos creados por la migración no llevan aviso. Habría que marcarlos o
+  restar una inflación estimada.
 
 - La tabla mes a mes pinta 60 filas; el resto solo por CSV. Con horizontes de
   480 meses habría que paginar o virtualizar.

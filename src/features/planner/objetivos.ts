@@ -54,6 +54,7 @@ export function panelObjetivos(plan: Plan, res: ResultadoSimulacion): string {
     <div class="text-sm mb-12" style="color:var(--text3);line-height:1.7">
       El orden es la <strong>prioridad</strong>: el de arriba se sirve primero y los de abajo reciben lo que quede.
       La columna «pide ahora» es lo que cada objetivo está reclamando este mes.
+      <br>Arrastra las tarjetas para reordenarlas.
     </div>
     ${ordenados.map((o) => tarjeta(o, res, primeraFila, vehiculo(o.vehiculoId)?.nombre)).join('')}`;
 }
@@ -74,10 +75,12 @@ function tarjeta(
   const avisos = res.avisos.filter((a) => a.objetivoId === o._id);
 
   return `
-    <div class="card mb-10" style="padding:14px 16px;border-left:3px solid ${COLOR_ESTADO[estado] ?? 'var(--text3)'}">
+    <div class="card mb-10" draggable="true" data-pl-objetivo="${esc(o._id)}"
+         style="padding:14px 16px;border-left:3px solid ${COLOR_ESTADO[estado] ?? 'var(--text3)'};cursor:grab">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
         <div style="flex:1;min-width:220px">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span title="Arrastra para cambiar la prioridad" style="color:var(--text3);cursor:grab;user-select:none">⠿</span>
             <span style="font-family:var(--font-mono);font-size:11px;color:var(--text3)">#${esc(o.prioridad)}</span>
             <span style="font-weight:700;font-size:14px">${esc(o.nombre)}</span>
             <span class="badge" style="font-size:10px;background:var(--bg3);color:var(--text2)">${esc(ETIQUETA_MODO[o.modoAsignacion])}</span>
@@ -89,6 +92,7 @@ function tarjeta(
         <div style="text-align:right">
           <div style="font-family:var(--font-mono);font-size:17px;font-weight:700">${esc(objetivo > 0 ? eur(objetivo) : '— sin meta —')}</div>
           ${o.fechaLimite ? `<div class="text-sm" style="color:var(--text3)">para ${esc(o.fechaLimite)}</div>` : ''}
+          <button class="btn-secondary btn-sm" data-pl-editar-objetivo="${esc(o._id)}" style="margin-top:6px;font-size:11px;padding:2px 9px">Editar</button>
         </div>
       </div>
 

@@ -13,17 +13,19 @@ import { todayISO } from '@/core/dates';
 import type { FeatureManifest } from '@/app/feature-registry';
 import type { AppState } from '@/state/schema';
 import { simular } from '@/planner/simulador';
-import type { Plan, ResultadoSimulacion } from '@/planner/tipos';
-import { esc, onClick, onChange, toast } from '../accounting/dom';
+import type { Objetivo, Plan, ResultadoSimulacion } from '@/planner/tipos';
+import { confirmar, esc, onClick, onChange, toast } from '../accounting/dom';
 import { graficoPatrimonio } from './chart';
 import { panelObjetivos } from './objetivos';
 import { panelSimulacion, serieACsv } from './simulacion';
+import { AYUDA_MODO, MODO_SUGERIDO, capitalDerivado, formularioObjetivo, formularioVehiculo, leerObjetivo, leerVehiculo } from './form';
 
 export interface PlannerStoreLike {
   get(key: 'planes'): Plan[];
   get(key: 'accounts'): AppState['accounts'];
   get(key: 'nominas'): AppState['nominas'];
   get(key: 'expenses'): AppState['expenses'];
+  get(key: 'loans'): AppState['loans'];
   updateItem(col: 'planes', id: string, patch: Partial<Plan>): void;
   addItem(col: 'planes', item: Omit<Plan, '_id'> & { _id?: string }): Plan;
 }
@@ -181,6 +183,223 @@ export function createPlannerFeature(deps: PlannerDeps): FeatureManifest {
       </div>`;
   }
 
+  // ── Edición de objetivos y vehículos ────────────────────────────────────────
+
+  const overlay = () => document.getElementById('modal-overlay');
+  const contenido = () => document.getElementById('modal-content');
+  const cerrarModal = () => overlay()?.classList.add('hidden');
+
+  function abrirModal(titulo: string, html: string): HTMLElement | null {
+    const ov = overlay();
+    const el = contenido();
+    if (!ov || !el) return null;
+    el.innerHTML = `<div class="modal-title">${esc(titulo)}</div>${html}`;
+    ov.classList.remove('hidden');
+    return el;
+  }
+
+  /** Escribe la lista de objetivos y vuelve a simular. */
+  function guardarObjetivos(objetivos: Objetivo[]): void {
+    guardar({ objetivos });
+  }
+
+  function editarObjetivo(container: HTMLElement, id: string | null): void {
+    const plan = planActivo();
+    if (!plan) return;
+    const actual = id ? (plan.objetivos.find((o) => o._id === id) ?? null) : null;
+    const siguiente = plan.objetivos.reduce((m, o) => Math.max(m, o.prioridad), 0) + 1;
+
+    const el = abrirModal(actual ? `Editar «${actual.nombre}»` : 'Nuevo objetivo', formularioObjetivo(actual, plan.vehiculos, siguiente));
+    if (!el) return;
+
+    const refrescarAyuda = () => {
+      const modo = (el.querySelector('#ob-modo') as HTMLSelectElement | null)?.value as keyof typeof AYUDA_MODO;
+      const ayuda = el.querySelector('#ob-modo-ayuda');
+      if (ayuda && modo) ayuda.textContent = AYUDA_MODO[modo];
+      // Los campos específicos de cada modo solo se enseñan cuando aplican
+      const mostrar = (sel: string, si: boolean) => {
+        const b = el.querySelector<HTMLElement>(sel);
+        if (b) b.style.display = si ? 'block' : 'none';
+      };
+      mostrar('#ob-bloque-fijo', modo === 'FIJO');
+      mostrar('#ob-bloque-residual', modo === 'ABSORBE_RESIDUAL');
+    };
+    refrescarAyuda();
+
+    const refrescarCapital = () => {
+      const salida = el.querySelector('#ob-capital-derivado');
+      if (salida) salida.textContent = capitalDerivado(el);
+    };
+    refrescarCapital();
+
+    onChange(el, '#ob-modo', refrescarAyuda);
+
+    // Al cambiar el tipo se sugiere el modo que le pega, y aparece o desaparece
+    // el bloque de independencia económica.
+    onChange(el, '#ob-tipo', () => {
+      const tipo = (el.querySelector('#ob-tipo') as HTMLSelectElement).value as keyof typeof MODO_SUGERIDO;
+      const modo = el.querySelector('#ob-modo') as HTMLSelectElement;
+      if (modo) modo.value = MODO_SUGERIDO[tipo];
+      const bloque = el.querySelector<HTMLElement>('#ob-bloque-perpetua');
+      if (bloque) bloque.style.display = tipo === 'INVERSION_PERPETUA' ? 'block' : 'none';
+      refrescarAyuda();
+    });
+
+    // Alternar entre «defino el capital» y «defino la renta» (§2.6)
+    onChange(el, 'input[name="ob-derivar"]', () => {
+      const renta = (el.querySelector('input[name="ob-derivar"]:checked') as HTMLInputElement | null)?.value === 'renta';
+      const campos = el.querySelector<HTMLElement>('#ob-renta-campos');
+      const importe = el.querySelector<HTMLElement>('#ob-bloque-importe');
+      if (campos) campos.style.display = renta ? 'block' : 'none';
+      if (importe) importe.style.display = renta ? 'none' : 'block';
+      refrescarCapital();
+    });
+    onChange(el, '#ob-renta, #ob-swr, #ob-fiscal', refrescarCapital);
+
+    onClick(el, '[data-ob-cancelar]', cerrarModal);
+
+    onClick(el, '[data-ob-guardar]', () => {
+      const leido = leerObjetivo(el, actual, siguiente);
+      if (!leido) {
+        toast('El objetivo necesita un nombre', 'err');
+        return;
+      }
+      if (!leido.vehiculoId) {
+        toast('Crea antes un vehículo donde meter el dinero', 'err');
+        return;
+      }
+      const resto = plan.objetivos.filter((o) => o._id !== leido._id);
+      guardarObjetivos([...resto, leido]);
+      cerrarModal();
+      toast(actual ? 'Objetivo actualizado' : `Objetivo «${leido.nombre}» creado`);
+      render(container);
+    });
+
+    onClick(el, '[data-ob-borrar]', () => {
+      if (!actual) return;
+      if (!confirmar(`¿Borrar «${actual.nombre}»? Esto no se puede deshacer.`)) return;
+      guardarObjetivos(plan.objetivos.filter((o) => o._id !== actual._id));
+      cerrarModal();
+      toast('Objetivo borrado');
+      render(container);
+    });
+  }
+
+  function editarVehiculo(container: HTMLElement, id: string | null): void {
+    const plan = planActivo();
+    if (!plan) return;
+    const actual = id ? (plan.vehiculos.find((v) => v._id === id) ?? null) : null;
+
+    const cuentas = deps.store
+      .get('accounts')
+      .filter((a) => a.activo)
+      .map((a) => ({ _id: a._id, nombre: a.nombre }));
+    const prestamos = deps.store
+      .get('loans')
+      .filter((l) => l.activo && !l.simulacion)
+      .map((l) => ({ _id: l._id, nombre: l.nombre, tin: l.tin }));
+
+    const el = abrirModal(actual ? `Editar «${actual.nombre}»` : 'Nuevo vehículo', formularioVehiculo(actual, cuentas, prestamos));
+    if (!el) return;
+
+    onChange(el, '#ve-deuda', () => {
+      const marcado = (el.querySelector('#ve-deuda') as HTMLInputElement).checked;
+      const bloque = el.querySelector<HTMLElement>('#ve-bloque-prestamo');
+      if (bloque) bloque.style.display = marcado ? 'block' : 'none';
+    });
+
+    // Al elegir préstamo, su TIN entra como rentabilidad: amortizar deuda rinde
+    // exactamente el interés que dejas de pagar.
+    onChange(el, '#ve-prestamo', () => {
+      const elegido = (el.querySelector('#ve-prestamo') as HTMLSelectElement).value;
+      const prestamo = prestamos.find((p) => p._id === elegido);
+      if (!prestamo) return;
+      const rent = el.querySelector<HTMLInputElement>('#ve-rent');
+      const nombre = el.querySelector<HTMLInputElement>('#ve-nombre');
+      if (rent) rent.value = String(prestamo.tin);
+      if (nombre && !nombre.value.trim()) nombre.value = `Amortizar ${prestamo.nombre}`;
+    });
+
+    onClick(el, '[data-ve-cancelar]', cerrarModal);
+
+    onClick(el, '[data-ve-guardar]', () => {
+      const leido = leerVehiculo(el, actual);
+      if (!leido) {
+        toast('El vehículo necesita un nombre', 'err');
+        return;
+      }
+      const resto = plan.vehiculos.filter((v) => v._id !== leido._id);
+      guardar({ vehiculos: [...resto, leido] });
+      cerrarModal();
+      toast(actual ? 'Vehículo actualizado' : `Vehículo «${leido.nombre}» creado`);
+      render(container);
+    });
+
+    onClick(el, '[data-ve-borrar]', () => {
+      if (!actual) return;
+      const enUso = plan.objetivos.filter((o) => o.vehiculoId === actual._id);
+      if (enUso.length > 0) {
+        toast(`No se puede borrar: lo usan ${enUso.length} objetivo${enUso.length !== 1 ? 's' : ''}`, 'err');
+        return;
+      }
+      if (!confirmar(`¿Borrar el vehículo «${actual.nombre}»?`)) return;
+      guardar({ vehiculos: plan.vehiculos.filter((v) => v._id !== actual._id) });
+      cerrarModal();
+      toast('Vehículo borrado');
+      render(container);
+    });
+  }
+
+  /**
+   * Reordena por arrastre. El orden ES la prioridad, así que tras mover se
+   * renumeran todos de 1 a N: dejar huecos o empates haría que la cascada
+   * dependiera del orden de inserción, que es invisible para el usuario.
+   */
+  function moverObjetivo(container: HTMLElement, origen: string, destino: string): void {
+    const plan = planActivo();
+    if (!plan || origen === destino) return;
+    const orden = [...plan.objetivos].sort((a, b) => a.prioridad - b.prioridad);
+    const iOrigen = orden.findIndex((o) => o._id === origen);
+    const iDestino = orden.findIndex((o) => o._id === destino);
+    if (iOrigen < 0 || iDestino < 0) return;
+
+    const [movido] = orden.splice(iOrigen, 1);
+    orden.splice(iDestino, 0, movido);
+    guardarObjetivos(orden.map((o, i) => ({ ...o, prioridad: i + 1 })));
+    render(container);
+  }
+
+  /** Lista compacta de vehículos, para poder editarlos sin salir de la pestaña. */
+  function panelVehiculos(plan: Plan): string {
+    if (plan.vehiculos.length === 0) {
+      return `<div class="card mb-14" style="padding:12px 16px;background:rgba(255,209,102,0.06);border-color:rgba(255,209,102,0.28)">
+        <div class="text-sm" style="color:var(--text2);line-height:1.7">
+          <strong style="color:var(--yellow)">No hay vehículos todavía.</strong>
+          Un vehículo es dónde va el dinero —una cuenta, un fondo, un plan de pensiones o la amortización de un
+          préstamo— y con qué rentabilidad crece. Hace falta al menos uno para poder crear objetivos.
+        </div>
+      </div>`;
+    }
+
+    return `<div class="card mb-14" style="padding:12px 16px">
+      <div class="card-title mb-10">Vehículos</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${plan.vehiculos
+          .map((v) => {
+            const usos = plan.objetivos.filter((o) => o.vehiculoId === v._id).length;
+            return `<button class="btn-secondary btn-sm" data-pl-editar-vehiculo="${esc(v._id)}"
+              style="display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 11px;text-align:left">
+              <span style="font-weight:600;font-size:12px">${esc(v.nombre)}${v.esDeuda ? ' 🔒' : ''}</span>
+              <span style="font-size:10px;color:var(--text3)">
+                ${esc((v.rentabilidadRealAnual * 100).toFixed(2))} % real · ${usos} objetivo${usos !== 1 ? 's' : ''}
+              </span>
+            </button>`;
+          })
+          .join('')}
+      </div>
+    </div>`;
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   function render(container: HTMLElement): void {
@@ -205,6 +424,16 @@ export function createPlannerFeature(deps: PlannerDeps): FeatureManifest {
         ${pestañaBtn('objetivos', `Objetivos (${plan.objetivos.length})`)}
         ${pestañaBtn('simulacion', 'Simulación')}
       </div>
+
+      ${
+        pestaña === 'objetivos'
+          ? `<div class="flex gap-8 mb-14 flex-wrap">
+               <button class="btn-primary" data-pl-nuevo-objetivo>+ Nuevo objetivo</button>
+               <button class="btn-secondary" data-pl-nuevo-vehiculo>+ Nuevo vehículo</button>
+             </div>
+             ${panelVehiculos(plan)}`
+          : ''
+      }
 
       <div id="pl-cuerpo">${
         pestaña === 'config' ? panelConfig(plan) : pestaña === 'objetivos' ? panelObjetivos(plan, res) : panelSimulacion(plan, res)
@@ -259,6 +488,42 @@ export function createPlannerFeature(deps: PlannerDeps): FeatureManifest {
       });
       toast('Plan guardado');
       render(container);
+    });
+
+    onClick(container, '[data-pl-nuevo-objetivo]', () => editarObjetivo(container, null));
+    onClick(container, '[data-pl-nuevo-vehiculo]', () => editarVehiculo(container, null));
+    onClick(container, '[data-pl-editar-vehiculo]', (el) =>
+      editarVehiculo(container, (el as HTMLElement).dataset.plEditarVehiculo ?? null),
+    );
+    onClick(container, '[data-pl-editar-objetivo]', (el) =>
+      editarObjetivo(container, (el as HTMLElement).dataset.plEditarObjetivo ?? null),
+    );
+
+    // Reordenar arrastrando. El orden es la prioridad (§5, pestaña 2).
+    let arrastrado: string | null = null;
+    container.querySelectorAll<HTMLElement>('[data-pl-objetivo]').forEach((fila) => {
+      fila.addEventListener('dragstart', () => {
+        arrastrado = fila.dataset.plObjetivo ?? null;
+        fila.style.opacity = '0.45';
+      });
+      fila.addEventListener('dragend', () => {
+        fila.style.opacity = '';
+        container.querySelectorAll<HTMLElement>('[data-pl-objetivo]').forEach((f) => (f.style.borderTop = ''));
+      });
+      fila.addEventListener('dragover', (ev) => {
+        ev.preventDefault();
+        if (arrastrado && fila.dataset.plObjetivo !== arrastrado) fila.style.borderTop = '2px solid var(--accent)';
+      });
+      fila.addEventListener('dragleave', () => {
+        fila.style.borderTop = '';
+      });
+      fila.addEventListener('drop', (ev) => {
+        ev.preventDefault();
+        fila.style.borderTop = '';
+        const destino = fila.dataset.plObjetivo;
+        if (arrastrado && destino) moverObjetivo(container, arrastrado, destino);
+        arrastrado = null;
+      });
     });
 
     onClick(container, '[data-pl-csv]', () => {
