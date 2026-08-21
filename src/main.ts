@@ -42,6 +42,7 @@ import { createSalariesFeature } from './features/salaries';
 import { createAccountsFeature } from './features/accounts';
 import { createTaxesFeature } from './features/taxes';
 import { createScenariosFeature } from './features/scenarios';
+import { createPlannerFeature } from './features/planner';
 import { createLedger, type Ledger } from './accounting/ledger';
 import { createTagService, type TagService } from './accounting/tags';
 import { createPrecisionAnalyzer, type PrecisionAnalyzer } from './accounting/precision';
@@ -205,6 +206,7 @@ function bootstrap(): FinanceAppNamespace {
     }),
   );
   // Planificación:
+  app.register(createPlannerFeature({ store, onDatosCambiados: refrescarLegacy }));
   app.register(createScenariosFeature({ store, onDatosCambiados: refrescarLegacy }));
   app.register(createInflationFeature({ store, onDatosCambiados: refrescarLegacy }));
   app.register(createTaxesFeature({ store }));

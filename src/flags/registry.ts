@@ -116,6 +116,13 @@ export const FEATURES: FeatureDefinition[] = [
     porDefecto: false,
   },
   {
+    id: 'planner',
+    nombre: 'Objetivos financieros',
+    descripcion: 'Plan a largo plazo: objetivos que compiten por el flujo mensual y se encadenan al completarse.',
+    grupo: GRUPOS.planificacion,
+    porDefecto: true,
+  },
+  {
     id: 'optimizador',
     nombre: 'Optimizador de amortizaciones',
     descripcion: 'Planifica amortizaciones anticipadas con el excedente disponible cada mes.',

@@ -8,6 +8,7 @@ import { SCHEMA_VERSION, type AppState } from '../schema';
 import { migrateTo5 } from './005-normalize';
 import { migrateTo6 } from './006-accounting';
 import { migrateTo7 } from './007-price-history';
+import { migrateTo8 } from './008-planner';
 import type { Migration, MigrationContext, RawState } from './types';
 
 const MIGRATIONS: Migration[] = [
@@ -21,6 +22,11 @@ const MIGRATIONS: Migration[] = [
     version: 7,
     describe: 'Retira historialPrecios: cada entrada pasa a ser una transacción real enlazada a su estimación',
     migrate: migrateTo7,
+  },
+  {
+    version: 8,
+    describe: 'Gestor de objetivos: absorbe `goals` dentro de un Plan, con un vehículo por cuenta',
+    migrate: migrateTo8,
   },
 ];
 

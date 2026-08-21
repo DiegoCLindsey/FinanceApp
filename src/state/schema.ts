@@ -11,6 +11,7 @@ import type { PlanAportacion } from '@/engine/providers/contributions';
 import type { ComponenteFlexible } from '@/engine/providers/salaries';
 import type { Amortizacion } from '@/core/loan';
 import type { MargenSeguridad, PuntoReserva } from '@/engine/margins';
+import type { Plan } from '@/planner/tipos';
 
 /**
  * v5 (2026-07): formaliza el esquema y limpia los restos de las features
@@ -22,7 +23,7 @@ import type { MargenSeguridad, PuntoReserva } from '@/engine/margins';
  * v7 (2026-07): retira `historialPrecios` de las estimaciones — cada entrada
  *   pasa a ser una transacción real enlazada a su estimación (tarea 4.8).
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export interface Loan {
   _id: string;
@@ -238,6 +239,8 @@ export interface AppState {
   accounts: Account[];
   nominas: Nomina[];
   goals: Goal[];
+  /** Planes del gestor de objetivos financieros (v8). */
+  planes: Plan[];
   transacciones: Transaccion[];
   puntosControl: PuntoControl[];
   inflacion: PeriodoInflacion[];
@@ -333,6 +336,7 @@ export function defaultState(hoyISO: ISODate, finISO: ISODate): AppState {
     accounts: [defaultAccount(hoyISO)],
     nominas: [],
     goals: [],
+    planes: [],
     transacciones: [],
     puntosControl: [],
     inflacion: [],
