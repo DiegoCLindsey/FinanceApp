@@ -30,7 +30,7 @@ export interface GoalsSectionDeps {
   onDatosCambiados: () => void;
 }
 
-const COLORES = ['#00e5a0', '#4d9fff', '#ffd166', '#ff4d6d', '#a855f7', '#fb923c'];
+const COLORES = ['#2ee6a8', '#4d9fff', '#ffb020', '#ff6b6b', '#a855f7', '#fb923c'];
 
 const ICONO_EDITAR =
   'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z';
@@ -68,7 +68,7 @@ export function createGoalsSection(deps: GoalsSectionDeps) {
 
     const insignias = [
       g.completado ? '<span class="badge badge-active">✓ Completado</span>' : '',
-      alcanzado ? '<span class="badge" style="background:rgba(0,229,160,0.2);color:var(--accent)">🎉 ¡Meta alcanzada!</span>' : '',
+      alcanzado ? '<span class="badge" style="background:rgba(46,230,168,0.2);color:var(--accent)">🎉 ¡Meta alcanzada!</span>' : '',
       g.usarColchon !== false ? '<span class="badge badge-inactive" title="Colchón descontado del saldo">🛡 −colchón</span>' : '',
     ].join('');
 

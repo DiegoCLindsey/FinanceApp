@@ -1,25 +1,49 @@
 /* ==================== AUTH ==================== */
-.auth-overlay { position: fixed; inset: 0; z-index: 1000; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 16px; }
-.auth-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 32px; width: 100%; max-width: 380px; box-shadow: var(--shadow); }
-.auth-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
-.auth-tabs { display: flex; gap: 4px; margin-bottom: 20px; background: var(--bg3); border-radius: var(--radius); padding: 4px; }
-.tab-btn { flex: 1; padding: 7px; border: none; background: transparent; color: var(--text2); font-family: var(--font-sans); font-size: 13px; cursor: pointer; border-radius: 6px; transition: all 0.15s; }
-.tab-btn.active { background: var(--bg2); color: var(--text); font-weight: 500; }
-.auth-form { display: flex; flex-direction: column; gap: 10px; }
-.auth-input { padding: 11px 13px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font-sans); font-size: 14px; outline: none; transition: border-color 0.15s; width: 100%; }
-.auth-input:focus { border-color: var(--accent); }
-.auth-hint { font-size: 12px; color: var(--text3); line-height: 1.5; padding: 8px 10px; background: var(--bg3); border-radius: 6px; border-left: 2px solid var(--accent); }
-.auth-error { font-size: 12px; color: var(--red); padding: 8px 10px; background: var(--red-dim); border-radius: 6px; }
-
-/* ---- Dropbox button ---- */
-.btn-dropbox {
-  padding: 11px 18px; background: #0061FF; color: #fff;
-  border: none; border-radius: var(--radius); font-family: var(--font-sans);
-  font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s;
-  white-space: nowrap; display: flex; align-items: center; justify-content: center;
+/* La tarjeta de acceso sí es cristal de verdad: se ve la aurora a través. */
+.auth-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(7,11,18,0.86); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.auth-card {
+  background: linear-gradient(160deg, var(--surface-strong), var(--surface));
+  border: 1px solid var(--hairline); border-radius: 26px; padding: 32px;
+  width: 100%; max-width: 380px; box-shadow: var(--shadow);
+  backdrop-filter: blur(16px) saturate(140%); -webkit-backdrop-filter: blur(16px) saturate(140%);
+  animation: pop-in 0.24s cubic-bezier(0.2,0.9,0.3,1);
 }
-.btn-dropbox:hover { background: #0052D9; }
-.btn-dropbox:disabled { opacity: 0.5; cursor: not-allowed; }
+.auth-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+.auth-tabs { display: flex; gap: 4px; margin-bottom: 20px; background: var(--surface); border: 1px solid var(--hairline-soft); border-radius: var(--radius-pill); padding: 3px; }
+.tab-btn { flex: 1; padding: 7px; border: none; background: transparent; color: var(--text2); font-family: var(--font-sans); font-size: 13px; font-weight: 600; cursor: pointer; border-radius: var(--radius-pill); transition: all 0.15s; }
+.tab-btn.active { background: var(--accent-dim); color: var(--accent); }
+.auth-form { display: flex; flex-direction: column; gap: 10px; }
+.auth-input { padding: 11px 14px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); color: var(--text); font-family: var(--font-sans); font-size: 14px; outline: none; transition: border-color 0.18s, box-shadow 0.18s, background 0.18s; width: 100%; }
+.auth-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(46,230,168,0.16); background: var(--surface-strong); }
+.auth-input::placeholder { color: var(--text3); }
+.auth-hint { font-size: 12px; color: var(--text3); line-height: 1.55; padding: 9px 12px; background: var(--surface); border-radius: var(--radius); border-left: 2px solid var(--accent); }
+.auth-error { font-size: 12px; color: var(--red); padding: 9px 12px; background: var(--red-dim); border: 1px solid rgba(255,107,107,0.32); border-radius: var(--radius); }
+
+/* ---- Botones de proveedor ----
+   Conservan su color de marca (es lo que los hace reconocibles) pero adoptan
+   la píldora y la transición del resto. */
+/* Las etiquetas son largas («Firebase — sincronización en tiempo real») y la
+   tarjeta mide 380 px: si no se les deja partir en dos líneas, el texto se sale
+   del botón en cuanto la tipografía cargada es un poco más ancha de lo
+   previsto. Por eso NO llevan `white-space: nowrap`. */
+.btn-dropbox, .btn-google, .btn-firebase {
+  padding: 11px 18px; border-radius: 22px; font-family: var(--font-sans);
+  font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.18s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  text-align: center; line-height: 1.3; min-width: 0;
+}
+.btn-dropbox svg, .btn-google svg, .btn-firebase svg { flex-shrink: 0; }
+.btn-dropbox:active:not(:disabled), .btn-google:active:not(:disabled), .btn-firebase:active:not(:disabled) { transform: scale(0.97); }
+.btn-dropbox:disabled, .btn-google:disabled, .btn-firebase:disabled { opacity: 0.42; cursor: not-allowed; }
+
+.btn-dropbox { background: #0061ff; color: #fff; border: 1px solid transparent; }
+.btn-dropbox:hover:not(:disabled) { background: #0052d9; }
+
+.btn-google { background: #fff; color: #3c4043; border: 1px solid #dadce0; }
+.btn-google:hover:not(:disabled) { background: #f8f9fa; border-color: #bdc1c6; }
+
+.btn-firebase { background: #ff6d00; color: #fff; border: 1px solid transparent; }
+.btn-firebase:hover:not(:disabled) { background: #e65100; }
 
 /* ---- Auth back button ---- */
 .auth-back-btn {
@@ -31,54 +55,35 @@
 
 /* ---- Section title inside card ---- */
 .auth-section-title {
-  font-family: var(--font-mono); font-size: 13px; font-weight: 700;
-  color: var(--text); margin-bottom: 14px; letter-spacing: -0.3px;
+  font-family: var(--font-mono); font-size: 15px; font-weight: 700;
+  color: var(--text); margin-bottom: 14px; letter-spacing: -0.02em;
 }
-
-/* ---- Google button ---- */
-.btn-google {
-  padding: 11px 18px; background: #fff; color: #3c4043;
-  border: 1px solid #dadce0; border-radius: var(--radius); font-family: var(--font-sans);
-  font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s;
-  white-space: nowrap; display: flex; align-items: center; justify-content: center;
-}
-.btn-google:hover { background: #f8f9fa; border-color: #bdc1c6; }
-.btn-google:disabled { opacity: 0.5; cursor: not-allowed; }
-
-/* ---- Firebase button ---- */
-.btn-firebase {
-  padding: 11px 18px; background: #FF6D00; color: #fff;
-  border: none; border-radius: var(--radius); font-family: var(--font-sans);
-  font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s;
-  white-space: nowrap; display: flex; align-items: center; justify-content: center;
-}
-.btn-firebase:hover { background: #E65100; }
-.btn-firebase:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ---- Auth mode toggle (login / register) ---- */
-.auth-mode-toggle { display: flex; gap: 4px; margin-bottom: 16px; background: var(--bg3); border-radius: var(--radius); padding: 3px; }
-.auth-mode-toggle button { flex: 1; padding: 6px; border: none; background: transparent; color: var(--text2); font-family: var(--font-sans); font-size: 12px; cursor: pointer; border-radius: 5px; transition: all 0.15s; }
-.auth-mode-toggle button.active { background: var(--bg2); color: var(--text); font-weight: 500; }
+.auth-mode-toggle { display: flex; gap: 4px; margin-bottom: 16px; background: var(--surface); border: 1px solid var(--hairline-soft); border-radius: var(--radius-pill); padding: 3px; }
+.auth-mode-toggle button { flex: 1; padding: 6px; border: none; background: transparent; color: var(--text2); font-family: var(--font-sans); font-size: 12px; font-weight: 600; cursor: pointer; border-radius: var(--radius-pill); transition: all 0.15s; }
+.auth-mode-toggle button.active { background: var(--accent-dim); color: var(--accent); }
 
-/* ---- Config textarea ---- */
-.auth-textarea { padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font-mono); font-size: 11px; outline: none; transition: border-color 0.15s; width: 100%; resize: vertical; min-height: 90px; line-height: 1.5; }
-.auth-textarea:focus { border-color: var(--accent); }
+/* ---- Config textarea ----
+   Aquí sí manda una monoespaciada de verdad: se pega JSON. */
+.auth-textarea { padding: 11px 13px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); color: var(--text); font-family: var(--font-code); font-size: 11px; outline: none; transition: border-color 0.18s, box-shadow 0.18s; width: 100%; resize: vertical; min-height: 90px; line-height: 1.5; }
+.auth-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(46,230,168,0.16); }
 
 /* ---- Modal de datos (Administrar datos) ---- */
 .dm-modal { min-width: 320px; display: flex; flex-direction: column; gap: 16px; }
-.dm-section { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+.dm-section { background: var(--surface); border: 1px solid var(--hairline-soft); border-radius: var(--radius-lg); padding: 15px; }
 .dm-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.dm-badge { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 4px; }
-.dm-badge--local    { background: var(--bg2); color: var(--text2); border: 1px solid var(--border2); }
-.dm-badge--firebase { background: rgba(255,109,0,0.15); color: #FF6D00; }
-.dm-badge--dropbox  { background: rgba(0,97,255,0.15); color: #0061FF; }
+.dm-badge { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: var(--radius-pill); }
+.dm-badge--local    { background: var(--surface-strong); color: var(--text2); border: 1px solid var(--hairline); }
+.dm-badge--firebase { background: rgba(255,109,0,0.15); color: #ff8f3a; }
+.dm-badge--dropbox  { background: rgba(0,97,255,0.18); color: #5b9dff; }
 .dm-section-email { font-size: 11px; color: var(--text3); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
 .dm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
 .dm-grid--single { grid-template-columns: 1fr; }
 .dm-btn { font-size: 12px; padding: 8px 10px; width: 100%; text-align: center; }
-.dm-autosave { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dm-autosave { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--hairline-soft); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .dm-autosave label { font-size: 12px; color: var(--text2); display: flex; align-items: center; gap: 6px; cursor: pointer; }
-.dm-autosave-interval { width: 48px; text-align: center; padding: 4px 6px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 12px; font-family: var(--font-mono); }
+.dm-autosave-interval { width: 52px; text-align: center; padding: 4px 6px; background: var(--surface-strong); border: 1px solid var(--hairline); border-radius: var(--radius); color: var(--text); font-size: 12px; font-family: var(--font-mono); }
 .dm-autosave-interval:disabled { opacity: 0.4; }
 .dm-logout-row { margin-top: 8px; }
 .dm-no-cloud { font-size: 12px; color: var(--text3); text-align: center; padding: 4px 0; }

@@ -246,7 +246,7 @@ export function formularioVehiculo(v: Vehiculo | null, cuentas: OpcionCuenta[], 
   ];
 
   return `
-    <div class="card mb-12" style="background:rgba(0,229,160,0.05);border-color:rgba(0,229,160,0.22);padding:12px">
+    <div class="card mb-12" style="background:rgba(46,230,168,0.05);border-color:rgba(46,230,168,0.22);padding:12px">
       <div class="text-sm" style="color:var(--text2);line-height:1.7">
         <strong>Amortizar deuda también rinde.</strong> El interés que dejas de pagar es un retorno
         <strong>garantizado</strong>: un préstamo al 9 % «renta» más, y sin riesgo, que un fondo al 5 %. Por eso

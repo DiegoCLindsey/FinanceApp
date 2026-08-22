@@ -359,7 +359,7 @@ export function createOptimizerModal(deps: OptimizerModalDeps) {
         const mejores = [r.esMejorIntereses && '💰 +intereses', r.esMejorSaldo && '🏦 +saldo', r.esMejorValor && '⭐ +valor total']
           .filter(Boolean)
           .join(' ');
-        return `<tr style="${r.esMejorValor ? 'background:rgba(0,229,160,0.06);' : ''}">
+        return `<tr style="${r.esMejorValor ? 'background:rgba(46,230,168,0.06);' : ''}">
           <td style="font-weight:600">${esc(r.label)}</td>
           <td class="num">${r.numAmortizaciones}</td>
           <td class="num neg">${esc(formatEUR(r.totalAmortizado))}</td>

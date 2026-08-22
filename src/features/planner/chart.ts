@@ -15,7 +15,7 @@ type ChartCtor = new (el: HTMLCanvasElement, cfg: unknown) => ChartLike;
 
 const chartGlobal = (): ChartCtor | null => (globalThis as { Chart?: ChartCtor }).Chart ?? null;
 
-const PALETA = ['#00e5a0', '#4d9fff', '#a855f7', '#f97316', '#eab308', '#22d3ee', '#fb7185', '#34d399'];
+const PALETA = ['#2ee6a8', '#4d9fff', '#a855f7', '#f97316', '#eab308', '#22d3ee', '#fb7185', '#34d399'];
 
 /** Una instancia viva por canvas, para no dejar gráficos huérfanos al repintar. */
 const vivos = new WeakMap<HTMLCanvasElement, ChartLike>();
@@ -80,13 +80,13 @@ export function graficoPatrimonio(canvas: HTMLCanvasElement, plan: Plan, res: Re
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { labels: { color: '#8b92a8', font: { size: 11 }, boxWidth: 12 } },
+        legend: { labels: { color: '#a9b6cc', font: { size: 11 }, boxWidth: 12 } },
         tooltip: {
-          backgroundColor: '#13161e',
-          borderColor: '#252a38',
+          backgroundColor: '#111a28',
+          borderColor: 'rgba(255,255,255,0.12)',
           borderWidth: 1,
-          titleColor: '#8b92a8',
-          bodyColor: '#e8eaf2',
+          titleColor: '#a9b6cc',
+          bodyColor: '#eef3fb',
           callbacks: {
             // Los datasets vienen apilados (`fill: '-1'`), así que el valor
             // crudo de cada uno ya es acumulado: se resta el anterior para
@@ -105,8 +105,8 @@ export function graficoPatrimonio(canvas: HTMLCanvasElement, plan: Plan, res: Re
         },
       },
       scales: {
-        x: { ticks: { color: '#555d77', maxTicksLimit: 12 }, grid: { display: false } },
-        y: { ticks: { color: '#555d77', callback: (v: number) => formatEUR(v) }, grid: { color: '#252a38' } },
+        x: { ticks: { color: '#6b7b96', maxTicksLimit: 12 }, grid: { display: false } },
+        y: { ticks: { color: '#6b7b96', callback: (v: number) => formatEUR(v) }, grid: { color: 'rgba(255,255,255,0.07)' } },
       },
     },
   });

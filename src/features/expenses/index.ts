@@ -162,7 +162,7 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
       <div class="text-sm exp-col-hide">${cuenta}</div>
       <div class="flex gap-8 items-center exp-col-hide">
         <label class="toggle"><input type="checkbox" data-activo="${esc(exp._id)}"${exp.activo ? ' checked' : ''}/><span class="toggle-slider"></span></label>
-        ${exp.tipo === 'gasto' && exp.clasificacion === 'deseo' ? '<span class="badge" style="background:rgba(255,209,102,0.15);color:#ffd166" title="Gasto clasificado como deseo">deseo</span>' : ''}
+        ${exp.tipo === 'gasto' && exp.clasificacion === 'deseo' ? '<span class="badge" style="background:rgba(255,209,102,0.15);color:#ffb020" title="Gasto clasificado como deseo">deseo</span>' : ''}
         ${exp.tipo === 'gasto' && exp.clasificacion === null ? '<span class="badge badge-inactive" title="Excluido del análisis de distribución">sin clasificar</span>' : ''}
         ${exp.basico ? '<span class="badge badge-orange" title="Gasto básico">⚑ básico</span>' : ''}
         ${exp.ajustadaDesdeId ? `<span class="badge" style="background:rgba(99,179,237,0.12);color:#63b3ed" title="Creada por un ajuste automático el ${esc(exp.ajustadaEn ?? '')}">ajustada</span>` : ''}

@@ -9,6 +9,8 @@ contexto previo.
 | [01-analisis-features.md](01-analisis-features.md) | Inventario completo de features implementadas, módulo a módulo, con notas de estado (vivo/muerto/legacy) |
 | [02-plan-refactor.md](02-plan-refactor.md) | Plan maestro por fases y tareas: refactor SOLID, feature flags, tests, contabilidad real, supuestos, precisión de estimaciones |
 | [03-informe-redundancias.md](03-informe-redundancias.md) | Features redundantes, innecesarias o confusas — pendientes de decisión del usuario |
+| [03-planner.md](03-planner.md) | Gestor de objetivos financieros: qué está hecho, qué se decidió y qué queda |
+| [04-sistema-visual.md](04-sistema-visual.md) | Sistema visual «cristal» portado de SaldoSocialNFC: tokens, reglas y colores incrustados en JS |
 
 ## Cómo continuar el trabajo
 

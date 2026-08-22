@@ -93,7 +93,7 @@ export function renderLoanCard(loan: Loan, ctx: ContextoTarjeta): string {
     <div class="loan-card-header" data-toggle-loan="${esc(loan._id)}">
       <div class="flex gap-8 items-center" style="flex-wrap:wrap">
         <span class="loan-card-title">${esc(loan.nombre)}</span>
-        ${ctx.completado ? '<span class="badge badge-active" style="background:rgba(0,229,160,0.15);color:var(--accent)">✓ Finalizado</span>' : ''}
+        ${ctx.completado ? '<span class="badge badge-active" style="background:rgba(46,230,168,0.15);color:var(--accent)">✓ Finalizado</span>' : ''}
         ${loan.simulacion ? '<span class="badge badge-sim">SIM</span>' : ''}
         ${!loan.activo ? '<span class="badge badge-inactive">Inactivo</span>' : ''}
         ${loan.tipoTasa === 'variable' ? '<span class="badge badge-orange">Variable</span>' : ''}

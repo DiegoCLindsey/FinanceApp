@@ -1,12 +1,12 @@
 /* ==================== EXPENSES ==================== */
 .tag-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 4px; }
 .tag-filter-bar .tag { cursor: pointer; }
-.tag-filter-bar .tag:hover { border-color: var(--accent); color: var(--accent); }
+.tag-filter-bar .tag:hover { border-color: rgba(46,230,168,0.4); color: var(--accent); }
 .exp-table-head, .exp-table-row { display: grid; grid-template-columns: 2fr 80px 100px 130px 90px 100px 120px; gap: 8px; padding: 8px 10px; align-items: center; }
 @media (max-width: 900px) { .exp-table-head, .exp-table-row { grid-template-columns: 2fr 80px 100px 80px; } .exp-col-hide { display: none !important; } }
 @media (max-width: 480px)  { .exp-table-head, .exp-table-row { grid-template-columns: 1fr 80px 72px; } }
-.exp-table-head { border-bottom: 1px solid var(--border2); }
-.exp-table-row { border-bottom: 1px solid var(--border); cursor: default; }
-.exp-table-row:hover { background: var(--bg3); }
-.exp-col-head { font-family: var(--font-mono); font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 3px; }
+.exp-table-head { border-bottom: 1px solid var(--hairline); }
+.exp-table-row { border-bottom: 1px solid var(--hairline-soft); cursor: default; }
+.exp-table-row:hover { background: var(--surface); }
+.exp-col-head { font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 3px; }
 .exp-col-head:hover { color: var(--text2); }

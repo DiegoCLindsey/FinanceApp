@@ -1,25 +1,125 @@
 /* ==================== BASE / RESET ==================== */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: 14px; }
-#app { height: 100vh; height: 100dvh; position: relative; overflow: hidden; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* El fondo va en <html>, NO en <body>: la aurora es un hijo de <body> con
+   z-index negativo, y un fondo opaco en <body> se pintaría por encima de ella. */
+html {
+  height: 100%;
+  background: var(--bg);
+}
+body {
+  height: 100%;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  /* Cifras de ancho fijo en toda la aplicación: es lo que sustituye a la
+     monoespaciada de antes para que las columnas de importes cuadren. */
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum', 'cv02', 'cv03', 'ss01';
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+#app {
+  height: 100vh;
+  height: 100dvh;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ---- Aurora de fondo ----
+   Dos manchas de color muy difuminadas y fijas. Es lo que hace que las
+   superficies translúcidas se lean como cristal y no como gris plano. */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+.aurora::before,
+.aurora::after {
+  content: '';
+  position: absolute;
+  width: 70vmax;
+  height: 70vmax;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.28;
+}
+.aurora::before {
+  background: radial-gradient(circle at 30% 30%, var(--accent), transparent 62%);
+  top: -28vmax;
+  left: -18vmax;
+  animation: drift 26s ease-in-out infinite alternate;
+}
+.aurora::after {
+  background: radial-gradient(circle at 70% 70%, var(--accent2), transparent 62%);
+  bottom: -32vmax;
+  right: -22vmax;
+  animation: drift 32s ease-in-out infinite alternate-reverse;
+}
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(6vmax, 4vmax, 0) scale(1.12);
+  }
+}
 
 /* ---- Utilities ---- */
 .hidden { display: none !important; }
-.flex { display: flex; } .gap-8 { gap: 8px; } .gap-12 { gap: 12px; }
+.flex { display: flex; } .gap-5 { gap: 5px; } .gap-8 { gap: 8px; } .gap-12 { gap: 12px; }
+.flex-wrap { flex-wrap: wrap; }
 .items-center { align-items: center; } .justify-between { justify-content: space-between; }
-.mt-8 { margin-top: 8px; } .mt-12 { margin-top: 12px; } .mt-16 { margin-top: 16px; }
-.mb-8 { margin-bottom: 8px; } .mb-12 { margin-bottom: 12px; } .mb-16 { margin-bottom: 16px; }
+.mt-4 { margin-top: 4px; } .mt-8 { margin-top: 8px; } .mt-12 { margin-top: 12px; } .mt-16 { margin-top: 16px; }
+.mb-8 { margin-bottom: 8px; } .mb-10 { margin-bottom: 10px; } .mb-12 { margin-bottom: 12px; } .mb-14 { margin-bottom: 14px; } .mb-16 { margin-bottom: 16px; }
 .text-sm { font-size: 12px; color: var(--text2); } .text-mono { font-family: var(--font-mono); }
 .divider { height: 1px; background: var(--border); margin: 14px 0; }
 .num { font-family: var(--font-mono); font-size: 12px; }
 .pos { color: var(--accent); } .neg { color: var(--red); }
 
+/* Texto con el degradado del acento, para los rótulos grandes */
+.gradient-text {
+  background: var(--gradient-accent);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
 /* ---- Scrollbar ---- */
-::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
 
 /* ---- Spinner ---- */
-.spinner { width: 16px; height: 16px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--hairline); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Entrada de vista ---- */
+.view-enter { animation: view-in 0.3s cubic-bezier(0.2, 0.9, 0.3, 1); }
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

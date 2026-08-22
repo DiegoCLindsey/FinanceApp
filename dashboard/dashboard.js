@@ -504,7 +504,7 @@ const DashboardModule = (() => {
           <div class="exec-item-label">Salud financiera</div>
           ${(()=>{
             const s=saludMes;
-            const sc={'verde':'#00e5a0','amarillo':'#ffd166','rojo':'#ff4d6d','neutral':'var(--text3)'};
+            const sc={'verde':'#2ee6a8','amarillo':'#ffb020','rojo':'#ff6b6b','neutral':'var(--text3)'};
             const sems=[s.semAhorro,s.semDTI,s.semNecesidades];
             const dots=sems.map(sem=>`<span style="width:8px;height:8px;border-radius:50%;background:${sc[sem]||'var(--text3)'};display:inline-block"></span>`).join('');
             const worst=sems.includes('rojo')?'rojo':sems.includes('amarillo')?'amarillo':sems.every(x=>x==='verde')?'verde':'neutral';
@@ -696,7 +696,7 @@ const DashboardModule = (() => {
             <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Préstamos que finalizan en el periodo</div>
             <div style="display:flex;flex-direction:column;gap:6px">
               ${loansFinEnPeriodo.map(({loan,fechaFin})=>`
-              <div style="display:flex;justify-content:space-between;align-items:center;background:var(--accent-dim);border:1px solid rgba(0,229,160,0.2);border-radius:var(--radius);padding:8px 12px;flex-wrap:wrap;gap:6px">
+              <div style="display:flex;justify-content:space-between;align-items:center;background:var(--accent-dim);border:1px solid rgba(46,230,168,0.2);border-radius:var(--radius);padding:8px 12px;flex-wrap:wrap;gap:6px">
                 <div style="display:flex;align-items:center;gap:8px">
                   <span style="font-size:16px">🏁</span>
                   <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--accent)">${loan.nombre}</span>
@@ -738,10 +738,10 @@ const DashboardModule = (() => {
                   const c=_TAG_PROMO_PALETTE[i%_TAG_PROMO_PALETTE.length];
                   return legendRow(c,t,v,(v/totalRef*100).toFixed(1));
                 }).join('')}
-                ${deseosMed > 0.01 ? legendRow('#ffd166','Deseos',deseosMed,pctOtros) : ''}
+                ${deseosMed > 0.01 ? legendRow('#ffb020','Deseos',deseosMed,pctOtros) : ''}
                 ${legendRow('#a855f7','Deuda',cuotasMediaMes + amortizacionesMediaMes,pctDeuda)}
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;border-top:1px solid var(--border);padding-top:6px">
-                  <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#00e5a0;display:inline-block"></span><span style="color:var(--text2)">Ahorro est.</span></span>
+                  <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#2ee6a8;display:inline-block"></span><span style="color:var(--text2)">Ahorro est.</span></span>
                   <span style="font-family:var(--font-mono);font-weight:700;color:${ahorroColor}">${FinanceMath.eur(ahorroMed)}<span style="margin-left:4px">${pctAhorro}%</span></span>
                 </div>
                 <div style="font-size:10px;color:var(--text3);margin-top:2px">Ingresos: ${FinanceMath.eur(ingresosMediaMes)}/mes</div>
@@ -771,7 +771,7 @@ const DashboardModule = (() => {
             );
             const limiteHoy = Math.max(colchonHoy, ...margenesHoy, 0);
             const saldoDisponible = saldoTotal - limiteHoy;
-            const _SALDO_PALETTE = ['#00e5a0','#4d9fff','#a855f7','#f97316','#eab308','#22d3ee','#fb7185','#34d399','#60a5fa','#c084fc'];
+            const _SALDO_PALETTE = ['#2ee6a8','#4d9fff','#a855f7','#f97316','#eab308','#22d3ee','#fb7185','#34d399','#60a5fa','#c084fc'];
             const segments = cuentasActivas
               .map((a, i) => ({ label: a.nombre, value: Math.max(0, FinanceMath.saldoRealCuenta(a)), color: _SALDO_PALETTE[i % _SALDO_PALETTE.length] }))
               .filter(s => s.value > 0.01);
@@ -960,7 +960,7 @@ const DashboardModule = (() => {
 
     // Per-account running saldos using ev.delta (correctly signed: + ingreso, - gasto).
     // Computed inline to avoid the cuantia sign-convention bug in saldosPorCuentaEnExtracto.
-    const ACC_COLORS = ['#00e5a0','#a855f7','#fb923c','#f472b6','#60a5fa','#34d399','#facc15','#f87171','#e879f9','#22d3ee'];
+    const ACC_COLORS = ['#2ee6a8','#a855f7','#fb923c','#f472b6','#60a5fa','#34d399','#facc15','#f87171','#e879f9','#22d3ee'];
     const selectedAccs = accounts.filter(a => a.activo && (filtroAccounts.length === 0 || filtroAccounts.includes(a._id)));
     const _running = {};
     for (const acc of selectedAccs) _running[acc._id] = FinanceMath.saldoRealCuenta(acc);
@@ -1023,8 +1023,8 @@ const DashboardModule = (() => {
           label,
           data: pts,
           type: 'scatter',
-          backgroundColor: '#ffd166',
-          borderColor: '#ffd166',
+          backgroundColor: '#ffb020',
+          borderColor: '#ffb020',
           pointRadius: 3,
           pointHoverRadius: 6,
           showLine: pts.length > 1,
@@ -1060,7 +1060,7 @@ const DashboardModule = (() => {
       const span = Math.abs(yMax - yMin) * 0.05;
       const color = alerta.tipo==='saldo_negativo' ? 'rgba(255,77,109,0.6)' :
                     alerta.tipo==='bajo_colchon'    ? 'rgba(255,209,102,0.5)' :
-                    alerta.tipo==='bajo_margen'     ? 'rgba(251,146,60,0.6)' : 'rgba(0,229,160,0.4)';
+                    alerta.tipo==='bajo_margen'     ? 'rgba(251,146,60,0.6)' : 'rgba(46,230,168,0.4)';
       return { label:alerta.mensaje, data:[{x:ts,y:yMin-span},{x:ts,y:yMax+span}],
         borderColor:color, backgroundColor:color, borderWidth:1.5, borderDash:[4,4],
         pointRadius:[6,0], pointStyle:['crossRot',false], showLine:true, tension:0, fill:false, order:3 };
@@ -1111,7 +1111,7 @@ const DashboardModule = (() => {
         ? stackedDatasets
         : chartMode === 'lines'
           ? linesDatasets
-          : [{ label:'Saldo estimado', data:saldoXY, borderColor:'#00e5a0', backgroundColor:'rgba(0,229,160,0.07)',
+          : [{ label:'Saldo estimado', data:saldoXY, borderColor:'#2ee6a8', backgroundColor:'rgba(46,230,168,0.07)',
                fill:true, tension:0.3, pointRadius:0, borderWidth:2, pointHitRadius:20, order:5 }]
       ),
     ];
@@ -1125,7 +1125,7 @@ const DashboardModule = (() => {
       datasets.push({
         label: 'Saldo canónico (sin simulaciones)',
         data: extractoCanonico.map(e => ({ x: new Date(e.fecha+'T00:00:00').getTime(), y: e.saldoAcum })),
-        borderColor: 'rgba(0,229,160,0.32)',
+        borderColor: 'rgba(46,230,168,0.32)',
         backgroundColor: 'transparent',
         borderWidth: 1.5,
         borderDash: [5,4],
@@ -1192,8 +1192,8 @@ const DashboardModule = (() => {
         datasets.push({
           label: `🏁 ${l.nombre}`,
           data: [{ x: ts, y: yMinAll - spanAll }, { x: ts, y: yMaxAll + spanAll }],
-          borderColor: 'rgba(0,229,160,0.85)',
-          backgroundColor: ['transparent', 'rgba(0,229,160,0.9)'],
+          borderColor: 'rgba(46,230,168,0.85)',
+          backgroundColor: ['transparent', 'rgba(46,230,168,0.9)'],
           borderWidth: 1.5,
           borderDash: [4, 3],
           pointRadius: [0, 7],
@@ -1216,11 +1216,11 @@ const DashboardModule = (() => {
         plugins: {
           legend: {
             display: isStacked || (histDataset != null) || margenDatasets.length>0 || criticoDatasets.length>0 || (extractoCanonico != null) || datasets.some(d=>d.label?.startsWith('🏁')),
-            labels: { color:'#8b92a8', font:{size:11}, boxWidth:12, filter: i => !['MC p25','MC p10','MC p75','MC p90'].includes(i.text) }
+            labels: { color:'#a9b6cc', font:{size:11}, boxWidth:12, filter: i => !['MC p25','MC p10','MC p75','MC p90'].includes(i.text) }
           },
           tooltip: {
-            backgroundColor: '#13161e', borderColor: '#252a38', borderWidth: 1,
-            titleColor: '#8b92a8', bodyColor: '#e8eaf2',
+            backgroundColor: '#111a28', borderColor: 'rgba(255,255,255,0.12)', borderWidth: 1,
+            titleColor: '#a9b6cc', bodyColor: '#eef3fb',
             filter: item => item.dataset.label !== 'MC p25' && item.dataset.label !== 'MC p10' && item.dataset.label !== 'MC p75' && item.dataset.label !== 'MC p90',
             callbacks: {
               title: items => {
@@ -1262,12 +1262,12 @@ const DashboardModule = (() => {
           x: {
             type: 'time',
             time: { unit: 'month', tooltipFormat: 'dd/MM/yyyy' },
-            ticks: { color: '#555d77', maxTicksLimit: 10 },
-            grid: { color: '#252a38' }
+            ticks: { color: '#6b7b96', maxTicksLimit: 10 },
+            grid: { color: 'rgba(255,255,255,0.07)' }
           },
           y: {
-            ticks: { color: '#555d77', callback: v => FinanceMath.eur(v) },
-            grid: { color: ctx => ctx.tick.value === 0 ? 'rgba(255,255,255,0.22)' : '#252a38' }
+            ticks: { color: '#6b7b96', callback: v => FinanceMath.eur(v) },
+            grid: { color: ctx => ctx.tick.value === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.07)' }
           }
         }
       }
@@ -1297,7 +1297,7 @@ const DashboardModule = (() => {
     }
 
     const sube = v => v.cierre >= v.apertura;
-    const VERDE = '#00e5a0', ROJO = '#ff4d6d';
+    const VERDE = '#2ee6a8', ROJO = '#ff6b6b';
     const etiquetas = velas.map(v => v.periodo);
 
     charts.velas = new Chart(ctx, {
@@ -1337,8 +1337,8 @@ const DashboardModule = (() => {
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: '#13161e', borderColor: '#252a38', borderWidth: 1,
-            titleColor: '#8b92a8', bodyColor: '#e8eaf2',
+            backgroundColor: '#111a28', borderColor: 'rgba(255,255,255,0.12)', borderWidth: 1,
+            titleColor: '#a9b6cc', bodyColor: '#eef3fb',
             // Un tooltip por vela, no uno por dataset: los dos datasets son la
             // misma vela partida en cuerpo y mecha.
             filter: item => item.datasetIndex === 0,
@@ -1360,10 +1360,10 @@ const DashboardModule = (() => {
           },
         },
         scales: {
-          x: { ticks: { color: '#555d77', maxTicksLimit: 14 }, grid: { display: false }, stacked: false },
+          x: { ticks: { color: '#6b7b96', maxTicksLimit: 14 }, grid: { display: false }, stacked: false },
           y: {
-            ticks: { color: '#555d77', callback: v => FinanceMath.eur(v) },
-            grid: { color: c => c.tick.value === 0 ? 'rgba(255,255,255,0.22)' : '#252a38' },
+            ticks: { color: '#6b7b96', callback: v => FinanceMath.eur(v) },
+            grid: { color: c => c.tick.value === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.07)' },
           },
         },
       },
@@ -1383,7 +1383,7 @@ const DashboardModule = (() => {
   }
 
   function renderChartTags(extracto, activeTags, grupoTags=new Set(), mode='desglosado') {
-    const COLORS=['#00e5a0','#4d9fff','#ffd166','#ff4d6d','#a855f7','#fb923c','#34d399','#f472b6','#60a5fa','#facc15'];
+    const COLORS=['#2ee6a8','#4d9fff','#ffb020','#ff6b6b','#a855f7','#fb923c','#34d399','#f472b6','#60a5fa','#facc15'];
 
     // Donut gastos con valor en leyenda
     const ctx=document.getElementById('chart-gastos-tags'); if(!ctx) return;
@@ -1400,7 +1400,7 @@ const DashboardModule = (() => {
         options:{
           responsive:true, maintainAspectRatio:false,
           plugins:{
-            legend:{ position:'right', labels:{ color:'#8b92a8', font:{size:11}, boxWidth:12, padding:8 } },
+            legend:{ position:'right', labels:{ color:'#a9b6cc', font:{size:11}, boxWidth:12, padding:8 } },
             tooltip:{ callbacks:{ label:ctx=>` ${rawLabels[ctx.dataIndex]}: ${FinanceMath.eur(ctx.parsed)}` } }
           }
         }
@@ -1411,7 +1411,7 @@ const DashboardModule = (() => {
     renderChartMediaMensual(extracto, activeTags, COLORS, grupoTags, mode);
   }
 
-  function renderChartMediaMensual(extracto, activeTags, COLORS=['#00e5a0','#4d9fff','#ffd166','#ff4d6d','#a855f7','#fb923c','#34d399','#f472b6'], grupoTags=new Set(), mode='desglosado') {
+  function renderChartMediaMensual(extracto, activeTags, COLORS=['#2ee6a8','#4d9fff','#ffb020','#ff6b6b','#a855f7','#fb923c','#34d399','#f472b6'], grupoTags=new Set(), mode='desglosado') {
     const config=State.get('config');
     const ctx=document.getElementById('chart-media-mensual'); if(!ctx) return;
     const tagMap=_tagMapConGrupos(extracto, grupoTags, mode);
@@ -1433,13 +1433,13 @@ const DashboardModule = (() => {
         responsive:true, maintainAspectRatio:false,
         plugins:{
           legend:{display:false},
-          tooltip:{ backgroundColor:'#13161e', borderColor:'#252a38', borderWidth:1, titleColor:'#8b92a8', bodyColor:'#e8eaf2',
+          tooltip:{ backgroundColor:'#111a28', borderColor:'rgba(255,255,255,0.12)', borderWidth:1, titleColor:'#a9b6cc', bodyColor:'#eef3fb',
             callbacks:{ label:ctx=>`Media: ${FinanceMath.eur(ctx.parsed.x)}/mes` }
           }
         },
         scales:{
-          x:{ ticks:{color:'#555d77', callback:v=>FinanceMath.eur(v)}, grid:{color:'#252a38'} },
-          y:{ ticks:{color:'#8b92a8'}, grid:{color:'#1a1e28'} }
+          x:{ ticks:{color:'#6b7b96', callback:v=>FinanceMath.eur(v)}, grid:{color:'rgba(255,255,255,0.07)'} },
+          y:{ ticks:{color:'#a9b6cc'}, grid:{color:'rgba(255,255,255,0.06)'} }
         }
       }
     });
@@ -1514,7 +1514,7 @@ const DashboardModule = (() => {
       data: {
         labels,
         datasets: [
-          { label:'Ingresos', data:dataIngresos, backgroundColor:'rgba(0,229,160,0.7)', borderWidth:0, borderRadius:2, order:1 },
+          { label:'Ingresos', data:dataIngresos, backgroundColor:'rgba(46,230,168,0.7)', borderWidth:0, borderRadius:2, order:1 },
           { label:'Cuotas préstamos', data:dataCuotas, backgroundColor:'rgba(168,85,247,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
           { label:'Gastos básicos', data:dataBasicos, backgroundColor:'rgba(77,159,255,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
           { label:'Fiscal / IRPF', data:dataFiscal, backgroundColor:'rgba(251,146,60,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
@@ -1526,16 +1526,16 @@ const DashboardModule = (() => {
         responsive:true, maintainAspectRatio:false,
         interaction:{ mode:'index', intersect:false },
         plugins:{
-          legend:{ labels:{ color:'#8b92a8', font:{size:11}, boxWidth:12 } },
+          legend:{ labels:{ color:'#a9b6cc', font:{size:11}, boxWidth:12 } },
           tooltip:{
-            backgroundColor:'#13161e', borderColor:'#252a38', borderWidth:1,
-            titleColor:'#8b92a8', bodyColor:'#e8eaf2',
+            backgroundColor:'#111a28', borderColor:'rgba(255,255,255,0.12)', borderWidth:1,
+            titleColor:'#a9b6cc', bodyColor:'#eef3fb',
             callbacks:{ label: ctx => ` ${ctx.dataset.label}: ${FinanceMath.eur(ctx.parsed.y)}` }
           }
         },
         scales:{
-          x:{ ticks:{color:'#555d77', maxTicksLimit:12}, grid:{color:'#252a38'} },
-          y:{ stacked:true, ticks:{color:'#555d77', callback:v=>FinanceMath.eur(v)}, grid:{color:'#252a38'} }
+          x:{ ticks:{color:'#6b7b96', maxTicksLimit:12}, grid:{color:'rgba(255,255,255,0.07)'} },
+          y:{ stacked:true, ticks:{color:'#6b7b96', callback:v=>FinanceMath.eur(v)}, grid:{color:'rgba(255,255,255,0.07)'} }
         }
       }
     });
@@ -1553,9 +1553,9 @@ const DashboardModule = (() => {
     const segments = [
       { label:'Necesidades',     value: gastosBasicosMediaMes, color:'#4d9fff' },
       ...promoSegments,
-      { label:'Deseos',          value: otrosGastos,           color:'#ffd166' },
+      { label:'Deseos',          value: otrosGastos,           color:'#ffb020' },
       { label:'Deuda',           value: cuotasMediaMes + amortizacionesMediaMes, color:'#a855f7' },
-      { label:'Ahorro est.',     value: ahorro,                color:'#00e5a0' },
+      { label:'Ahorro est.',     value: ahorro,                color:'#2ee6a8' },
     ].filter(s => s.value > 0);
     if (!segments.length) return;
     const existing = charts['chart-expense-donut'];
@@ -1583,8 +1583,8 @@ const DashboardModule = (() => {
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor:'#13161e', borderColor:'#252a38', borderWidth:1,
-            titleColor:'#8b92a8', bodyColor:'#e8eaf2',
+            backgroundColor:'#111a28', borderColor:'rgba(255,255,255,0.12)', borderWidth:1,
+            titleColor:'#a9b6cc', bodyColor:'#eef3fb',
             callbacks: { label: c => { const d=c.chart.data.datasets[0].data; const t=d.reduce((s,x)=>s+x,0); return ` ${c.label}: ${FinanceMath.eur(c.parsed)} (${(c.parsed/(t||c.parsed)*100).toFixed(1)}%)`; } }
           }
         }
@@ -1593,7 +1593,7 @@ const DashboardModule = (() => {
   }
 
   // Paleta de colores para el desglose de otros gastos
-  const _OTROS_PALETTE = ['#ff4d6d','#f97316','#eab308','#22d3ee','#a78bfa','#34d399','#fb7185','#60a5fa','#c084fc','#4ade80'];
+  const _OTROS_PALETTE = ['#ff6b6b','#f97316','#eab308','#22d3ee','#a78bfa','#34d399','#fb7185','#60a5fa','#c084fc','#4ade80'];
 
   function renderChartOtrosDonut(tagData) {
     const ctx = document.getElementById('chart-otros-donut'); if (!ctx) return;
@@ -1625,8 +1625,8 @@ const DashboardModule = (() => {
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor:'#13161e', borderColor:'#252a38', borderWidth:1,
-            titleColor:'#8b92a8', bodyColor:'#e8eaf2',
+            backgroundColor:'#111a28', borderColor:'rgba(255,255,255,0.12)', borderWidth:1,
+            titleColor:'#a9b6cc', bodyColor:'#eef3fb',
             callbacks: { label: c => ` ${c.label}: ${FinanceMath.eur(c.parsed)} (${(c.parsed/(total||1)*100).toFixed(1)}%)` }
           }
         }
@@ -1645,7 +1645,7 @@ const DashboardModule = (() => {
 
   function renderChartSaldosDonut(cuentasActivas) {
     const ctx = document.getElementById('chart-saldos-donut'); if (!ctx) return;
-    const _SALDO_PALETTE = ['#00e5a0','#4d9fff','#a855f7','#f97316','#eab308','#22d3ee','#fb7185','#34d399','#60a5fa','#c084fc'];
+    const _SALDO_PALETTE = ['#2ee6a8','#4d9fff','#a855f7','#f97316','#eab308','#22d3ee','#fb7185','#34d399','#60a5fa','#c084fc'];
     const segments = cuentasActivas
       .map((a, i) => ({ label: a.nombre, value: Math.max(0, FinanceMath.saldoRealCuenta(a)), color: _SALDO_PALETTE[i % _SALDO_PALETTE.length] }))
       .filter(s => s.value > 0.01);
@@ -1663,8 +1663,8 @@ const DashboardModule = (() => {
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor:'#13161e', borderColor:'#252a38', borderWidth:1,
-            titleColor:'#8b92a8', bodyColor:'#e8eaf2',
+            backgroundColor:'#111a28', borderColor:'rgba(255,255,255,0.12)', borderWidth:1,
+            titleColor:'#a9b6cc', bodyColor:'#eef3fb',
             callbacks: { label: c => ` ${c.label}: ${FinanceMath.eur(c.parsed)} (${(c.parsed/(total||1)*100).toFixed(1)}%)` }
           }
         }

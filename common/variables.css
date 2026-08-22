@@ -1,15 +1,80 @@
-/* ==================== DESIGN TOKENS ==================== */
+/* ==================== DESIGN TOKENS ====================
+   Paleta «cristal» portada de SaldoSocialNFC (css/app.css de ese repo):
+   tinta azulada muy oscura, superficies translúcidas sobre una aurora
+   difuminada, filos de un píxel en blanco al 6-10 %, acento menta → cian y
+   tipografía Outfit.
+
+   Se conservan los NOMBRES antiguos (--bg2, --border, --accent…) porque buena
+   parte de la interfaz se pinta con estilos en línea dentro de plantillas
+   (`src/features/**`, `dashboard/dashboard.js`). Repintar aquí propaga a todo
+   eso sin tocar cada componente; los nombres nuevos son los que se deben usar
+   de aquí en adelante.
+   ======================================================== */
 :root {
-  --bg: #0d0f14; --bg2: #13161e; --bg3: #1a1e28;
-  --border: #252a38; --border2: #2f3547;
-  --text: #e8eaf2; --text2: #8b92a8; --text3: #555d77;
-  --accent: #00e5a0; --accent2: #00b37d; --accent-dim: rgba(0,229,160,0.12);
-  --red: #ff4d6d; --red-dim: rgba(255,77,109,0.12);
-  --yellow: #ffd166; --yellow-dim: rgba(255,209,102,0.12);
-  --blue: #4d9fff; --blue-dim: rgba(77,159,255,0.12);
-  --font-mono: 'Space Mono', monospace; --font-sans: 'DM Sans', sans-serif;
-  --radius: 8px; --radius-lg: 14px;
-  --sidebar-w: 210px;
-  --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  color-scheme: dark;
+
+  /* ---- Tinta: fondos y superficies OPACAS ---- */
+  --ink-900: #070b12;
+  --ink-850: #0b111c;
+  --ink-800: #111a28;
+  --ink-700: #182436;
+
+  /* ---- Cristal: superficies TRANSLÚCIDAS, se apilan sobre la aurora ---- */
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-strong: rgba(255, 255, 255, 0.075);
+  --hairline: rgba(255, 255, 255, 0.1);
+  --hairline-soft: rgba(255, 255, 255, 0.06);
+
+  /* Barras fijas, modales y avisos: opaco, para que se lean pase lo que pase
+     por debajo al hacer scroll. */
+  --chrome: rgba(11, 17, 28, 0.94);
+
+  /* ---- Nombres antiguos, reapuntados ---- */
+  --bg: var(--ink-900);
+  --bg2: var(--surface);
+  --bg3: var(--surface-strong);
+  --border: var(--hairline-soft);
+  --border2: var(--hairline);
+
+  /* ---- Texto ---- */
+  --text: #eef3fb;
+  --text2: #a9b6cc;
+  --text3: #6b7b96;
+
+  /* ---- Acento ---- */
+  --accent: #2ee6a8;
+  --accent2: #13c4e0;
+  --accent-dim: rgba(46, 230, 168, 0.13);
+  --accent-line: rgba(46, 230, 168, 0.32);
+  /* Texto sobre el degradado de acento: verde muy oscuro, no el fondo de la app */
+  --on-accent: #04241c;
+  --gradient-accent: linear-gradient(105deg, var(--accent), var(--accent2));
+  --glow-accent: 0 0 0 1px rgba(46, 230, 168, 0.25), 0 18px 45px -18px rgba(46, 230, 168, 0.55);
+
+  /* ---- Semánticos ---- */
+  --red: #ff6b6b;
+  --red-dim: rgba(255, 107, 107, 0.13);
+  --yellow: #ffb020;
+  --yellow-dim: rgba(255, 176, 32, 0.13);
+  --blue: #13c4e0;
+  --blue-dim: rgba(19, 196, 224, 0.13);
+  --violet: #a78bfa;
+  --violet-dim: rgba(167, 139, 250, 0.13);
+
+  /* ---- Tipografía ----
+     Una sola familia, como en SaldoSocialNFC. Las cifras se alinean con
+     `tabular-nums` (declarado en base.css), no con una monoespaciada: por eso
+     --font-mono ya no es monoespaciada. Se mantiene el nombre porque lo usan
+     decenas de estilos en línea; para código de verdad está --font-code. */
+  --font-sans: 'Outfit', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: var(--font-sans);
+  --font-code: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* ---- Geometría ---- */
+  --radius: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+  --sidebar-w: 216px;
+  --shadow: 0 22px 60px -24px rgba(0, 0, 0, 0.85);
   --mobile-header-h: 56px;
 }
