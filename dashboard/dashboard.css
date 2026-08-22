@@ -15,6 +15,16 @@
 .dash-hero-val.pos { color:var(--accent); }
 .dash-hero-val.neg { color:var(--red); }
 .dash-hero-sub { font-size:11px; color:var(--text3); margin-top:4px; }
+/* Dos columnas de importes en 390 px: a 26 px «+3000,00 €» pide ~140 px y la
+   caja da ~121, así que el texto se salía de la tarjeta. Se baja el cuerpo por
+   tramos en vez de pasar a una sola columna, que dejaría la tira de KPIs
+   ocupando media pantalla. */
+@media (max-width:600px) { .dash-hero-val { font-size:21px; } }
+@media (max-width:480px) {
+  .dash-hero-item { padding:13px 14px; }
+  .dash-hero-val  { font-size:18px; }
+  .dash-hero-label, .dash-hero-sub { font-size:10px; }
+}
 
 /* ── Score gauge ── */
 .score-gauge { display:flex; flex-direction:column; align-items:center; }
@@ -53,8 +63,23 @@
   .dev-head > span:nth-child(5) { display:none; }
 }
 
-/* ── Donut KPI card ── */
+/* ── Donut KPI card ──
+   La clase la llevan los tres envoltorios de donut (gastos, otros gastos y
+   saldos) desde `dashboard.js`. Hasta ahora esta regla estaba escrita pero SIN
+   aplicar a ningún elemento, así que en móvil el donut de 140 px seguía al
+   lado de la leyenda y a ésta le quedaban ~180 px: las filas
+   «Necesidades … 0,00 € 0.0%» no cabían y el texto se salía.
+
+   `align-items:stretch`, no `center`: la leyenda usa
+   `justify-content:space-between` y necesita ancho completo; centrada se
+   encogería a su contenido y el reparto no tendría sentido. El donut se centra
+   por su cuenta con `align-self`. */
+   El maquetado del envoltorio vive AQUÍ, no en estilos en línea: en línea
+   ganaba siempre y la media query solo conseguía aplicar `flex-direction`,
+   quedándose a medias. */
+.chart-expense-donut-wrap { display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+.chart-expense-donut-wrap > .donut-canvas { position:relative; width:140px; height:140px; flex-shrink:0; }
 @media(max-width:480px){
-  .chart-expense-donut-wrap { flex-direction:column; align-items:center; }
-  .chart-expense-donut-wrap > div:first-child { width:120px; height:120px; }
+  .chart-expense-donut-wrap { flex-direction:column; align-items:stretch; }
+  .chart-expense-donut-wrap > .donut-canvas { width:120px; height:120px; align-self:center; }
 }

@@ -729,8 +729,8 @@ const DashboardModule = (() => {
                 <span style="font-family:var(--font-mono)">${FinanceMath.eur(amount)}<span style="color:var(--text3);margin-left:4px">${pct}%</span></span>
               </div>`;
             return `
-            <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
-              <div style="position:relative;width:140px;height:140px;flex-shrink:0"><canvas id="chart-expense-donut"></canvas></div>
+            <div class="chart-expense-donut-wrap">
+              <div class="donut-canvas"><canvas id="chart-expense-donut"></canvas></div>
               <div style="flex:1;min-width:130px;display:flex;flex-direction:column;gap:7px">
                 ${legendRow('#4d9fff','Necesidades',gastosBasicosMediaMes,pctBasicos)}
                 ${tagCategorias.map((t,i)=>{
@@ -753,8 +753,8 @@ const DashboardModule = (() => {
         <!-- Donut desglose "Otros gastos" por categoría/tag -->
         <div class="card">
           <div class="card-title mb-8">Desglose otros gastos</div>
-          <div id="dash-otros-donut-wrap" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
-            <div style="position:relative;width:140px;height:140px;flex-shrink:0"><canvas id="chart-otros-donut"></canvas></div>
+          <div id="dash-otros-donut-wrap" class="chart-expense-donut-wrap">
+            <div class="donut-canvas"><canvas id="chart-otros-donut"></canvas></div>
             <div id="dash-otros-legend" style="flex:1;min-width:120px;display:flex;flex-direction:column;gap:6px;font-size:12px"></div>
           </div>
         </div>
@@ -782,8 +782,8 @@ const DashboardModule = (() => {
                 <span style="font-family:var(--font-mono);flex-shrink:0">${FinanceMath.eur(amount)}</span>
               </div>`;
             return `
-            <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
-              <div style="position:relative;width:140px;height:140px;flex-shrink:0"><canvas id="chart-saldos-donut"></canvas></div>
+            <div class="chart-expense-donut-wrap">
+              <div class="donut-canvas"><canvas id="chart-saldos-donut"></canvas></div>
               <div style="flex:1;min-width:130px;display:flex;flex-direction:column;gap:6px">
                 ${segments.map(s => legendRow(s.color, s.label, s.value)).join('')}
                 <div style="border-top:1px solid var(--border);padding-top:6px;margin-top:2px;display:flex;flex-direction:column;gap:4px">

@@ -73,13 +73,39 @@ Aquí igual: `body` lleva `font-variant-numeric: tabular-nums` y
 Se mantiene `--font-code` (monoespaciada de sistema) para lo que es código de
 verdad: el textarea donde se pega la configuración de Firebase.
 
-### 2.6 Los botones de proveedor no llevan `nowrap`
+### 2.6 Los botones son `inline-block`, no `inline-flex`
 
-«Firebase — sincronización en tiempo real» dentro de una tarjeta de 380 px no
-cabe en una línea. Antes llevaban `white-space: nowrap` y el texto se salía del
-botón en cuanto la tipografía cargada era un poco más ancha de lo previsto (se
-vio en la verificación con el navegador, con Outfit sin cargar). Ahora parten en
-dos líneas.
+En SaldoSocialNFC `.btn` es `inline-flex` y funciona porque allí los botones
+solo llevan icono y etiqueta. Aquí hay botones cuyo contenido son varios `<div>`
+apilados —el diálogo «Hay dos versiones de tus datos» de `auth.js` es el caso—:
+con flex cada `<div>` se convierte en un elemento flexible, se ponen en FILA y
+el contenido se derrama por los dos lados del botón. Además `text-align` deja de
+tener efecto en un contenedor flex.
+
+Tampoco llevan `white-space: nowrap`. «Firebase — sincronización en tiempo real»
+no cabe en una línea dentro de una tarjeta de 380 px: sin `nowrap` parte en dos
+líneas en vez de salirse.
+
+Los botones que SÍ son flex lo declaran ellos mismos (`.btn-icon`, los de
+proveedor en `auth.css`, y dos plantillas del planificador).
+
+### 2.7 Los hijos de rejilla llevan `min-width: 0`
+
+Un elemento de rejilla no baja de su tamaño mínimo de contenido salvo que se le
+diga. En «Contabilidad real» la tarjeta contiene una tabla con `min-width:500px`
+(regla global de `components.css`) y, aunque la tabla ya va dentro de su propio
+`overflow-x:auto`, ese mínimo se propagaba hacia arriba: en una pantalla de
+390 px la pista de la rejilla se plantaba en 597 px y sacaba media vista fuera.
+`min-width: 0` en `.grid-2 > *`, `.grid-3 > *`, `.grid-4 > *` y `.dash-hero > *`
+deja que la pista encoja y el desplazamiento horizontal se queda donde debe:
+dentro de la tabla.
+
+### 2.8 La tira de pestañas desplaza
+
+`.period-selector` es también la tira del planificador (Plan · Objetivos ·
+Simulación · Eventos · Escenarios). En 390 px las cinco piden 489 px y la última
+quedaba fuera de la pantalla **sin forma de llegar a ella**. Ahora la tira
+desplaza en horizontal con la barra oculta.
 
 ---
 
@@ -114,17 +140,37 @@ sembrados en `localStorage`: cuadro de mando, gastos, objetivos financieros,
 modal de datos, pantalla de acceso, las tres animaciones de carga y el ancho de
 móvil.
 
-Dos avisos sobre ese entorno, para quien repita la comprobación:
+Tres trampas de ese entorno, para quien repita la comprobación:
 
+- **`--window-size` NO baja de 500 px de viewport.** Chromium sin cabecera lo
+  recorta ahí: pedir 390 renderiza a 500 y luego recorta la imagen a 390, con lo
+  que todo parece desbordar. Para medir anchos de móvil de verdad hay que meter
+  la página en un `<iframe>` del ancho que se quiera comprobar, que sí crea su
+  propio viewport.
 - **No hay red saliente para el navegador**: ni Outfit (Google Fonts) ni Chart.js
   (jsDelivr) cargan, así que las capturas salen con una tipografía de reserva y
-  sin gráficos. El maquetado sí es válido.
+  sin gráficos. Ojo con lo segundo: sin Chart.js un `<canvas>` conserva sus
+  300×150 por defecto y aparece como un desbordamiento que en producción no
+  existe.
 - **`--virtual-time-budget` congela las animaciones**: un modal capturado a media
   animación `pop-in` parece translúcido y no lo es. Añade
   `--force-prefers-reduced-motion`.
 
-### Pendiente, no introducido aquí
+### Cómo se auditó el ancho de móvil
 
-A 390 px de ancho el contenido **desborda horizontalmente**. Se comprobó contra
-el CSS anterior al restilizado y ya pasaba: no es una regresión de este cambio,
-pero está sin arreglar.
+Con una página que siembra `localStorage`, mete `index.html` en un `<iframe>` de
+390 px y recorre el DOM buscando (a) elementos cuyo rectángulo se sale del
+viewport sin que ningún ancestro los recorte y (b) elementos cuyo `scrollWidth`
+supera su `clientWidth`. Lo segundo es lo que delata el texto que se derrama:
+con `overflow: visible` la caja mide lo que mide y la tinta se pinta fuera, así
+que el rectángulo no lo denuncia.
+
+Resultado tras los arreglos, en las seis vistas: **0 desbordes de texto y 0
+contenedores desbordados**, salvo los que desplazan a propósito (la tabla de
+contabilidad y la tira de pestañas).
+
+### Pendiente
+
+En «Gastos e Ingresos», a 480 px o menos, el grupo de tres botones de acción de
+cada fila pide 121 px en una columna de 80. Se pinta sobre espacio libre y no
+rompe nada visible, pero la rejilla `.exp-table-row` debería darle su ancho.

@@ -22,10 +22,16 @@
 .logo-accent { color: var(--accent); }
 
 /* ---- Buttons ---- */
+/* `inline-block`, NO `inline-flex`. En SaldoSocialNFC los botones solo llevan
+   icono y etiqueta, así que allí flex vale; aquí hay botones cuyo contenido son
+   varios <div> apilados —el diálogo «Hay dos versiones de tus datos» -es el
+   caso— y con flex cada <div> se convierte en un elemento flexible y se ponen
+   en FILA, desbordando el botón por los dos lados. Tampoco `nowrap`: una
+   etiqueta larga en una tarjeta estrecha se sale en vez de partir. */
 .btn-primary, .btn-secondary, .btn-danger {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  display: inline-block; text-align: center;
   border-radius: var(--radius-pill); font-family: var(--font-sans);
-  cursor: pointer; white-space: nowrap; user-select: none;
+  cursor: pointer; user-select: none;
   transition: all 0.18s ease;
 }
 .btn-primary:active:not(:disabled), .btn-secondary:active:not(:disabled), .btn-danger:active:not(:disabled) { transform: scale(0.97); }
@@ -68,6 +74,15 @@
 .grid-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; }
 @media (max-width: 900px) { .grid-4 { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 600px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+
+/* Un hijo de rejilla no baja de su tamaño mínimo de contenido salvo que se le
+   diga. En «Contabilidad real» eso ensanchaba la pista a 597 px en una pantalla
+   de 390: la tarjeta contiene una tabla con `min-width:500px` (regla global de
+   más abajo) y, aunque la tabla ya va dentro de su propio `overflow-x:auto`,
+   ese mínimo se propagaba hacia arriba y sacaba media vista de la pantalla.
+   Con `min-width:0` la pista puede encoger y el scroll horizontal se queda
+   donde debe: dentro de la tabla. */
+.grid-2 > *, .grid-3 > *, .grid-4 > *, .dash-hero > * { min-width: 0; }
 
 /* ---- Layout helpers ---- */
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; gap: 12px; flex-wrap: wrap; }
@@ -192,9 +207,20 @@ tr:hover td { background: var(--surface); }
 .filter-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; padding: 12px; background: linear-gradient(160deg, var(--surface-strong), var(--surface)); border: 1px solid var(--hairline); border-radius: var(--radius-lg); }
 .filter-bar .form-input, .filter-bar .form-select { width: auto; min-width: 120px; padding: 7px 10px; }
 
-/* ---- Period selector ---- */
-.period-selector { display: flex; gap: 3px; background: var(--surface); border: 1px solid var(--hairline-soft); padding: 3px; border-radius: var(--radius-pill); }
-.period-btn { padding: 5px 13px; border: none; background: transparent; color: var(--text2); font-size: 12px; font-weight: 600; cursor: pointer; border-radius: var(--radius-pill); transition: all 0.15s; font-family: var(--font-mono); }
+/* ---- Period selector ----
+   También es la tira de pestañas del planificador (Plan · Objetivos ·
+   Simulación · Eventos · Escenarios). En 390 px las cinco piden 439 px y la
+   última quedaba FUERA de la pantalla, sin forma de llegar a ella: por eso
+   desplaza en horizontal en vez de desbordar. La barra de desplazamiento se
+   oculta; se arrastra con el dedo. */
+.period-selector {
+  display: flex; gap: 3px; padding: 3px;
+  background: var(--surface); border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-pill);
+  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.period-selector::-webkit-scrollbar { display: none; }
+.period-btn { flex-shrink: 0; padding: 5px 13px; border: none; background: transparent; color: var(--text2); font-size: 12px; font-weight: 600; cursor: pointer; border-radius: var(--radius-pill); transition: all 0.15s; font-family: var(--font-mono); white-space: nowrap; }
 .period-btn.active { background: var(--accent-dim); color: var(--accent); }
 
 /* ---- Account filter pills ---- */
