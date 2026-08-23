@@ -28,6 +28,12 @@ jobs:
       - name: ESLint
         run: npm run lint
 
+      # El JS de la raíz no pasa por tsc ni por ESLint, y del CSS no se ocupaba
+      # nada: por ese hueco se colaron a producción un comentario CSS mal
+      # cerrado y un template literal partido por unos backticks.
+      - name: Sintaxis de JS legacy y CSS
+        run: npm run check:estaticos
+
       - name: Prettier
         run: npm run format:check
 

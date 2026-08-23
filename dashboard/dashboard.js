@@ -463,7 +463,7 @@ const DashboardModule = (() => {
             <label class="toggle"><input type="checkbox" id="cfg-show-hist" ${config.showHistorico?'checked':''}/><span class="toggle-slider"></span></label>
             Mostrar histórico real en gráfica
           </label>
-          <div class="text-sm mt-6" style="color:var(--text3)">Los márgenes de seguridad se configuran en <a href="#" onclick="Router.navigate('margenes');return false" style="color:var(--accent)">Márgenes de seguridad</a>.</div>
+          <div class="text-sm mt-6" data-feature="margenes" style="color:var(--text3)">Los márgenes de seguridad se configuran en <a href="#" onclick="Router.navigate('margenes');return false" style="color:var(--accent)">Márgenes de seguridad</a>.</div>
         </div>
         <div class="flex gap-8 mt-8 items-center flex-wrap">
           <span class="text-sm">Filtrar cuentas:</span>

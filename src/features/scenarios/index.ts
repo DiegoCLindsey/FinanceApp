@@ -238,7 +238,7 @@ export function createScenariosFeature(deps: ScenariosViewDeps): FeatureManifest
     const base = extractoDe(null);
     const out: SerieGrafico[] = [
       {
-        label: 'Base (sin escenario)',
+        label: 'Base (sin supuesto)',
         color: '#6b7280',
         esBase: true,
         puntos: serieMensual(base.eventos, cfg.dashboardStart, cfg.dashboardEnd),
@@ -273,8 +273,8 @@ export function createScenariosFeature(deps: ScenariosViewDeps): FeatureManifest
 
     container.innerHTML = `
       <div class="page-header">
-        <h1 class="page-title">Mis <span>Escenarios</span></h1>
-        <div class="page-actions"><button class="btn-primary" data-nuevo-esc>+ Nuevo escenario</button></div>
+        <h1 class="page-title">Mis <span>Supuestos</span></h1>
+        <div class="page-actions"><button class="btn-primary" data-nuevo-esc>+ Nuevo supuesto</button></div>
       </div>
 
       ${
@@ -283,7 +283,7 @@ export function createScenariosFeature(deps: ScenariosViewDeps): FeatureManifest
                <span style="font-size:18px">🔭</span>
                <div style="flex:1">
                  <span style="font-weight:600;color:var(--yellow)">Escenario activo: ${esc(nombreEscenario(activo))}</span>
-                 <span style="font-size:12px;color:var(--text3);margin-left:8px">El dashboard muestra la proyección de este escenario</span>
+                 <span style="font-size:12px;color:var(--text3);margin-left:8px">El dashboard muestra la proyección de este supuesto</span>
                </div>
                <button class="btn-secondary btn-sm" data-desactivar-esc>Volver a base</button>
              </div>`
@@ -293,25 +293,25 @@ export function createScenariosFeature(deps: ScenariosViewDeps): FeatureManifest
       ${
         lista.length === 0
           ? `<div class="card mb-14" style="padding:20px 24px">
-               <div style="font-weight:600;font-size:14px;margin-bottom:8px">¿Qué son los escenarios?</div>
+               <div style="font-weight:600;font-size:14px;margin-bottom:8px">¿Qué son los supuestos?</div>
                <div class="text-sm" style="color:var(--text2);line-height:1.7;margin-bottom:12px">
-                 Los escenarios sirven para probar <strong>situaciones hipotéticas</strong> sin tocar tu plan base:
+                 Los supuestos sirven para probar <strong>situaciones hipotéticas</strong> sin tocar tu plan base:
                  ¿qué pasaría si amortizas la hipoteca de forma agresiva?, ¿si cambias de trabajo y sube el sueldo?,
                  ¿si abres una inversión nueva?<br><br>
                  <strong>Cómo funciona:</strong>
                  <ol style="margin:8px 0 0 16px;padding:0">
-                   <li>Crea un escenario con un nombre descriptivo.</li>
+                   <li>Crea un supuesto con un nombre descriptivo.</li>
                    <li>En Préstamos, Gastos, Cuentas o Nóminas, asigna los elementos que pertenecen a él.</li>
                    <li>Actívalo para ver cómo cambia la proyección del Dashboard.</li>
                  </ol>
                </div>
-               <button class="btn-primary btn-sm" data-nuevo-esc>+ Crear mi primer escenario</button>
+               <button class="btn-primary btn-sm" data-nuevo-esc>+ Crear mi primer supuesto</button>
              </div>
              <div class="card" style="text-align:center;padding:32px;color:var(--text3)">
-               <div style="font-size:13px">Una vez creado, asígnale préstamos, gastos o cuentas desde sus secciones, con el selector de "Escenarios" del formulario.</div>
+               <div style="font-size:13px">Una vez creado, asígnale préstamos, gastos o cuentas desde sus secciones, con el selector de «Supuestos» del formulario.</div>
              </div>`
           : `<div>${lista.map((e) => tarjeta(e, activo)).join('')}</div>
-             <div class="card-title mt-24" style="margin-bottom:12px">Comparativa de escenarios</div>
+             <div class="card-title mt-24" style="margin-bottom:12px">Comparativa de supuestos</div>
              <div class="card" style="padding:16px">
                <div id="esc-pastillas">${pastillasCuentas()}</div>
                ${
@@ -340,8 +340,8 @@ export function createScenariosFeature(deps: ScenariosViewDeps): FeatureManifest
     const color = e?.color || COLORES_ESCENARIO[0];
 
     el.innerHTML = `
-      <div class="modal-title">${id ? 'Editar escenario' : 'Nuevo escenario'}</div>
-      <div class="form-group"><label class="form-label">Nombre del escenario</label>
+      <div class="modal-title">${id ? 'Editar supuesto' : 'Nuevo supuesto'}</div>
+      <div class="form-group"><label class="form-label">Nombre del supuesto</label>
         <input class="form-input" type="text" id="esc-nombre" value="${esc(e?.nombre ?? '')}" placeholder="Ej: Amortizo agresivo"/></div>
       <div class="form-group mt-8"><label class="form-label">Fecha objetivo de comparación</label>
         <input class="form-input" type="date" id="esc-fecha-fin" value="${esc(e?.fechaFin ?? '')}"/></div>
@@ -453,7 +453,7 @@ export function createScenariosFeature(deps: ScenariosViewDeps): FeatureManifest
   return {
     id: 'escenarios',
     route: 'escenarios',
-    nombre: 'Escenarios',
+    nombre: 'Supuestos',
     // En F5 esta vista pasa a ser "Supuestos" (diffs sobre lo canónico); el flag
     // ya es el definitivo para no tener que migrar la preferencia del usuario.
     flagId: 'supuestos',
