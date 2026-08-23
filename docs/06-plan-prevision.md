@@ -46,6 +46,30 @@ existe como momento).
 | 3 | **Importar movimientos (CSV)** | Es la fricción que mata el hábito | ✅ |
 | 4 | **Cierre de mes** | Cierra el bucle estimado → real → ajuste | ✅ |
 
+### Lo que costó cada una
+
+**PWA.** El service worker no precachea una lista de ficheros: el despliegue
+versiona cada URL con `?v=<sha>` y una lista fija cachearía rutas que la
+aplicación nunca pide. Las navegaciones van a la red primero — con «caché
+primero» te quedarías viendo una versión vieja de una aplicación de finanzas
+hasta la segunda recarga.
+
+**Retirar `goals`.** Los datos no se tocan: la sección pasa a solo lectura, con
+un puente al planificador y un botón para descartarla cuando el usuario quiera.
+
+**Importar CSV.** El parser está aparte y con 46 tests porque es donde el dinero
+se puede corromper. Dos decisiones quedaron fijadas en tests por ser ambiguas de
+verdad: «10,999» se lee como millar (un separador con exactamente tres dígitos
+detrás lo es en las dos convenciones) y el *Debe* es salida aunque venga sin
+signo.
+
+**Cierre de mes.** Un movimiento cuenta **como mucho para una** estimación. El
+analizador de precisión mira una cada vez y le da igual solaparse, pero aquí
+«Alquiler» y «Reforma» compartiendo la etiqueta `vivienda` hacían que el recibo
+se contara dos veces y las filas dejaran de sumar el gasto real. En una pantalla
+cuyo trabajo es cuadrar cifras, eso la invalida entera. Hay un test que exige que
+filas + no previsto = gasto real.
+
 ---
 
 ## 2. Qué más quitaría

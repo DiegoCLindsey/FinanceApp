@@ -35,23 +35,34 @@
       topeAportacionAnual: 1500, historicoSaldos: [], aportaciones: [] },
   ]);
 
+  // Forma CANÓNICA de src/state/schema.ts (concepto/cuantia/tipoFrecuencia), no
+  // la del legacy: con `nombre`/`importe` la proyección da cero y medio QA sale
+  // con importes vacíos sin que nada falle a gritos.
   set('state_expenses', [
-    { _id: 'e1', nombre: 'Alquiler', concepto: 'Alquiler', importe: 950, tipo: 'gasto', clasificacion: 'basico',
-      frecuencia: 'mensual', dia: 1, fechaInicio: desplazar(-12), fechaFin: null, cuenta: 'cc', activo: true, tags: ['vivienda'] },
-    { _id: 'e2', nombre: 'Supermercado', concepto: 'Supermercado', importe: 420, tipo: 'gasto', clasificacion: 'basico',
-      frecuencia: 'mensual', dia: 5, fechaInicio: desplazar(-12), fechaFin: null, cuenta: 'cc', activo: true, tags: ['comida'] },
-    { _id: 'e3', nombre: 'Suscripciones', concepto: 'Suscripciones', importe: 38, tipo: 'gasto', clasificacion: 'deseo',
-      frecuencia: 'mensual', dia: 12, fechaInicio: desplazar(-12), fechaFin: null, cuenta: 'cc', activo: true, tags: ['ocio'] },
-    { _id: 'e4', nombre: 'Seguro coche', concepto: 'Seguro coche', importe: 480, tipo: 'gasto', clasificacion: 'basico',
-      frecuencia: 'anual', dia: 15, fechaInicio: desplazar(-12), fechaFin: null, cuenta: 'cc', activo: true, tags: ['coche'] },
-    { _id: 'e5', nombre: 'Gimnasio', concepto: 'Gimnasio', importe: 45, tipo: 'gasto', clasificacion: 'deseo',
-      frecuencia: 'mensual', dia: 3, fechaInicio: desplazar(-12), fechaFin: desplazar(3), cuenta: 'cc', activo: true, tags: ['salud'] },
-    { _id: 'e6', nombre: 'Clases de inglés', concepto: 'Clases de inglés', importe: 120, tipo: 'gasto', clasificacion: 'deseo',
-      frecuencia: 'mensual', dia: 20, fechaInicio: desplazar(1), fechaFin: null, cuenta: 'cc', activo: true, tags: ['formación'] },
-    { _id: 'e7', nombre: 'Alquiler trastero', concepto: 'Alquiler trastero', importe: 60, tipo: 'ingreso', clasificacion: 'basico',
-      frecuencia: 'mensual', dia: 10, fechaInicio: desplazar(-6), fechaFin: null, cuenta: 'cc', activo: true, tags: ['extra'] },
-    { _id: 'e8', nombre: 'Reforma baño', concepto: 'Reforma baño', importe: 3200, tipo: 'gasto', clasificacion: 'deseo',
-      frecuencia: 'unico', dia: 8, fechaInicio: desplazar(4), fechaFin: null, cuenta: 'aho', activo: true, tags: ['vivienda'] },
+    { _id: 'e1', concepto: 'Alquiler', cuantia: 950, tipo: 'gasto', clasificacion: 'basico',
+      tipoFrecuencia: 'mensual', frecuencia: 1, diaPago: 'dia:1',
+      fechaInicio: desplazar(-12), fechaFin: null, cuenta: 'cc', activo: true, tags: ['vivienda'], escenarioIds: [] },
+    { _id: 'e2', concepto: 'Supermercado', cuantia: 420, tipo: 'gasto', clasificacion: 'basico',
+      tipoFrecuencia: 'mensual', frecuencia: 1, diaPago: 'dia:5',
+      fechaInicio: desplazar(-12), fechaFin: null, cuenta: 'cc', activo: true, tags: ['comida'], escenarioIds: [] },
+    { _id: 'e3', concepto: 'Suscripciones', cuantia: 38, tipo: 'gasto', clasificacion: 'deseo',
+      tipoFrecuencia: 'mensual', frecuencia: 1, diaPago: 'dia:12',
+      fechaInicio: desplazar(-12), fechaFin: null, cuenta: 'cc', activo: true, tags: ['ocio'], escenarioIds: [] },
+    { _id: 'e4', concepto: 'Seguro coche', cuantia: 480, tipo: 'gasto', clasificacion: 'basico',
+      tipoFrecuencia: 'anual', frecuencia: 1, diaPago: 'dia:15',
+      fechaInicio: desplazar(-12), fechaFin: null, cuenta: 'cc', activo: true, tags: ['coche'], escenarioIds: [] },
+    { _id: 'e5', concepto: 'Gimnasio', cuantia: 45, tipo: 'gasto', clasificacion: 'deseo',
+      tipoFrecuencia: 'mensual', frecuencia: 1, diaPago: 'dia:3',
+      fechaInicio: desplazar(-12), fechaFin: desplazar(3), cuenta: 'cc', activo: true, tags: ['salud'], escenarioIds: [] },
+    { _id: 'e6', concepto: 'Clases de inglés', cuantia: 120, tipo: 'gasto', clasificacion: 'deseo',
+      tipoFrecuencia: 'mensual', frecuencia: 1, diaPago: 'dia:20',
+      fechaInicio: desplazar(1), fechaFin: null, cuenta: 'cc', activo: true, tags: ['formacion'], escenarioIds: [] },
+    { _id: 'e7', concepto: 'Alquiler trastero', cuantia: 60, tipo: 'ingreso', clasificacion: 'basico',
+      tipoFrecuencia: 'mensual', frecuencia: 1, diaPago: 'dia:10',
+      fechaInicio: desplazar(-6), fechaFin: null, cuenta: 'cc', activo: true, tags: ['extra'], escenarioIds: [] },
+    { _id: 'e8', concepto: 'Reforma baño', cuantia: 3200, tipo: 'gasto', clasificacion: 'deseo',
+      tipoFrecuencia: 'unico', frecuencia: 1, diaPago: 'dia:8',
+      fechaInicio: desplazar(4), fechaFin: null, cuenta: 'aho', activo: true, tags: ['obras'], escenarioIds: [] },
   ]);
 
   set('state_nominas', [
@@ -68,6 +79,25 @@
     { _id: 'l2', nombre: 'Préstamo coche', capital: 18000, tin: 6.2, plazoMeses: 60, fechaInicio: desplazar(-18),
       cuenta: 'cc', activo: true, tipo: 'frances', tags: ['coche'], amortizaciones: [] },
   ]);
+
+  // Movimientos reales de los tres últimos meses, para que el cierre de mes y
+  // la precisión tengan de qué hablar. El súper va sistemáticamente por encima
+  // de lo estimado y hay gasto que ninguna estimación prevé.
+  var tx = [];
+  var n = 0;
+  var mesISO = function (m, d) {
+    var f = new Date(hoy); f.setMonth(f.getMonth() + m); f.setDate(d); return iso(f);
+  };
+  [-3, -2, -1].forEach(function (m) {
+    tx.push({ _id: 'tx' + (++n), fecha: mesISO(m, 1),  cuentaId: 'cc', importeCts: -95000, concepto: 'ALQUILER', tags: ['vivienda'], estimacionId: 'e1', tipo: 'gasto', origen: 'importado' });
+    tx.push({ _id: 'tx' + (++n), fecha: mesISO(m, 5),  cuentaId: 'cc', importeCts: -51100, concepto: 'SUPERMERCADO', tags: ['comida'], estimacionId: 'e2', tipo: 'gasto', origen: 'importado' });
+    tx.push({ _id: 'tx' + (++n), fecha: mesISO(m, 12), cuentaId: 'cc', importeCts: -3800,  concepto: 'SUSCRIPCIONES', tags: ['ocio'], estimacionId: 'e3', tipo: 'gasto', origen: 'importado' });
+    tx.push({ _id: 'tx' + (++n), fecha: mesISO(m, 18), cuentaId: 'cc', importeCts: -6200,  concepto: 'BAR LA PLAZA', tags: [], tipo: 'gasto', origen: 'importado' });
+    tx.push({ _id: 'tx' + (++n), fecha: mesISO(m, 22), cuentaId: 'cc', importeCts: -4150,  concepto: 'GASOLINERA', tags: [], tipo: 'gasto', origen: 'importado' });
+    tx.push({ _id: 'tx' + (++n), fecha: mesISO(m, 25), cuentaId: 'cc', importeCts: 262500, concepto: 'NOMINA', tags: [], tipo: 'ingreso', origen: 'importado' });
+  });
+  set('state_transacciones', tx);
+  set('state_puntosControl', []);
 
   set('state_goals', []);
   set('state_inflacion', [

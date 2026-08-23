@@ -89,7 +89,15 @@ function rangoMes(mes: string): { inicio: ISODate; fin: ISODate } {
 }
 
 /** Importe estimado que el motor proyecta para una estimación en un mes. */
-function estimadoDelMes(exp: Expense, mes: string): number {
+/**
+ * Lo que una estimación preveía para un mes concreto.
+ *
+ * Se exporta porque el cierre de mes necesita el estimado de un mes AUNQUE no
+ * haya movimiento real: `analizarEstimacion` se salta esos meses a propósito
+ * (un hueco no es un fallo de precisión), pero en un cierre «lo previsto que no
+ * ha llegado» es justo lo que hay que enseñar.
+ */
+export function estimadoDelMes(exp: Expense, mes: string): number {
   const { inicio, fin } = rangoMes(mes);
   const eventos = proyectarGastos([exp as ExpenseLike], { start: inicio, end: fin });
   return eventos.reduce((s, e) => s + Math.abs(e.cuantia), 0);

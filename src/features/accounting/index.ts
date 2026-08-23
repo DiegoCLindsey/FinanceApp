@@ -15,6 +15,7 @@ import { esc } from './dom';
 import { renderTransactionsPanel, wireTransactionsPanel, type EstadoPanel } from './transactions-panel';
 import { renderPrecisionPanel, wirePrecisionPanel } from './precision-panel';
 import { estadoImportInicial, renderImportPanel, wireImportPanel, type EstadoImport } from './import-panel';
+import { estadoCierreInicial, renderCierrePanel, wireCierrePanel, type EstadoCierre } from './cierre-panel';
 
 export interface AccountingViewDeps {
   ledger: Ledger;
@@ -45,6 +46,7 @@ export function createAccountingFeature(deps: AccountingViewDeps): FeatureManife
   };
 
   const estadoImport: EstadoImport = estadoImportInicial();
+  const estadoCierre: EstadoCierre = estadoCierreInicial();
 
   const notificar = () => deps.onDatosCambiados?.();
   const hoy = deps.hoy ?? todayISO;
@@ -62,6 +64,15 @@ export function createAccountingFeature(deps: AccountingViewDeps): FeatureManife
     ledger: deps.ledger,
     accounts: deps.accounts,
     onDatosCambiados: notificar,
+  };
+
+  const cierreDeps = {
+    ledger: deps.ledger,
+    precision: deps.precision,
+    adjuster: deps.adjuster,
+    estimaciones: deps.estimaciones,
+    onDatosCambiados: notificar,
+    hoy,
   };
 
   const precDeps = {
@@ -101,14 +112,17 @@ export function createAccountingFeature(deps: AccountingViewDeps): FeatureManife
       </div>
 
       <div id="acc-importar"></div>
+      <div id="acc-cierre" data-feature="precision-estimaciones"></div>
       <div id="acc-transacciones"></div>
       <div id="acc-precision" data-feature="precision-estimaciones"></div>`;
 
     const zonaImp = container.querySelector<HTMLElement>('#acc-importar') as HTMLElement;
+    const zonaCierre = container.querySelector<HTMLElement>('#acc-cierre') as HTMLElement;
     const zonaTx = container.querySelector<HTMLElement>('#acc-transacciones') as HTMLElement;
     const zonaPrec = container.querySelector<HTMLElement>('#acc-precision') as HTMLElement;
 
     zonaImp.innerHTML = renderImportPanel(impDeps, estadoImport);
+    zonaCierre.innerHTML = renderCierrePanel(cierreDeps, estadoCierre);
     zonaTx.innerHTML = renderTransactionsPanel(txDeps, estado);
     zonaPrec.innerHTML = renderPrecisionPanel(precDeps);
 
@@ -116,6 +130,7 @@ export function createAccountingFeature(deps: AccountingViewDeps): FeatureManife
     // el volumen de datos de esta pantalla (y evita estados intermedios raros).
     const refrescar = () => render(container);
     wireImportPanel(zonaImp, impDeps, estadoImport, refrescar);
+    wireCierrePanel(zonaCierre, cierreDeps, estadoCierre, refrescar);
     wireTransactionsPanel(zonaTx, txDeps, estado, refrescar);
     wirePrecisionPanel(zonaPrec, precDeps, refrescar);
   }
