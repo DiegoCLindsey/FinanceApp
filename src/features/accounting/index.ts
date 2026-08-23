@@ -14,6 +14,7 @@ import type { Account, Expense } from '@/state/schema';
 import { esc } from './dom';
 import { renderTransactionsPanel, wireTransactionsPanel, type EstadoPanel } from './transactions-panel';
 import { renderPrecisionPanel, wirePrecisionPanel } from './precision-panel';
+import { estadoImportInicial, renderImportPanel, wireImportPanel, type EstadoImport } from './import-panel';
 
 export interface AccountingViewDeps {
   ledger: Ledger;
@@ -43,6 +44,8 @@ export function createAccountingFeature(deps: AccountingViewDeps): FeatureManife
     filtroTexto: '',
   };
 
+  const estadoImport: EstadoImport = estadoImportInicial();
+
   const notificar = () => deps.onDatosCambiados?.();
   const hoy = deps.hoy ?? todayISO;
 
@@ -53,6 +56,12 @@ export function createAccountingFeature(deps: AccountingViewDeps): FeatureManife
     tagsConocidas: () => deps.tags.todas(),
     onDatosCambiados: notificar,
     hoy,
+  };
+
+  const impDeps = {
+    ledger: deps.ledger,
+    accounts: deps.accounts,
+    onDatosCambiados: notificar,
   };
 
   const precDeps = {
@@ -91,18 +100,22 @@ export function createAccountingFeature(deps: AccountingViewDeps): FeatureManife
         </div>
       </div>
 
+      <div id="acc-importar"></div>
       <div id="acc-transacciones"></div>
       <div id="acc-precision" data-feature="precision-estimaciones"></div>`;
 
+    const zonaImp = container.querySelector<HTMLElement>('#acc-importar') as HTMLElement;
     const zonaTx = container.querySelector<HTMLElement>('#acc-transacciones') as HTMLElement;
     const zonaPrec = container.querySelector<HTMLElement>('#acc-precision') as HTMLElement;
 
+    zonaImp.innerHTML = renderImportPanel(impDeps, estadoImport);
     zonaTx.innerHTML = renderTransactionsPanel(txDeps, estado);
     zonaPrec.innerHTML = renderPrecisionPanel(precDeps);
 
     // Se re-renderiza toda la vista en cada cambio: es simple y suficiente para
     // el volumen de datos de esta pantalla (y evita estados intermedios raros).
     const refrescar = () => render(container);
+    wireImportPanel(zonaImp, impDeps, estadoImport, refrescar);
     wireTransactionsPanel(zonaTx, txDeps, estado, refrescar);
     wirePrecisionPanel(zonaPrec, precDeps, refrescar);
   }
