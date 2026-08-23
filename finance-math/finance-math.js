@@ -624,13 +624,20 @@ const FinanceMath = (() => {
     const floor = acc.fechaInicialSaldo || '';
 
     if (!floor || fecha >= floor) {
-      // On or after anchor: anchor supersedes any pre-floor entries
+      // On or after anchor: anchor supersedes any pre-floor entries.
+      // `prioridad`: con la MISMA fecha manda el punto de control, no el ancla.
+      // Actualizar el saldo escribe un punto con la fecha de hoy, y en una cuenta
+      // cuyo ancla también es hoy el empate lo ganaba el ancla (se apila primero
+      // y el orden es estable): el saldo nuevo no se veía. Mismo criterio que
+      // calcDesviacion, que indexa por fecha y deja que el punto sobrescriba.
+      // Entre dos puntos del mismo día gana el registrado más tarde (índice mayor),
+      // que también es lo que hace calcDesviacion al indexar por fecha.
       const entries = [];
-      if (floor) entries.push({ fecha: floor, saldo: acc.saldoInicial || 0 });
-      for (const h of (acc.historicoSaldos || [])) {
-        if (h.fecha >= floor) entries.push(h);
-      }
-      entries.sort((a,b) => b.fecha.localeCompare(a.fecha));
+      if (floor) entries.push({ fecha: floor, saldo: acc.saldoInicial || 0, prioridad: -1 });
+      (acc.historicoSaldos || []).forEach((h, i) => {
+        if (h.fecha >= floor) entries.push({ ...h, prioridad: i });
+      });
+      entries.sort((a,b) => b.fecha.localeCompare(a.fecha) || b.prioridad - a.prioridad);
       const entry = entries.find(h => h.fecha <= fecha);
       return entry ? entry.saldo : (acc.saldoInicial || 0);
     } else {
