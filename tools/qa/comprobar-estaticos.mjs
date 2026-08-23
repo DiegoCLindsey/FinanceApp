@@ -14,18 +14,43 @@
 // `src/` y `tests/`, y del CSS no se ocupaba nada.
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { globSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const raiz = path.resolve(import.meta.dirname, '..', '..');
+// `import.meta.dirname` es de Node 20.11+ y `globSync` de node:fs es de Node 22:
+// CI corre Node 20 y el script reventaba al importar. Se recorren los
+// directorios a mano, que funciona en cualquier versión.
+const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const problemas = [];
 
+const IGNORAR = new Set(['node_modules', '.git', 'assets', 'coverage', 'dist', '_site']);
+
+/** Ficheros con esa extensión bajo `dir`, en rutas relativas a la raíz. */
+function buscar(dir, ext, profundidad = 0) {
+  const abs = path.join(raiz, dir);
+  let entradas;
+  try {
+    entradas = readdirSync(abs, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const e of entradas) {
+    if (IGNORAR.has(e.name) || e.name.startsWith('.')) continue;
+    const rel = dir ? `${dir}/${e.name}` : e.name;
+    if (e.isDirectory()) {
+      if (profundidad < 3) out.push(...buscar(rel, ext, profundidad + 1));
+    } else if (e.name.endsWith(ext)) {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
 // ── JS que se sirve tal cual (no pasa por Vite) ──────────────────────────────
-const JS = globSync(
-  ['*.js', 'auth/*.js', 'common/*.js', 'dashboard/*.js', 'data-io/*.js', 'finance-math/*.js', 'firebase/*.js', 'ui/*.js', 'tools/**/*.js'],
-  { cwd: raiz },
-).filter((f) => !f.includes('node_modules') && !f.startsWith('assets/'));
+// Fuera `src/` y `tests/`, que ya cubren tsc y ESLint.
+const JS = buscar('', '.js').filter((f) => !f.startsWith('src/') && !f.startsWith('tests/'));
 
 for (const rel of JS) {
   try {
@@ -37,7 +62,7 @@ for (const rel of JS) {
 }
 
 // ── CSS: comentarios y llaves ────────────────────────────────────────────────
-const CSS = globSync(['*.css', '*/*.css'], { cwd: raiz }).filter((f) => !f.includes('node_modules'));
+const CSS = buscar('', '.css');
 
 for (const rel of CSS) {
   const s = readFileSync(path.join(raiz, rel), 'utf8');
@@ -66,6 +91,13 @@ for (const rel of CSS) {
   const abre = (limpio.match(/\{/g) || []).length;
   const cierra = (limpio.match(/\}/g) || []).length;
   if (abre !== cierra) problemas.push(`${rel}: llaves descuadradas — ${abre} «{» frente a ${cierra} «}»`);
+}
+
+// Si un día el recorrido deja de encontrar nada, esto pasaría en verde sin
+// comprobar absolutamente nada. Mejor que reviente.
+if (JS.length === 0 || CSS.length === 0) {
+  console.error(`\n✗ el recorrido no encontró ficheros (JS: ${JS.length}, CSS: ${CSS.length}). ¿Ha cambiado la estructura del repositorio?\n`);
+  process.exit(1);
 }
 
 if (problemas.length) {
