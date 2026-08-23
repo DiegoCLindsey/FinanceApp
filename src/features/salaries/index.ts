@@ -83,6 +83,9 @@ export function createSalariesFeature(deps: SalariesViewDeps): FeatureManifest {
         : '',
     ].join('');
 
+    // El neto por paga va en su propia línea, separado del importe: formatEUR
+    // pone un espacio DURO (U+00A0) antes del €, así que «2.779,86 €/paga» era
+    // un único token sin punto de corte y se salía de la columna, de 80 px.
     return `<div class="exp-table-row">
       <div>
         <div style="font-weight:500">${esc(n.nombre || '—')}</div>
@@ -90,7 +93,8 @@ export function createSalariesFeature(deps: SalariesViewDeps): FeatureManifest {
       </div>
       <div class="num">${esc(formatEUR(d.brutoAnual))}
         ${d.flexAnual > 0 ? `<div class="text-sm" style="color:var(--accent)">Diner. ${esc(formatEUR(d.baseDineraria))}</div>` : ''}
-        <div class="text-sm" style="color:var(--text2)">${esc(formatEUR(d.netoPorPaga))}/paga neto</div></div>
+        <div class="text-sm" style="color:var(--text2)">${esc(formatEUR(d.netoPorPaga))}</div>
+        <div class="text-sm" style="color:var(--text3)">neto/paga</div></div>
       <div class="text-sm">${d.nPagas} pagas</div>
       <div class="text-sm ${enGrupo ? 'neg' : ''}">${
         n.irpfModo === 'manual' ? `${esc(n.irpfPct ?? 0)}% (manual)` : `${d.irpfPct.toFixed(1)}% (auto)`

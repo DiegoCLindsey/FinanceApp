@@ -10,7 +10,6 @@ import { saldoEnFecha, saldoRealCuenta, type AccountLike } from '@/core/accounts
 
 const cuenta = (extra: Partial<AccountLike> = {}): AccountLike => ({
   _id: 'a',
-  activo: true,
   saldoInicial: 8400,
   fechaInicialSaldo: '2026-08-22',
   historicoSaldos: [],

@@ -172,9 +172,24 @@ tr:hover td { background: var(--surface); }
 .threshold-label { font-size:11px; font-family:var(--font-mono); color:var(--yellow); }
 
 /* ---- Stat cards ---- */
-.stat-card { background: linear-gradient(160deg, var(--surface-strong), var(--surface)); border: 1px solid var(--hairline); border-radius: var(--radius-lg); padding: 16px; }
+.stat-card { background: linear-gradient(160deg, var(--surface-strong), var(--surface)); border: 1px solid var(--hairline); border-radius: var(--radius-lg); padding: 14px; min-width: 0; }
 .stat-label { font-size: 10px; color: var(--text3); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; font-weight: 600; }
-.stat-value { font-family: var(--font-mono); font-size: 22px; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; }
+.stat-value { font-family: var(--font-mono); font-size: 18px; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; overflow-wrap: break-word; }
+
+/* Una rejilla de tarjetas de estadística nunca baja de un ancho legible.
+   Con `grid-3` fija dentro de una tarjeta de cuenta de 365 px quedaban ~110 px
+   por celda: «21.743,69 €» a 22 px pide ~142 y los importes se salían de la
+   tarjeta, se pisaban entre sí y llegaban a salirse de la pantalla (se veía en
+   «Fondo de inversión · Proyección»). Con `auto-fit` se mantienen las 3 o 4
+   columnas cuando caben y se cae a 2 o 1 cuando no.
+   El selector se limita a las rejillas que CONTIENEN tarjetas de estadística:
+   `grid-2`/`grid-3` también se usan para pares de campos de formulario, donde
+   sí se quieren las columnas fijas. */
+.grid-2:has(> .stat-card),
+.grid-3:has(> .stat-card),
+.grid-4:has(> .stat-card) {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
 .stat-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
 @media (max-width: 480px) {
   .stat-value { font-size: 18px; }

@@ -1260,7 +1260,8 @@ ${s}
       </div>
       <div class="num">${l(z(h.brutoAnual))}
         ${h.flexAnual>0?`<div class="text-sm" style="color:var(--accent)">Diner. ${l(z(h.baseDineraria))}</div>`:""}
-        <div class="text-sm" style="color:var(--text2)">${l(z(h.netoPorPaga))}/paga neto</div></div>
+        <div class="text-sm" style="color:var(--text2)">${l(z(h.netoPorPaga))}</div>
+        <div class="text-sm" style="color:var(--text3)">neto/paga</div></div>
       <div class="text-sm">${h.nPagas} pagas</div>
       <div class="text-sm ${I?"neg":""}">${A.irpfModo==="manual"?`${l(A.irpfPct??0)}% (manual)`:`${h.irpfPct.toFixed(1)}% (auto)`}${I?' <span title="Tipo marginal del grupo" style="font-size:10px;color:var(--text3)">marginal</span>':""}</div>
       <div>${A.representacion==="simplificado"?'<span class="badge badge-orange">Simplificado</span>':'<span class="badge badge-purple">Detallado</span>'}</div>

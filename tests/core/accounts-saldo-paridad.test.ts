@@ -17,7 +17,9 @@ const casos: { nombre: string; acc: AccountLike; fechas: string[] }[] = [
   {
     nombre: 'ancla y punto el mismo día',
     acc: {
-      _id: 'a', activo: true, saldoInicial: 8400, fechaInicialSaldo: '2026-08-22',
+      _id: 'a',
+      saldoInicial: 8400,
+      fechaInicialSaldo: '2026-08-22',
       historicoSaldos: [{ _id: 'p1', fecha: '2026-08-22', saldo: 12000, nota: '' }],
     },
     fechas: ['2026-08-21', '2026-08-22', '2026-08-23'],
@@ -25,7 +27,9 @@ const casos: { nombre: string; acc: AccountLike; fechas: string[] }[] = [
   {
     nombre: 'dos puntos el mismo día',
     acc: {
-      _id: 'b', activo: true, saldoInicial: 100, fechaInicialSaldo: '2026-01-01',
+      _id: 'b',
+      saldoInicial: 100,
+      fechaInicialSaldo: '2026-01-01',
       historicoSaldos: [
         { _id: 'p1', fecha: '2026-05-10', saldo: 500, nota: '' },
         { _id: 'p2', fecha: '2026-05-10', saldo: 700, nota: '' },
@@ -36,7 +40,9 @@ const casos: { nombre: string; acc: AccountLike; fechas: string[] }[] = [
   {
     nombre: 'puntos anteriores al ancla',
     acc: {
-      _id: 'c', activo: true, saldoInicial: 8400, fechaInicialSaldo: '2026-06-01',
+      _id: 'c',
+      saldoInicial: 8400,
+      fechaInicialSaldo: '2026-06-01',
       historicoSaldos: [{ _id: 'p1', fecha: '2026-01-15', saldo: 3000, nota: '' }],
     },
     fechas: ['2026-01-01', '2026-01-15', '2026-05-31', '2026-06-01', '2026-09-01'],
@@ -44,7 +50,9 @@ const casos: { nombre: string; acc: AccountLike; fechas: string[] }[] = [
   {
     nombre: 'sin ancla',
     acc: {
-      _id: 'd', activo: true, saldoInicial: 0, fechaInicialSaldo: '',
+      _id: 'd',
+      saldoInicial: 0,
+      fechaInicialSaldo: '',
       historicoSaldos: [{ _id: 'p1', fecha: '2026-03-01', saldo: 250, nota: '' }],
     },
     fechas: ['2026-02-01', '2026-03-01', '2026-04-01'],
