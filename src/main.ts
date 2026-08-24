@@ -32,6 +32,7 @@ import { createFlags, type Flags } from './flags/service';
 import { FEATURES, featuresPorGrupo } from './flags/registry';
 import { createFeaturesModal } from './ui/features-modal';
 import { createGating } from './ui/gating';
+import { instalarDeshacer } from './ui/deshacer';
 import { instalarConsultaFlags } from './flags/guard';
 import { createFeatureRegistry, type FeatureRegistry } from './app/feature-registry';
 import { createAccountingFeature } from './features/accounting';
@@ -92,6 +93,11 @@ export interface FinanceAppNamespace {
      * siga oculto tras cada repintado. Devuelve el `detener`.
      */
     watchGating: () => () => void;
+    /**
+     * Engancha el aviso flotante con «Deshacer» a los borrados del store.
+     * Devuelve el `detener`.
+     */
+    instalarDeshacer: () => () => void;
   };
   /** Registro de vistas del paquete nuevo; lo consulta el router del shell. */
   app: FeatureRegistry;
@@ -249,7 +255,24 @@ function bootstrap(): FinanceAppNamespace {
     store,
     flags,
     featureRegistry: { all: FEATURES, porGrupo: featuresPorGrupo },
-    ui: { openFeatures: featuresModal.open, applyGating: gating.apply, watchGating: () => gating.observar() },
+    ui: {
+      openFeatures: featuresModal.open,
+      applyGating: gating.apply,
+      watchGating: () => gating.observar(),
+      instalarDeshacer: () =>
+        instalarDeshacer({
+          store,
+          // Restaurar es un cambio de datos como cualquier otro, así que hace
+          // falta lo MISMO que hace `refrescarLegacy` tras guardar: releer el
+          // State legacy —que es una copia aparte— y luego repintar. Solo
+          // repintar dejaría el cuadro de mando enseñando el dato viejo.
+          rerender: () => {
+            const g = globalThis as { State?: { load?: () => unknown }; Router?: { rerender?: () => void } };
+            g.State?.load?.();
+            g.Router?.rerender?.();
+          },
+        }),
+    },
     app,
     session: Object.assign(sesion, {
       vigilar: (onCaducada: () => void) => vigilarInactividad({ sesion, onCaducada }),
@@ -303,6 +326,7 @@ if (app) {
     if (!vigilando) {
       vigilando = true;
       app.ui.watchGating();
+      app.ui.instalarDeshacer();
     }
   };
   if (document.readyState === 'loading') {

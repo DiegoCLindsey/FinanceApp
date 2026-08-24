@@ -203,6 +203,29 @@ aplicación cuyo valor es la confianza en sus datos, la falta de deshacer hace q
 el usuario dude antes de tocar nada. Un historial de una sola posición
 («Deshecho» en el aviso flotante) cubre el 90 % de los sustos.
 
+**Hecho** (`src/state/deshacer.ts` + `src/ui/deshacer.ts`).
+
+#### Dónde engancharlo
+
+En `store.removeItem`, no en cada pantalla. Es el **embudo por el que pasan todos
+los borrados** de la aplicación: engancharlo en un sitio da deshacer en los doce,
+y ninguna pantalla futura puede olvidarse de conectarlo. El aviso se pinta
+suscribiéndose al store, así que tampoco hay que llamarlo desde ningún sitio.
+
+Tres detalles que se decidieron mirando qué pasa cuando falla:
+
+- **Se reinserta donde estaba**, no al final; y el índice se acota al tamaño
+  actual, porque entre el borrado y el deshacer la lista puede haber cambiado.
+- **Borrar algo que no existe no registra nada.** Si no, un borrado fallido
+  tapaba el deshacer del anterior, que sí era de verdad.
+- **Deshacer recarga el `State` legacy antes de repintar.** El legacy es una
+  copia aparte del estado: solo repintar dejaba el cuadro de mando enseñando el
+  dato viejo. Es exactamente lo que ya hacía `refrescarLegacy` tras cada guardado.
+
+Y una decisión de producto: el deshacer **caduca** (15 s, el tiempo del aviso).
+Uno que sigue vivo media hora después es una trampa —para entonces el usuario ha
+tocado otras cosas y devolver la fila a su sitio sorprende más que ayuda—.
+
 ### 3.4 Búsqueda global
 
 Con doce apartados, encontrar «aquel recibo del seguro» obliga a recordar en qué
@@ -231,10 +254,10 @@ Primero lo que arregla el bucle, después lo que lo aprovecha.
 4. **Cierre de mes** — arregla «comparas» y «ajustas». ✅
 5. **Banda de confianza** (§3.1) — necesita 3 y 4 en uso. ✅
 6. **Avisos con antelación** (§3.2). ✅
-7. Deshacer (§3.3). ⬜
+7. **Deshacer** (§3.3). ✅
 8. Búsqueda global (§3.4). ⬜
 
-Del 7 en adelante queda propuesto, no hecho: conviene decidir antes dónde viven.
+Del 8 queda propuesto, no hecho: conviene decidir antes dónde vive.
 
 La banda gana valor sola con el tiempo: hoy se mide sobre seis meses, y cada
 cierre de mes que se hace la estrecha, porque σ_deriva baja con √n. Es la primera

@@ -12,6 +12,7 @@ import type { Tramos } from '@/core/tax/irpf';
 import { defaultAccount, defaultState, SCHEMA_VERSION, type AppConfig, type AppState, type CollectionKey } from './schema';
 import { LEGACY_KEYS, runMigrations } from './migrations';
 import { KEY_PREFIX, VERSION_KEY } from './storage/local';
+import { crearHistorialBorrados, type BorradoRegistrado } from './deshacer';
 import type { StorageAdapter } from './storage/types';
 
 export type StateKey = keyof AppState;
@@ -33,6 +34,7 @@ export function createStore({ adapter, hoy = new Date() }: StoreOptions) {
   let state: AppState = defaultState(hoyISO, finISO);
   const listeners = new Set<Listener>();
   let lastMigrations: number[] = [];
+  const borrados = crearHistorialBorrados();
 
   function notify(key: StateKey) {
     for (const l of listeners) l(key);
@@ -128,9 +130,42 @@ export function createStore({ adapter, hoy = new Date() }: StoreOptions) {
     set(col, arr as AppState[K]);
   }
 
+  /**
+   * Borra un elemento, dejándolo apuntado para poder deshacerlo.
+   *
+   * El registro vive aquí y no en cada pantalla porque `removeItem` es el
+   * embudo por el que pasan TODOS los borrados de la aplicación: engancharlo en
+   * un sitio da deshacer en los doce, y ninguna pantalla futura puede olvidarse
+   * de conectarlo.
+   */
   function removeItem<K extends CollectionKey>(col: K, id: string): void {
-    const arr = (state[col] as { _id: string }[]).filter((i) => i._id !== id);
-    set(col, arr as AppState[K]);
+    const arr = state[col] as unknown as ({ _id: string } & Record<string, unknown>)[];
+    const indice = arr.findIndex((i) => i._id === id);
+    // Borrar algo que no está no cambia nada, y sobre todo no debe tapar el
+    // deshacer del borrado anterior, que sí era de verdad.
+    if (indice < 0) return;
+    borrados.registrar({ col, item: arr[indice], indice });
+    set(col, arr.filter((_, i) => i !== indice) as unknown as AppState[K]);
+  }
+
+  /**
+   * Devuelve a su sitio lo último borrado. `null` si no hay nada que deshacer.
+   *
+   * Se reinserta en la posición que ocupaba, acotada al tamaño actual: entre el
+   * borrado y el deshacer puede haber entrado o salido gente de la lista.
+   */
+  function deshacerBorrado(): BorradoRegistrado | null {
+    const b = borrados.tomar();
+    if (!b) return null;
+    const arr = [...(state[b.col as CollectionKey] as unknown[])];
+    arr.splice(Math.min(b.indice, arr.length), 0, b.item);
+    set(b.col as CollectionKey, arr as unknown as AppState[CollectionKey]);
+    return b;
+  }
+
+  /** Lo que se podría deshacer ahora mismo, para pintar el aviso. */
+  function borradoPendiente(): BorradoRegistrado | null {
+    return borrados.pendiente();
   }
 
   // ── Helpers de dominio de uso frecuente ─────────────────────────────────────
@@ -180,6 +215,8 @@ export function createStore({ adapter, hoy = new Date() }: StoreOptions) {
     addItem,
     updateItem,
     removeItem,
+    deshacerBorrado,
+    borradoPendiente,
     getPrincipalAccountId,
     accountName,
     resolverTramosIRPF,

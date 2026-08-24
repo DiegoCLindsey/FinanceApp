@@ -85,6 +85,10 @@
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   animation: toastIn 0.26s cubic-bezier(0.2,0.9,0.3,1);
 }
+/* Aviso con acción (Deshacer). Va en color de texto normal, no de estado: no
+   informa de que algo haya ido bien ni mal, pide una decisión. Y algo más ancho
+   que un aviso corriente porque dentro lleva un nombre escrito por el usuario. */
+.toast-deshacer { max-width: 420px; color: var(--text); font-weight: 400; }
 .toast-ok { border-color: rgba(46,230,168,0.42); color: var(--accent); }
 .toast-err { border-color: rgba(255,107,107,0.42); color: var(--red); }
 .toast-info { border-color: rgba(19,196,224,0.42); color: var(--blue); }
