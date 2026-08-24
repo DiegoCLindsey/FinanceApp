@@ -49,7 +49,7 @@
       tipoFrecuencia: 'mensual', frecuencia: 1, diaPago: 'dia:12',
       fechaInicio: desplazar(-12), fechaFin: null, cuenta: 'cc', activo: true, tags: ['ocio'], escenarioIds: [] },
     { _id: 'e4', concepto: 'Seguro coche', cuantia: 480, tipo: 'gasto', clasificacion: 'basico',
-      tipoFrecuencia: 'anual', frecuencia: 1, diaPago: 'dia:15',
+      tipoFrecuencia: 'mensual', frecuencia: 12, diaPago: 'dia:15',
       fechaInicio: desplazar(-12), fechaFin: null, cuenta: 'cc', activo: true, tags: ['coche'], escenarioIds: [] },
     { _id: 'e5', concepto: 'Gimnasio', cuantia: 45, tipo: 'gasto', clasificacion: 'deseo',
       tipoFrecuencia: 'mensual', frecuencia: 1, diaPago: 'dia:3',
@@ -61,7 +61,7 @@
       tipoFrecuencia: 'mensual', frecuencia: 1, diaPago: 'dia:10',
       fechaInicio: desplazar(-6), fechaFin: null, cuenta: 'cc', activo: true, tags: ['extra'], escenarioIds: [] },
     { _id: 'e8', concepto: 'Reforma baño', cuantia: 3200, tipo: 'gasto', clasificacion: 'deseo',
-      tipoFrecuencia: 'unico', frecuencia: 1, diaPago: 'dia:8',
+      tipoFrecuencia: 'extraordinario', frecuencia: 1, diaPago: 'dia:8',
       fechaInicio: desplazar(4), fechaFin: null, cuenta: 'aho', activo: true, tags: ['obras'], escenarioIds: [] },
     { _id: 'e9', concepto: 'Luz y gas', cuantia: 95, tipo: 'gasto', clasificacion: 'basico',
       tipoFrecuencia: 'mensual', frecuencia: 1, diaPago: 'dia:14',
@@ -69,6 +69,12 @@
     { _id: 'e10', concepto: 'Ocio y varios', cuantia: 250, tipo: 'gasto', clasificacion: 'deseo',
       tipoFrecuencia: 'mensual', frecuencia: 1, diaPago: 'dia:28',
       fechaInicio: desplazar(-12), fechaFin: null, cuenta: 'cc', activo: true, tags: ['varios'], escenarioIds: [] },
+    // Gasto único y gordo a tres meses: hunde la cuenta corriente por debajo de
+    // su margen de liquidez y es lo que hace que los avisos del dashboard y la
+    // tarjeta de gastos extraordinarios tengan algo que enseñar.
+    { _id: 'e11', concepto: 'Entrada coche nuevo', cuantia: 14000, tipo: 'gasto', clasificacion: 'deseo',
+      tipoFrecuencia: 'extraordinario', frecuencia: 1, diaPago: 'dia:10',
+      fechaInicio: desplazar(3), fechaFin: null, cuenta: 'cc', activo: true, tags: ['coche'], escenarioIds: [] },
   ]);
 
   set('state_nominas', [
@@ -154,6 +160,10 @@
     tramosGananciasCapital: [[0, 19], [6000, 21], [50000, 23], [200000, 27], [300000, 28]],
     onboardingDone: true, showExecSummary: true, colchonTipo: 'meses', colchonFijo: 0,
     escenarioActivo: null, activeTagsFilter: [], tagCategorias: ['vivienda'], tagGrupos: [],
+    margenesSeguridad: [
+      { _id: 'm1', nombre: 'Liquidez cuenta corriente', activo: true, cuentas: ['cc'],
+        puntos: [{ _id: 'mp1', fecha: desplazar(-12), tipo: 'fijo', importe: 6000 }] },
+    ],
     saludUmbralAhorroVerde: 20, saludUmbralAhorroAmarillo: 10, saludUmbralDTIVerde: 30,
     saludUmbralDTIAmarillo: 40, saludRegla: [50, 30, 20], saludExcluirHipoteca: false,
     saludTagHipoteca: 'hipoteca', storageMode: 'local', autoSave: false, autoSaveInterval: 15,
@@ -161,4 +171,20 @@
   });
 
   localStorage.setItem('financeapp_session', JSON.stringify({ modo: 'local', creadaEn: Date.now(), ultimoUso: Date.now() }));
+
+  // Autocomprobación. El motor solo entiende tres periodicidades; cualquier otra
+  // proyecta CERO eventos sin quejarse, y entonces media aplicación sale a 0 € y
+  // el QA da por buena una pantalla vacía. Ya ha pasado dos veces con estos
+  // datos: primero con `nombre`/`importe` en vez de `concepto`/`cuantia`, y
+  // después con `tipoFrecuencia: 'anual'` y `'unico'`, que no existen. Como el
+  // piloto cuenta los console.error, un fallo aquí tiñe el informe de rojo.
+  var FRECUENCIAS = ['mensual', 'diaria', 'extraordinario'];
+  JSON.parse(localStorage.getItem(P + 'state_expenses')).forEach(function (e) {
+    if (FRECUENCIAS.indexOf(e.tipoFrecuencia) < 0) {
+      console.error('[datos QA] ' + e._id + ' (' + e.concepto + ') usa tipoFrecuencia "' + e.tipoFrecuencia + '", que el motor ignora: proyectará 0 €.');
+    }
+    if (e.concepto === undefined || e.cuantia === undefined) {
+      console.error('[datos QA] ' + e._id + ' no está en la forma canónica (concepto/cuantia).');
+    }
+  });
 })();

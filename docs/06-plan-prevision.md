@@ -156,6 +156,46 @@ mismo que pasó con el doble conteo del cierre de mes.
 hasta que abres la vista de márgenes. Debería estar arriba del dashboard:
 «el 12 de marzo bajas de tu colchón». Coste bajo, el cálculo ya existe.
 
+**Hecho** (`src/engine/avisos.ts`, tarjeta «Lo que viene» del dashboard).
+
+#### Lo que costó: el cálculo existía, pero estaba roto
+
+«El cálculo ya existe» resultó ser optimista. Al sembrar el QA con un margen
+acotado a una cuenta y un gasto que la hunde, el aviso no salía. El motivo
+estaba en `saldosPorCuentaEnExtracto`:
+
+```js
+running[ev.cuenta] += ev.cuantia;   // ← siempre suma
+```
+
+`cuantia` es la **magnitud** —un gasto de 950 € se emite como `950`, no como
+`−950`— y el signo vive en `delta`, que pone `generarExtracto`. Sumando
+`cuantia` a pelo, **el saldo de cada cuenta solo subía**, gastos incluidos, así
+que un margen acotado a cuentas concretas **no saltaba nunca**. El margen global
+sí funcionaba, porque ese usa `saldoAcum`, que sí viene con signo.
+
+Arreglado en el motor y en el legacy a la vez, con un test de comportamiento
+—no solo de paridad, que era verde con el bug en los dos lados—.
+
+#### Tres reglas para que un aviso siga siendo un aviso
+
+1. **Uno por causa.** Una proyección que va y viene del colchón produce un cruce
+   por vaivén. Solo importa el primero.
+2. **Horizonte según gravedad.** Números rojos se avisan a un año; el resto, a
+   cuatro meses. Rozar el colchón dentro de diez meses está dentro del ruido, y
+   avisar de eso enseña a ignorar los avisos.
+3. **Lo que cabe en el margen de error no se afirma.** Aquí las dos
+   funcionalidades se encuentran: si la banda de confianza (§3.1) a esa fecha es
+   de ±2.000 € y la proyección se pasa del colchón por 300 €, el aviso dice
+   «podrías bajar», no «bajas». El motor no depende de contabilidad: recibe una
+   función y, sin ella, no matiza nada.
+
+El colchón global se enchufa al mismo mecanismo envolviéndolo como un margen más
+(`colchonComoMargen`), en vez de aproximarlo por su valor de hoy: tiene
+waypoints igual que un margen y `detectarCrucesMargenes` ya los resuelve fecha a
+fecha. Hay un test que exige que el objetivo resultante coincida con
+`calcColchonEnFecha` en varias fechas y configuraciones.
+
 ### 3.3 Deshacer
 
 Borrar un gasto, una cuenta o una transacción es inmediato e irreversible. En una
@@ -190,11 +230,11 @@ Primero lo que arregla el bucle, después lo que lo aprovecha.
 3. **Importar CSV** — arregla «registras». ✅
 4. **Cierre de mes** — arregla «comparas» y «ajustas». ✅
 5. **Banda de confianza** (§3.1) — necesita 3 y 4 en uso. ✅
-6. Avisos con antelación (§3.2). ⬜
+6. **Avisos con antelación** (§3.2). ✅
 7. Deshacer (§3.3). ⬜
 8. Búsqueda global (§3.4). ⬜
 
-Del 6 en adelante queda propuesto, no hecho: conviene decidir antes dónde viven.
+Del 7 en adelante queda propuesto, no hecho: conviene decidir antes dónde viven.
 
 La banda gana valor sola con el tiempo: hoy se mide sobre seis meses, y cada
 cierre de mes que se hace la estrecha, porque σ_deriva baja con √n. Es la primera

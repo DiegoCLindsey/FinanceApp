@@ -14,6 +14,7 @@ import * as core from './core';
 import * as engine from './engine/statement';
 import * as analysis from './engine/analysis';
 import * as margins from './engine/margins';
+import * as avisos from './engine/avisos';
 import * as optimizer from './engine/optimizer';
 import * as dashboard from './engine/dashboard';
 import { proyectarGastos } from './engine/providers/expenses';
@@ -47,7 +48,7 @@ import { createLedger, type Ledger } from './accounting/ledger';
 import { createTagService, type TagService } from './accounting/tags';
 import { createPrecisionAnalyzer, type PrecisionAnalyzer } from './accounting/precision';
 import { createAdjuster, sugerirAjuste, type Adjuster } from './accounting/adjust';
-import { bandaDeConfianza, describirBanda, medirVariabilidad } from './accounting/confianza';
+import { bandaAcumulada, bandaDeConfianza, describirBanda, medirVariabilidad } from './accounting/confianza';
 import { createSessionService, vigilarInactividad, OPCIONES_AUTOLOGOUT, type SessionService } from './auth/session';
 
 export interface FinanceAppNamespace {
@@ -71,6 +72,8 @@ export interface FinanceAppNamespace {
     };
     analysis: typeof analysis;
     margins: typeof margins;
+    /** Avisos con antelación sobre los cruces ya detectados. */
+    avisos: typeof avisos;
     optimizer: typeof optimizer;
     dashboard: typeof dashboard;
   };
@@ -108,6 +111,7 @@ export interface FinanceAppNamespace {
     /** Banda de confianza de la proyección, medida con la contabilidad real. */
     medirVariabilidad: typeof medirVariabilidad;
     bandaDeConfianza: typeof bandaDeConfianza;
+    bandaAcumulada: typeof bandaAcumulada;
     describirBanda: typeof describirBanda;
   };
 }
@@ -238,6 +242,7 @@ function bootstrap(): FinanceAppNamespace {
       },
       analysis,
       margins,
+      avisos,
       optimizer,
       dashboard,
     },
@@ -250,7 +255,7 @@ function bootstrap(): FinanceAppNamespace {
       vigilar: (onCaducada: () => void) => vigilarInactividad({ sesion, onCaducada }),
       opciones: OPCIONES_AUTOLOGOUT,
     }),
-    accounting: { ledger, tags, precision, adjuster, sugerirAjuste, medirVariabilidad, bandaDeConfianza, describirBanda },
+    accounting: { ledger, tags, precision, adjuster, sugerirAjuste, medirVariabilidad, bandaDeConfianza, bandaAcumulada, describirBanda },
   };
 }
 

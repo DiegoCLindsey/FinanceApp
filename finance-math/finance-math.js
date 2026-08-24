@@ -577,11 +577,21 @@ const FinanceMath = (() => {
 
   // Builds a per-account running saldo array parallel to extracto
   // Starting from saldoRealCuenta, applies each event's cuantia to ev.cuenta
+  // Efecto de un evento sobre el saldo: negativo si sale dinero. `cuantia` es la
+  // MAGNITUD (un gasto de 950 se emite como 950, no como -950) y el signo vive
+  // en `delta`, que pone generarExtracto. Sumar `cuantia` a pelo hacia que todas
+  // las cuentas subieran siempre, gastos incluidos, y por eso un margen acotado
+  // a cuentas concretas no saltaba nunca.
+  function efectoEvento(ev) {
+    if (typeof ev.delta === 'number') return ev.delta;
+    return ev.tipo === 'ingreso' ? Math.abs(ev.cuantia) : -Math.abs(ev.cuantia);
+  }
+
   function saldosPorCuentaEnExtracto(extracto, accounts) {
     const running = {};
     for (const acc of accounts) running[acc._id] = saldoRealCuenta(acc);
     return extracto.map(ev => {
-      if (ev.cuenta && running[ev.cuenta] !== undefined) running[ev.cuenta] += ev.cuantia;
+      if (ev.cuenta && running[ev.cuenta] !== undefined) running[ev.cuenta] += efectoEvento(ev);
       return { fecha: ev.fecha, saldos: { ...running } };
     });
   }

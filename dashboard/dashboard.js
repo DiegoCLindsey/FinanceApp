@@ -428,6 +428,58 @@ const DashboardModule = (() => {
       </div>
 
       ${(()=>{
+        // Avisos con antelación. El cálculo de los cruces ya existía, pero solo
+        // se veía como un contador dentro del resumen ejecutivo o entrando en la
+        // vista de márgenes: un aviso que hay que ir a buscar no avisa de nada.
+        const _av = window.FinanceApp?.engine?.avisos;
+        if (!_av?.construirAvisos) return '';
+        try {
+          const colchonMargen = _av.colchonComoMargen(config);
+          const margenesParaAvisos = colchonMargen ? [...margenesActivosRender, colchonMargen] : margenesActivosRender;
+          const cruces = FinanceMath.detectarCrucesMargenes(margenesParaAvisos, extracto, saldosPorCuentaRender, expenses, config, loans);
+
+          // Si hay banda de confianza, un cruce más pequeño que ella no se
+          // afirma: se dice «podrías». Sin contabilidad suficiente no se pasa
+          // nada y los avisos se dan tal cual.
+          let incertidumbre;
+          const _acc = window.FinanceApp?.accounting;
+          if (_acc?.medirVariabilidad) {
+            const v = _acc.medirVariabilidad(_acc.precision.analizarTodas(expenses));
+            if (v.fiable && v.sigmaMensual > 0) {
+              incertidumbre = dias => _acc.bandaAcumulada(v.sigmaMensual, dias / 30, 1, v.sigmaDeriva);
+            }
+          }
+
+          const avisos = _av.construirAvisos(
+            { puntosCriticos: FinanceMath.detectarPuntosCriticos(extracto, 0), crucesMargenes: cruces },
+            { hoy: _fechaLocal(new Date()), incertidumbre },
+          );
+          if (!avisos.length) return '';
+
+          return `<div class="card mb-14" style="padding:12px 16px">
+            <div class="card-title mb-10">🔔 Lo que viene</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              ${avisos.map(a => {
+                const color = a.gravedad === 'critico' ? 'var(--red)' : 'var(--yellow)';
+                return `<div style="display:flex;gap:10px;align-items:flex-start">
+                  <span style="color:${color};flex-shrink:0;line-height:1.5">${a.gravedad === 'critico' ? '●' : '▲'}</span>
+                  <div style="min-width:0">
+                    <div style="font-size:13px;color:var(--text)">
+                      ${a.titulo} <span style="color:${color}">${a.plazo}</span>${a.incierto ? ' <span style="color:var(--text3);font-size:11px">(dentro del margen de error)</span>' : ''}
+                    </div>
+                    <div style="font-size:11px;color:var(--text3);margin-top:1px">${a.detalle}</div>
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>`;
+        } catch (e) {
+          console.warn('[dashboard] no se han podido construir los avisos:', e.message);
+          return '';
+        }
+      })()}
+
+      ${(()=>{
         const hoyD = _fechaLocal(new Date());
         const en7D  = _fechaLocal(new Date(Date.now()+7*86400000));
         const prox  = extracto.filter(e=>e.fecha>=hoyD&&e.fecha<=en7D&&e.tipo==='gasto'&&e.sourceType!=='transfer-out').slice(0,6);

@@ -122,12 +122,25 @@ export interface SaldosSnapshot {
   saldos: Record<string, number>;
 }
 
+/**
+ * Efecto de un evento sobre el saldo: negativo si sale dinero.
+ *
+ * `cuantia` es la MAGNITUD —los proveedores emiten un gasto de 950 € como
+ * `cuantia: 950`, no como −950— y el signo vive en `delta`, que pone
+ * `generarExtracto`. Sumar `cuantia` a pelo hacía que todas las cuentas
+ * subieran siempre, gastos incluidos.
+ */
+function efecto(ev: CashEvent): number {
+  if (typeof ev.delta === 'number') return ev.delta;
+  return ev.tipo === 'ingreso' ? Math.abs(ev.cuantia) : -Math.abs(ev.cuantia);
+}
+
 /** Saldo corriente por cuenta, paralelo al extracto. */
 export function saldosPorCuentaEnExtracto(extracto: CashEvent[], accounts: (AccountLike & { _id: string })[]): SaldosSnapshot[] {
   const running: Record<string, number> = {};
   for (const acc of accounts) running[acc._id] = saldoRealCuenta(acc);
   return extracto.map((ev) => {
-    if (ev.cuenta && running[ev.cuenta] !== undefined) running[ev.cuenta] += ev.cuantia;
+    if (ev.cuenta && running[ev.cuenta] !== undefined) running[ev.cuenta] += efecto(ev);
     return { fecha: ev.fecha, saldos: { ...running } };
   });
 }
