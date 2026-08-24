@@ -33,6 +33,7 @@ import { FEATURES, featuresPorGrupo } from './flags/registry';
 import { createFeaturesModal } from './ui/features-modal';
 import { createGating } from './ui/gating';
 import { instalarDeshacer } from './ui/deshacer';
+import { instalarBuscador } from './ui/buscador';
 import { instalarConsultaFlags } from './flags/guard';
 import { createFeatureRegistry, type FeatureRegistry } from './app/feature-registry';
 import { createAccountingFeature } from './features/accounting';
@@ -98,6 +99,8 @@ export interface FinanceAppNamespace {
      * Devuelve el `detener`.
      */
     instalarDeshacer: () => () => void;
+    /** Monta la búsqueda global (Ctrl+K y lupa). Devuelve el `detener`. */
+    instalarBuscador: () => () => void;
   };
   /** Registro de vistas del paquete nuevo; lo consulta el router del shell. */
   app: FeatureRegistry;
@@ -272,6 +275,25 @@ function bootstrap(): FinanceAppNamespace {
             g.Router?.rerender?.();
           },
         }),
+      instalarBuscador: () =>
+        instalarBuscador({
+          // Lecturas directas y no `snapshot()`: esto se llama en CADA tecla y
+          // snapshot clona el estado entero. La búsqueda solo lee.
+          estado: () => ({
+            accounts: store.get('accounts'),
+            expenses: store.get('expenses'),
+            loans: store.get('loans'),
+            nominas: store.get('nominas'),
+            escenarios: store.get('escenarios'),
+            planes: store.get('planes'),
+            goals: store.get('goals'),
+            transacciones: store.get('transacciones'),
+          }),
+          // Lo que vive en una vista apagada por un flag no se ofrece: llevaría
+          // a una pantalla que no existe.
+          rutasDisponibles: () => app.routes(),
+          navegar: (ruta) => (globalThis as { Router?: { navigate?: (v: string) => void } }).Router?.navigate?.(ruta),
+        }),
     },
     app,
     session: Object.assign(sesion, {
@@ -327,6 +349,7 @@ if (app) {
       vigilando = true;
       app.ui.watchGating();
       app.ui.instalarDeshacer();
+      app.ui.instalarBuscador();
     }
   };
   if (document.readyState === 'loading') {

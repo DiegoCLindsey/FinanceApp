@@ -94,6 +94,18 @@
 .toast-info { border-color: rgba(19,196,224,0.42); color: var(--blue); }
 @keyframes toastIn { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
+/* ---- Buscador global ---- */
+.buscador-fila {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; text-align: left; padding: 8px 10px; border-radius: 12px;
+  background: transparent; border: 1px solid transparent; color: var(--text);
+  font-family: var(--font-sans); cursor: pointer;
+}
+.buscador-fila:hover { background: var(--surface); }
+/* La fila activa es la que se abre con Intro: tiene que distinguirse del hover,
+   porque con teclado el ratón puede estar encima de otra distinta. */
+.buscador-fila.activa { background: var(--surface-strong); border-color: var(--hairline); }
+
 /* ---- Modal ---- */
 .modal-overlay { position: fixed; inset: 0; z-index: 500; background: rgba(3,7,14,0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 16px; animation: fade-in 0.18s ease; }
 /* Tinta opaca, no cristal: encima de un gráfico a todo color el texto de un

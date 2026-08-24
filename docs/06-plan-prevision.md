@@ -229,7 +229,30 @@ tocado otras cosas y devolver la fila a su sitio sorprende más que ayuda—.
 ### 3.4 Búsqueda global
 
 Con doce apartados, encontrar «aquel recibo del seguro» obliga a recordar en qué
-vista estaba.
+vista estaba. Es pedirle al usuario que se sepa la arquitectura de la aplicación
+para poder usarla.
+
+**Hecho** (`src/app/buscar.ts` + `src/ui/buscador.ts`, Ctrl/⌘+K o la lupa de la
+barra superior).
+
+Busca a la vez en gastos, ingresos, cuentas, préstamos, nóminas, supuestos,
+planes, objetivos —incluidos los de dentro de cada plan, que es lo que el usuario
+tiene en la cabeza— y movimientos importados, y lleva a la vista donde vive lo
+encontrado.
+
+Tres decisiones que cambian lo útil que resulta:
+
+- **Ordena por DÓNDE empieza la coincidencia, no por cuánta hay.** Buscando
+  «seg»: primero «Seguro coche» (empieza el nombre), luego «Préstamo segundo»
+  (empieza una palabra), luego «Riesgo segmentado» (a mitad de palabra). A
+  igualdad manda el más corto, que es el más específico.
+- **Se normalizan las tildes.** Nadie escribe «Nómina» con tilde cuando busca.
+- **Lo que vive en una vista apagada por un flag no se ofrece**, porque llevaría
+  a una pantalla que no existe.
+
+Y dos detalles: con menos de dos letras no lista nada —coincidiría medio catálogo
+y la lista dejaría de ayudar— y los nombres se pintan con `textContent`, que los
+escribe el usuario.
 
 ---
 
@@ -255,9 +278,12 @@ Primero lo que arregla el bucle, después lo que lo aprovecha.
 5. **Banda de confianza** (§3.1) — necesita 3 y 4 en uso. ✅
 6. **Avisos con antelación** (§3.2). ✅
 7. **Deshacer** (§3.3). ✅
-8. Búsqueda global (§3.4). ⬜
+8. **Búsqueda global** (§3.4). ✅
 
-Del 8 queda propuesto, no hecho: conviene decidir antes dónde vive.
+El plan queda ejecutado entero. Lo que sigue pendiente son las **deudas** de la
+§2 —las tres fuentes de verdad del saldo de una cuenta y `historialPrecios`—, que
+no son funcionalidades sino migraciones, y las mejoras de la §4 que siguen sin
+tocar: unificar `tagCategorias` con `tagGrupos` y rebajar el onboarding.
 
 La banda gana valor sola con el tiempo: hoy se mide sobre seis meses, y cada
 cierre de mes que se hace la estrecha, porque σ_deriva baja con √n. Es la primera
