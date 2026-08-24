@@ -13,19 +13,27 @@ const DataIO = (() => {
   let _autoSaveTimer = null;
 
   // ── Export JSON ─────────────────────────────────────────────────────────────
+  // La lista de colecciones NO se escribe aquí a mano: sale de `state/colecciones`,
+  // que la deriva del esquema. Cuando estaba escrita a mano se quedó atrás y los
+  // planes, la contabilidad y los puntos de control no entraban en la copia.
+  function _snapshotCompleto() {
+    const nuevo = window.FinanceApp?.datos?.snapshot?.();
+    if (nuevo) return nuevo;
+    // Sin el paquete nuevo se cae a la lista mínima de siempre. Es peor, pero es
+    // mejor que no poder exportar nada.
+    console.warn('[DataIO] El paquete nuevo no está: la copia irá sin las colecciones nuevas.');
+    const out = {};
+    for (const k of ['loans','expenses','accounts','goals','nominas','inflacion',
+                     'tramosGananciasCapitalHistorico','tramosIRPFHistorico','escenarios','config']) {
+      out[k] = State.get(k) ?? (k === 'config' ? {} : []);
+    }
+    return out;
+  }
+
   function exportJSON() {
     const snapshot = {
       _v: 2, _app: 'financeapp', _ts: new Date().toISOString(),
-      loans:      State.get('loans')      || [],
-      expenses:   State.get('expenses')   || [],
-      accounts:   State.get('accounts')   || [],
-      goals:      State.get('goals')      || [],
-      nominas:    State.get('nominas')    || [],
-      inflacion:  State.get('inflacion')  || [],
-      tramosGananciasCapitalHistorico: State.get('tramosGananciasCapitalHistorico') || [],
-      tramosIRPFHistorico: State.get('tramosIRPFHistorico') || [],
-      escenarios: State.get('escenarios') || [],
-      config:     State.get('config')     || {},
+      ..._snapshotCompleto(),
     };
     const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
@@ -71,16 +79,32 @@ const DataIO = (() => {
     const hasData = loans.length || expenses.length || (accounts.length > 1);
     if (hasData && !window.confirm(`¿Sustituir los datos actuales con el backup?\n(${loans.length} préstamos, ${expenses.length} gastos, ${accounts.length} cuentas)`)) return;
 
-    State.set('loans',      loans);
-    State.set('expenses',   expenses);
-    State.set('accounts',   accounts);
-    State.set('goals',      goals);
-    State.set('nominas',    nominas);
-    State.set('inflacion',  inflacion);
-    State.set('tramosGananciasCapitalHistorico', tramosGananciasCapitalHistorico);
-    State.set('tramosIRPFHistorico', tramosIRPFHistorico);
-    State.set('escenarios', escenarios);
-    State.set('config',     config);
+    // Se aplican TODAS las colecciones del esquema, no una lista escrita a mano:
+    // así un backup con planes o con contabilidad los restaura de verdad. Y lo
+    // que el backup no traiga se queda como está, que es lo correcto al importar
+    // una copia anterior a que existiera esa colección.
+    const aplicar = window.FinanceApp?.datos?.aplicar;
+    if (aplicar) {
+      aplicar(data);
+      const faltan = window.FinanceApp?.datos?.faltantes?.(data) ?? [];
+      if (faltan.length) {
+        console.info('[DataIO] El backup no traía estas colecciones y se conservan las de este dispositivo:', faltan.join(', '));
+      }
+      // El State legacy tiene su propia copia en memoria: hay que releerla o el
+      // cuadro de mando sigue pintando lo de antes.
+      State.load();
+    } else {
+      State.set('loans',      loans);
+      State.set('expenses',   expenses);
+      State.set('accounts',   accounts);
+      State.set('goals',      goals);
+      State.set('nominas',    nominas);
+      State.set('inflacion',  inflacion);
+      State.set('tramosGananciasCapitalHistorico', tramosGananciasCapitalHistorico);
+      State.set('tramosIRPFHistorico', tramosIRPFHistorico);
+      State.set('escenarios', escenarios);
+      State.set('config',     config);
+    }
 
     State.ensureDefaultAccount();
     const accs = (State.get('accounts')||[]).map(a => ({
@@ -135,6 +159,11 @@ const DataIO = (() => {
     const ms = Math.max(1, cfg.autoSaveInterval || 15) * 60 * 1000;
     _autoSaveTimer = setInterval(async () => {
       try {
+        // Por el aviso, para que el temporizador enseñe el mismo
+        // «Subiendo… → ¡Guardado!» que el botón y no suba dos veces a la vez si
+        // el usuario acaba de pulsarlo. Sin el paquete nuevo, se sube directo.
+        const aviso = window.FinanceApp?.ui?.avisoGuardado;
+        if (aviso) { await aviso.guardarAhora(); return; }
         if      (FirebaseService.isConnected()) await FirebaseService.uploadBackup();
         else if (DropboxService.isConnected())  await DropboxService.uploadBackup();
       } catch (e) { console.warn('Auto-save error:', e.message); }

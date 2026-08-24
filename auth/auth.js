@@ -181,10 +181,17 @@ const DropboxService = (() => {
   async function uploadBackup() {
     if (!isConnected()) throw new Error('No conectado a Dropbox.');
 
-    const snapshot = {};
-    for (const k of ['loans', 'expenses', 'accounts', 'history', 'goals', 'nominas', 'inflacion', 'tramosGananciasCapitalHistorico', 'tramosIRPFHistorico', 'escenarios', 'config']) {
-      snapshot[k] = State.get(k);
-    }
+    // Ver la nota en firebase-service.js: del almacenamiento y con la lista del
+    // esquema, que es la única que no se queda atrás.
+    const snapshot = window.FinanceApp?.datos?.snapshot?.()
+      ?? (() => {
+        console.warn('[Dropbox] El paquete nuevo no está: la copia irá incompleta.');
+        const out = {};
+        for (const k of ['loans', 'expenses', 'accounts', 'goals', 'nominas', 'inflacion', 'tramosGananciasCapitalHistorico', 'tramosIRPFHistorico', 'escenarios', 'config']) {
+          out[k] = State.get(k);
+        }
+        return out;
+      })();
 
     // Cifrado portátil: sal embebida, no depende del localStorage local
     const cipher = await CryptoService.encryptPortable(_passphrase, snapshot);
@@ -382,12 +389,25 @@ const AuthModule = (() => {
     ? new Date(ms).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })
     : 'fecha desconocida';
 
-  /** Vuelca una copia de la nube al almacenamiento local. */
+  /**
+   * Vuelca una copia de la nube al almacenamiento local.
+   *
+   * Y RECARGA el store del paquete nuevo. Esto último no es un detalle: el store
+   * se carga cuando arranca la página, y esta restauración pasa después, al
+   * entrar. Sin releer, su copia en memoria seguía siendo la de antes de
+   * restaurar, y la primera vez que el usuario tocaba cualquier cosa desde una
+   * vista nueva se reescribía el almacenamiento con los datos VIEJOS. Era una de
+   * las dos causas de «recargo y aparecen datos antiguos».
+   */
   function _volcar(backup, fechaNube) {
-    for (const [k, v] of Object.entries(backup)) {
-      // setRestaurando: esto no es una modificación del usuario, así que no
-      // debe mover el sello. Después se sella con la fecha de la copia.
-      if (v !== undefined) StorageAdapter.setRestaurando('state_' + k, v);
+    const aplicar = window.FinanceApp?.datos?.aplicar;
+    if (aplicar) {
+      // sellar:false → lo que baja de la nube no es una modificación tuya.
+      aplicar(backup, { sellar: false });
+    } else {
+      for (const [k, v] of Object.entries(backup)) {
+        if (v !== undefined) StorageAdapter.setRestaurando('state_' + k, v);
+      }
     }
     StorageAdapter.sellar(fechaNube || Date.now());
   }

@@ -26,6 +26,8 @@ import { proyectarAportaciones } from './engine/providers/contributions';
 import { proyectarRetencionesFiscales } from './engine/providers/withholdings';
 import { proyectarInflacionGastos, proyectarPerdidaAhorro } from './engine/providers/inflation-events';
 import { createStore, type Store } from './state/store';
+import { crearRegistroCambios, type RegistroCambios } from './state/cambios';
+import { aplicarCopia, COLECCIONES, faltantesEnCopia, snapshotParaCopia } from './state/colecciones';
 import { adoptarClavesHuerfanas, createLocalStorageAdapter } from './state/storage/local';
 import { SCHEMA_VERSION } from './state/schema';
 import { createFlags, type Flags } from './flags/service';
@@ -34,6 +36,7 @@ import { createFeaturesModal } from './ui/features-modal';
 import { createGating } from './ui/gating';
 import { instalarDeshacer } from './ui/deshacer';
 import { instalarBuscador } from './ui/buscador';
+import { instalarAvisoGuardado, type Guardado } from './ui/guardado';
 import { instalarConsultaFlags } from './flags/guard';
 import { createFeatureRegistry, type FeatureRegistry } from './app/feature-registry';
 import { createAccountingFeature } from './features/accounting';
@@ -101,6 +104,11 @@ export interface FinanceAppNamespace {
     instalarDeshacer: () => () => void;
     /** Monta la búsqueda global (Ctrl+K y lupa). Devuelve el `detener`. */
     instalarBuscador: () => () => void;
+    /**
+     * Monta el aviso de «cambios sin guardar». Lo consume `data-io` para que el
+     * temporizador de autoguardado enseñe el mismo «Subiendo… → ¡Guardado!».
+     */
+    avisoGuardado: Guardado | null;
   };
   /** Registro de vistas del paquete nuevo; lo consulta el router del shell. */
   app: FeatureRegistry;
@@ -109,6 +117,27 @@ export interface FinanceAppNamespace {
     /** Arranca la vigilancia de inactividad; devuelve el `detener`. */
     vigilar: (onCaducada: () => void) => () => void;
     opciones: typeof OPCIONES_AUTOLOGOUT;
+  };
+  /**
+   * Señal única de «ha cambiado algo». De ella cuelgan el recálculo perezoso de
+   * las gráficas y el aviso de cambios sin guardar. Ver `state/cambios`.
+   */
+  cambios: RegistroCambios;
+  /** Copias de seguridad: una sola lista de colecciones para las cuatro rutas. */
+  datos: {
+    /** Todas las colecciones del esquema. */
+    colecciones: typeof COLECCIONES;
+    /** Copia completa leída del almacenamiento (no de una copia en memoria). */
+    snapshot: () => Record<string, unknown>;
+    /**
+     * Vuelca una copia y RECARGA el store. Sin la recarga, el store se queda
+     * con lo de antes y la primera escritura resucita los datos viejos.
+     */
+    aplicar: (copia: Record<string, unknown>, opciones?: { sellar?: boolean }) => string[];
+    /** Colecciones que la copia no trae y que se quedan como estaban. */
+    faltantes: (copia: Record<string, unknown>) => string[];
+    /** Relee el almacenamiento en el store (tras una escritura externa). */
+    recargar: () => void;
   };
   /** Contabilidad real (F4): ledger, etiquetas compartidas y precisión. */
   accounting: {
@@ -134,11 +163,21 @@ function bootstrap(): FinanceAppNamespace {
       console.info(`[FinanceApp] Recuperadas claves escritas fuera del espacio de nombres: ${adoptadas.join(', ')}`);
     }
   }
-  const store = createStore({ adapter: createLocalStorageAdapter() });
+  // El adapter se guarda: las copias de seguridad se leen y se escriben DESDE
+  // EL ALMACENAMIENTO, no desde ninguna copia en memoria. Ver `state/colecciones`.
+  const almacen = createLocalStorageAdapter();
+  const store = createStore({ adapter: almacen });
+  const cambios = crearRegistroCambios();
   const { applied } = store.load();
   if (applied.length > 0) {
     console.info(`[FinanceApp] Migraciones aplicadas: ${applied.join(', ')} (esquema v${SCHEMA_VERSION})`);
   }
+  // Cualquier escritura en el store marca los datos como cambiados. Va aquí y
+  // no en cada vista por lo mismo que el deshacer: el store es el embudo por el
+  // que pasan todos los cambios, así que engancharlo una vez lo cubre todo y
+  // ninguna pantalla futura puede olvidarse de avisar.
+  store.subscribe((clave) => cambios.marcar(clave));
+
   const flags = createFlags(store);
   // Segunda línea de defensa: a partir de aquí, las operaciones de las
   // funcionalidades opcionales fallan si su flag está apagado en vez de
@@ -275,6 +314,9 @@ function bootstrap(): FinanceAppNamespace {
             g.Router?.rerender?.();
           },
         }),
+      // Lo rellena `arrancarAvisoGuardado()` al montar el shell; hasta entonces
+      // es null y quien lo consulte debe comprobarlo.
+      avisoGuardado: null as Guardado | null,
       instalarBuscador: () =>
         instalarBuscador({
           // Lecturas directas y no `snapshot()`: esto se llama en CADA tecla y
@@ -300,6 +342,37 @@ function bootstrap(): FinanceAppNamespace {
       vigilar: (onCaducada: () => void) => vigilarInactividad({ sesion, onCaducada }),
       opciones: OPCIONES_AUTOLOGOUT,
     }),
+    cambios,
+    datos: {
+      colecciones: COLECCIONES,
+      snapshot: () => snapshotParaCopia(almacen) as Record<string, unknown>,
+      aplicar: (copia, { sellar = true } = {}) => {
+        // `setRestaurando` del legacy escribe SIN mover el sello de última
+        // modificación: lo que baja de la nube no es una modificación tuya.
+        const escribir = sellar
+          ? (k: string, v: unknown) => almacen.set(k, v)
+          : (k: string, v: unknown) => {
+              const legacy = (globalThis as { StorageAdapter?: { setRestaurando?: (k: string, v: unknown) => void } }).StorageAdapter;
+              if (legacy?.setRestaurando) legacy.setRestaurando(k, v);
+              else almacen.set(k, v);
+            };
+        const escritas = aplicarCopia(escribir, copia);
+        // Recargar NO es opcional. El store se carga al arrancar la página, y
+        // una restauración o un import ocurren después: sin releer, su copia en
+        // memoria sigue siendo la de antes y la siguiente escritura devuelve al
+        // almacenamiento los datos viejos. Es la causa de «recargo y vuelven
+        // datos antiguos». Además, así una copia con esquema viejo pasa por las
+        // migraciones en vez de quedarse a medias.
+        store.load();
+        cambios.marcar('copia-restaurada');
+        return escritas;
+      },
+      faltantes: (copia) => faltantesEnCopia(copia),
+      recargar: () => {
+        store.load();
+        cambios.marcar('recarga-externa');
+      },
+    },
     accounting: { ledger, tags, precision, adjuster, sugerirAjuste, medirVariabilidad, bandaDeConfianza, bandaAcumulada, describirBanda },
   };
 }
@@ -350,6 +423,23 @@ if (app) {
       app.ui.watchGating();
       app.ui.instalarDeshacer();
       app.ui.instalarBuscador();
+      // El aviso de cambios sin guardar. Solo tiene sentido con un destino de
+      // copia configurado: sin nube no hay nada que subir y el aviso sería ruido.
+      const g = globalThis as {
+        FirebaseService?: { isConnected?: () => boolean; uploadBackup?: () => Promise<void> };
+        DropboxService?: { isConnected?: () => boolean; uploadBackup?: () => Promise<void> };
+      };
+      const destino = () =>
+        g.FirebaseService?.isConnected?.() ? g.FirebaseService : g.DropboxService?.isConnected?.() ? g.DropboxService : null;
+      app.ui.avisoGuardado = instalarAvisoGuardado({
+        cambios: app.cambios,
+        hayDestino: () => destino() !== null,
+        guardar: async () => {
+          const s = destino();
+          if (!s?.uploadBackup) throw new Error('No hay ningún destino de copia conectado.');
+          await s.uploadBackup();
+        },
+      });
     }
   };
   if (document.readyState === 'loading') {

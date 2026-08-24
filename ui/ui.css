@@ -94,6 +94,24 @@
 .toast-info { border-color: rgba(19,196,224,0.42); color: var(--blue); }
 @keyframes toastIn { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
+/* ---- Aviso de cambios sin guardar ---- */
+/* Ámbar mientras hay algo pendiente y verde al confirmar: el mismo código de
+   color que el resto de la aplicación usa para «ojo» y «hecho». */
+.toast-guardado { max-width: 420px; color: var(--text); font-weight: 400; }
+.toast-guardado--pendiente { border-color: rgba(255,176,32,0.42); }
+.toast-guardado--subiendo  { border-color: rgba(19,196,224,0.42); }
+.toast-guardado--guardado  { border-color: rgba(46,230,168,0.42); color: var(--accent); }
+.toast-guardado--error     { border-color: rgba(255,107,107,0.42); color: var(--red); }
+.guardado-giro {
+  width: 13px; height: 13px; flex-shrink: 0; border-radius: 50%;
+  border: 2px solid var(--hairline); border-top-color: var(--blue);
+  animation: guardado-giro 0.7s linear infinite;
+}
+@keyframes guardado-giro { to { transform: rotate(360deg); } }
+/* Sin animación para quien la haya desactivado en el sistema: el punto sigue
+   ahí, simplemente no da vueltas. */
+@media (prefers-reduced-motion: reduce) { .guardado-giro { animation: none; } }
+
 /* ---- Buscador global ---- */
 .buscador-fila {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;

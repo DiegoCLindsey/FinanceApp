@@ -304,11 +304,21 @@ const FirebaseService = (() => {
     if (!isConnected()) throw new Error('No autenticado en Firebase.');
     if (!_passphrase)   throw new Error('Clave de cifrado no disponible.');
 
-    const snapshot = {};
-    for (const k of ['loans','expenses','accounts','history','goals','nominas','inflacion',
-                     'tramosGananciasCapitalHistorico','tramosIRPFHistorico','escenarios','config']) {
-      snapshot[k] = State.get(k);
-    }
+    // Del ALMACENAMIENTO y con la lista del esquema, no de `State.get` con una
+    // lista escrita a mano. Lo de antes fallaba por los dos lados: `State` es
+    // una copia en memoria que puede ir por detrás de lo que hay en disco, y la
+    // lista no incluía planes, transacciones ni puntos de control, así que el
+    // planificador y la contabilidad no se subían a la nube. Nunca.
+    const snapshot = window.FinanceApp?.datos?.snapshot?.()
+      ?? (() => {
+        console.warn('[Firebase] El paquete nuevo no está: la copia irá incompleta.');
+        const out = {};
+        for (const k of ['loans','expenses','accounts','goals','nominas','inflacion',
+                         'tramosGananciasCapitalHistorico','tramosIRPFHistorico','escenarios','config']) {
+          out[k] = State.get(k);
+        }
+        return out;
+      })();
 
     const cipher = await CryptoService.encryptPortable(_passphrase, snapshot);
 
