@@ -335,3 +335,96 @@ describe('resolvers de tablas fiscales (cierra 1.3)', () => {
     expect(store.resolverTramosGanancias()(2026)).toEqual(store.get('config').tramosGananciasCapital);
   });
 });
+
+describe('deshacer el último borrado', () => {
+  const gasto = (concepto: string) =>
+    ({
+      concepto,
+      cuantia: 10,
+      tipo: 'gasto',
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+      tags: [],
+      activo: true,
+      escenarioIds: [],
+    }) as any;
+
+  function conTresGastos() {
+    const store = createStore({ adapter: createMemoryAdapter(), hoy: HOY });
+    store.load();
+    const a = store.addItem('expenses', gasto('Alquiler'));
+    const b = store.addItem('expenses', gasto('Luz'));
+    const c = store.addItem('expenses', gasto('Gimnasio'));
+    return { store, a, b, c };
+  }
+
+  it('sin borrados no hay nada que deshacer', () => {
+    const { store } = conTresGastos();
+    expect(store.borradoPendiente()).toBeNull();
+    expect(store.deshacerBorrado()).toBeNull();
+  });
+
+  it('devuelve el elemento a la posición que ocupaba, no al final', () => {
+    const { store, b } = conTresGastos();
+    store.removeItem('expenses', b._id);
+    expect(store.get('expenses').map((e) => e.concepto)).toEqual(['Alquiler', 'Gimnasio']);
+
+    expect(store.deshacerBorrado()?.item._id).toBe(b._id);
+    expect(store.get('expenses').map((e) => e.concepto)).toEqual(['Alquiler', 'Luz', 'Gimnasio']);
+  });
+
+  it('restaura el elemento entero, no una copia recortada', () => {
+    const { store, a } = conTresGastos();
+    store.removeItem('expenses', a._id);
+    store.deshacerBorrado();
+    expect(store.get('expenses')[0]).toMatchObject({ _id: a._id, concepto: 'Alquiler', cuantia: 10 });
+  });
+
+  it('si la lista ha encogido, se reinserta al final en vez de dejar un hueco', () => {
+    const { store, c, a, b } = conTresGastos();
+    store.removeItem('expenses', c._id); // estaba en el índice 2
+    store.removeItem('expenses', a._id);
+    store.removeItem('expenses', b._id);
+    // Solo se puede deshacer el último, y la lista está vacía.
+    expect(store.deshacerBorrado()?.item._id).toBe(b._id);
+    expect(store.get('expenses')).toHaveLength(1);
+  });
+
+  it('deshacer dos veces no duplica', () => {
+    const { store, b } = conTresGastos();
+    store.removeItem('expenses', b._id);
+    store.deshacerBorrado();
+    expect(store.deshacerBorrado()).toBeNull();
+    expect(store.get('expenses')).toHaveLength(3);
+  });
+
+  it('borrar algo que no existe no tapa el deshacer del borrado anterior', () => {
+    const { store, b } = conTresGastos();
+    store.removeItem('expenses', b._id);
+    store.removeItem('expenses', 'no-existe');
+    expect(store.borradoPendiente()?.item._id).toBe(b._id);
+    expect(store.get('expenses')).toHaveLength(2);
+  });
+
+  it('el borrado se persiste y el deshacer también', () => {
+    const adapter = createMemoryAdapter();
+    const store = createStore({ adapter, hoy: HOY });
+    store.load();
+    const x = store.addItem('expenses', gasto('Alquiler'));
+    store.removeItem('expenses', x._id);
+    expect(adapter.get<unknown[]>(`${KEY_PREFIX}expenses`)).toHaveLength(0);
+    store.deshacerBorrado();
+    expect(adapter.get<unknown[]>(`${KEY_PREFIX}expenses`)).toHaveLength(1);
+  });
+
+  it('funciona en cualquier colección, no solo en gastos', () => {
+    const store = createStore({ adapter: createMemoryAdapter(), hoy: HOY });
+    store.load();
+    const cuenta = store.addItem('accounts', { nombre: 'Ahorro', activo: true, saldoInicial: 100 } as any);
+    const antes = store.get('accounts').length;
+    store.removeItem('accounts', cuenta._id);
+    expect(store.get('accounts')).toHaveLength(antes - 1);
+    store.deshacerBorrado();
+    expect(store.get('accounts').map((a) => a.nombre)).toContain('Ahorro');
+  });
+});

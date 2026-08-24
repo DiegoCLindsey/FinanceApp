@@ -220,7 +220,6 @@ const DashboardModule = (() => {
     const saldosPorCuentaRender = FinanceMath.saldosPorCuentaEnExtracto(extracto, accounts);
     const margenesActivosRender = (config.margenesSeguridad||[]).filter(m => m.activo !== false);
     const alertasMargRender = FinanceMath.detectarCrucesMargenes(margenesActivosRender, extracto, saldosPorCuentaRender, expenses, config, loans);
-    const goals = State.get('goals') || [];
     if (activeTags.size===0) {
       const saved = config.activeTagsFilter;
       if (saved && saved.length > 0) saved.forEach(t=>activeTags.add(t));
@@ -429,6 +428,58 @@ const DashboardModule = (() => {
       </div>
 
       ${(()=>{
+        // Avisos con antelación. El cálculo de los cruces ya existía, pero solo
+        // se veía como un contador dentro del resumen ejecutivo o entrando en la
+        // vista de márgenes: un aviso que hay que ir a buscar no avisa de nada.
+        const _av = window.FinanceApp?.engine?.avisos;
+        if (!_av?.construirAvisos) return '';
+        try {
+          const colchonMargen = _av.colchonComoMargen(config);
+          const margenesParaAvisos = colchonMargen ? [...margenesActivosRender, colchonMargen] : margenesActivosRender;
+          const cruces = FinanceMath.detectarCrucesMargenes(margenesParaAvisos, extracto, saldosPorCuentaRender, expenses, config, loans);
+
+          // Si hay banda de confianza, un cruce más pequeño que ella no se
+          // afirma: se dice «podrías». Sin contabilidad suficiente no se pasa
+          // nada y los avisos se dan tal cual.
+          let incertidumbre;
+          const _acc = window.FinanceApp?.accounting;
+          if (_acc?.medirVariabilidad) {
+            const v = _acc.medirVariabilidad(_acc.precision.analizarTodas(expenses));
+            if (v.fiable && v.sigmaMensual > 0) {
+              incertidumbre = dias => _acc.bandaAcumulada(v.sigmaMensual, dias / 30, 1, v.sigmaDeriva);
+            }
+          }
+
+          const avisos = _av.construirAvisos(
+            { puntosCriticos: FinanceMath.detectarPuntosCriticos(extracto, 0), crucesMargenes: cruces },
+            { hoy: _fechaLocal(new Date()), incertidumbre },
+          );
+          if (!avisos.length) return '';
+
+          return `<div class="card mb-14" style="padding:12px 16px">
+            <div class="card-title mb-10">🔔 Lo que viene</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              ${avisos.map(a => {
+                const color = a.gravedad === 'critico' ? 'var(--red)' : 'var(--yellow)';
+                return `<div style="display:flex;gap:10px;align-items:flex-start">
+                  <span style="color:${color};flex-shrink:0;line-height:1.5">${a.gravedad === 'critico' ? '●' : '▲'}</span>
+                  <div style="min-width:0">
+                    <div style="font-size:13px;color:var(--text)">
+                      ${a.titulo} <span style="color:${color}">${a.plazo}</span>${a.incierto ? ' <span style="color:var(--text3);font-size:11px">(dentro del margen de error)</span>' : ''}
+                    </div>
+                    <div style="font-size:11px;color:var(--text3);margin-top:1px">${a.detalle}</div>
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>`;
+        } catch (e) {
+          console.warn('[dashboard] no se han podido construir los avisos:', e.message);
+          return '';
+        }
+      })()}
+
+      ${(()=>{
         const hoyD = _fechaLocal(new Date());
         const en7D  = _fechaLocal(new Date(Date.now()+7*86400000));
         const prox  = extracto.filter(e=>e.fecha>=hoyD&&e.fecha<=en7D&&e.tipo==='gasto'&&e.sourceType!=='transfer-out').slice(0,6);
@@ -463,7 +514,7 @@ const DashboardModule = (() => {
             <label class="toggle"><input type="checkbox" id="cfg-show-hist" ${config.showHistorico?'checked':''}/><span class="toggle-slider"></span></label>
             Mostrar histórico real en gráfica
           </label>
-          <div class="text-sm mt-6" style="color:var(--text3)">Los márgenes de seguridad se configuran en <a href="#" onclick="Router.navigate('margenes');return false" style="color:var(--accent)">Márgenes de seguridad</a>.</div>
+          <div class="text-sm mt-6" data-feature="margenes" style="color:var(--text3)">Los márgenes de seguridad se configuran en <a href="#" onclick="Router.navigate('margenes');return false" style="color:var(--accent)">Márgenes de seguridad</a>.</div>
         </div>
         <div class="flex gap-8 mt-8 items-center flex-wrap">
           <span class="text-sm">Filtrar cuentas:</span>
@@ -625,26 +676,6 @@ const DashboardModule = (() => {
           </div>`;
         })()}
       </div>
-      ${(()=>{
-        // El saldo de un objetivo lo calcula el paquete nuevo (core/goals); esta
-        // tarjeta desaparece si el bundle no está disponible en vez de inventarse
-        // cifras. El resto del dashboard sigue funcionando.
-        const _core = window.FinanceApp?.core;
-        if (!_core?.saldoParaObjetivo) return '';
-        const colchonHoy = FinanceMath.calcColchonEnFecha(expenses, config, loans, _fechaLocal(new Date()));
-        const goalsActivos = goals.filter(g=>!g.completado).slice().sort((a,b)=>(a.prioridad||99)-(b.prioridad||99)).slice(0,3);
-        if (!goalsActivos.length) return '';
-        return `<div class="card mb-14" style="padding:12px">
-          <div class="card-title" style="margin-bottom:8px">🎯 Objetivos de ahorro</div>
-          ${goalsActivos.map(g=>{
-            const saldo = _core.saldoParaObjetivo(g, accounts, colchonHoy);
-            const prog  = g.targetAmount>0 ? Math.min(100,(saldo/g.targetAmount)*100) : 0;
-            const alcanzado = saldo >= g.targetAmount && g.targetAmount > 0;
-            return '<div class="mb-8 ' + (alcanzado?'goal-alcanzado':'') + '" style="' + (alcanzado?'padding:4px;border-radius:6px;':'') + '"><div class="flex justify-between"><span style="font-size:12px;font-weight:500">#' + (g.prioridad||1) + ' ' + g.nombre + (alcanzado?' 🎉':'') + '</span><span class="num" style="font-size:11px">' + FinanceMath.eur(saldo) + ' / ' + FinanceMath.eur(g.targetAmount) + '</span></div><div class="goal-bar"><div class="goal-bar-fill" style="width:' + prog + '%;background:' + (g.color||'var(--accent)') + '"></div></div></div>';
-          }).join('')}
-        </div>`;
-      })()}
-
       <!-- ── Sección Préstamos ── -->
       ${loansActivos.length > 0 ? (()=>{
         const deudaDelta    = deudaFin - deudaInicio;
@@ -843,6 +874,19 @@ const DashboardModule = (() => {
           </div>
         </div>
         <div class="chart-wrap-lg"><canvas id="chart-saldo"></canvas></div>
+        ${(() => {
+          // Rótulo de la banda de confianza. Se pinta también cuando NO hay
+          // datos suficientes: así el usuario sabe que la línea es una raya sin
+          // margen y qué le falta para tenerlo, en vez de no enterarse.
+          const _acc = window.FinanceApp?.accounting;
+          if (!_acc?.medirVariabilidad || chartMode !== 'summed') return '';
+          try {
+            const v = _acc.medirVariabilidad(_acc.precision.analizarTodas(expenses));
+            return `<div class="text-sm mt-8" style="color:var(--text3);line-height:1.6">
+              ${v.fiable && v.sigmaMensual > 0 ? '◫ ' : '· '}${_acc.describirBanda(v)}
+            </div>`;
+          } catch { return ''; }
+        })()}
       </div>
 
       <!-- Velas del saldo (mensual / anual) -->
@@ -1116,6 +1160,53 @@ const DashboardModule = (() => {
       ),
     ];
     if (histDataset) datasets.push(histDataset);
+
+    // Banda de confianza: cuánto puede desviarse la proyección, medido con la
+    // contabilidad real (ver src/accounting/confianza.ts). Solo en modo suma:
+    // en apilado o por líneas no hay UNA proyección que envolver.
+    //
+    // Si no hay al menos tres meses de datos reales no se pinta nada, a
+    // propósito: una banda inventada da falsa sensación de rigor justo en la
+    // pantalla donde se decide.
+    if (chartMode === 'summed' && config.showBanda !== false) {
+      const _acc = window.FinanceApp?.accounting;
+      if (_acc?.medirVariabilidad) {
+        try {
+          const variabilidad = _acc.medirVariabilidad(_acc.precision.analizarTodas(expenses));
+          // Con sigma 0 la banda existe pero tiene ancho cero: serían dos rayas
+          // encima de la línea y dos entradas más en la leyenda para no decir
+          // nada. El rótulo de debajo del gráfico sí explica ese caso.
+          const banda = variabilidad.sigmaMensual > 0
+            ? _acc.bandaDeConfianza(extracto, variabilidad, { desde: _fechaLocal(new Date()) })
+            : [];
+          if (banda.length > 0) {
+            const ts = p => new Date(p.fecha + 'T00:00:00').getTime();
+            // El relleno va del techo al suelo: `fill:'+1'` apunta al dataset
+            // siguiente, que es el suelo, y solo pinta el hueco entre ambos.
+            // Ámbar y no verde: la línea del saldo ya lleva su propio relleno
+            // verde hasta el eje, y una banda verde encima se confunde con él
+            // justo donde tiene que distinguirse. El ámbar es además el color
+            // con el que el resto de la aplicación marca «ojo con esto».
+            datasets.push({
+              label: 'Margen de error (arriba)',
+              data: banda.map(p => ({ x: ts(p), y: p.arriba })),
+              borderColor: 'rgba(255,176,32,0.45)', backgroundColor: 'rgba(255,176,32,0.13)',
+              borderWidth: 1, borderDash: [3,3], pointRadius: 0, pointHitRadius: 0,
+              fill: '+1', tension: 0.3, order: 9,
+            });
+            datasets.push({
+              label: 'Margen de error (abajo)',
+              data: banda.map(p => ({ x: ts(p), y: p.abajo })),
+              borderColor: 'rgba(255,176,32,0.45)', backgroundColor: 'transparent',
+              borderWidth: 1, borderDash: [3,3], pointRadius: 0, pointHitRadius: 0,
+              fill: false, tension: 0.3, order: 10,
+            });
+          }
+        } catch (e) {
+          console.warn('[dashboard] no se pudo calcular la banda de confianza:', e.message);
+        }
+      }
+    }
 
     // Línea canónica: el saldo SIN nada de lo marcado como simulación. Va
     // atenuada y por detrás, como referencia contra la que comparar; la línea

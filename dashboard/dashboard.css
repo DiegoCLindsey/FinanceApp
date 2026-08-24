@@ -73,7 +73,8 @@
    `align-items:stretch`, no `center`: la leyenda usa
    `justify-content:space-between` y necesita ancho completo; centrada se
    encogería a su contenido y el reparto no tendría sentido. El donut se centra
-   por su cuenta con `align-self`. */
+   por su cuenta con `align-self`.
+
    El maquetado del envoltorio vive AQUÍ, no en estilos en línea: en línea
    ganaba siempre y la media query solo conseguía aplicar `flex-direction`,
    quedándose a medias. */

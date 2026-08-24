@@ -296,7 +296,7 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
           </div>
           ${
             escenarios.length > 0
-              ? `<div class="form-group mt-8"><label class="form-label">Escenarios</label>
+              ? `<div class="form-group mt-8"><label class="form-label">Supuestos</label>
                   <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
                     ${escenarios
                       .map(

@@ -587,7 +587,7 @@ export function createPlannerFeature(deps: PlannerDeps): FeatureManifest {
         ${pestañaBtn('objetivos', `Objetivos (${plan.objetivos.length})`)}
         ${pestañaBtn('simulacion', 'Simulación')}
         ${pestañaBtn('eventos', `Eventos (${plan.eventos.length})`)}
-        ${pestañaBtn('escenarios', 'Escenarios')}
+        ${pestañaBtn('escenarios', 'Comparar planes')}
       </div>
 
       ${

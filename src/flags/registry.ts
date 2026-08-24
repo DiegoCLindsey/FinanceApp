@@ -71,10 +71,11 @@ export const FEATURES: FeatureDefinition[] = [
   },
   {
     id: 'goals',
-    nombre: 'Objetivos de ahorro',
-    descripcion: 'Metas con importe y fecha, con proyección de cumplimiento.',
+    nombre: 'Objetivos de ahorro (antiguos)',
+    descripcion:
+      'Solo lectura: la copia previa al planificador. Los objetivos se gestionan en «Objetivos financieros». Apagada de fábrica; enciéndela si quieres revisar los antiguos antes de descartarlos.',
     grupo: GRUPOS.dinero,
-    porDefecto: true,
+    porDefecto: false,
     dependencias: ['accounts'],
   },
   {

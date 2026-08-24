@@ -109,7 +109,7 @@ beforeEach(() => {
 describe('lista de escenarios', () => {
   it('sin escenarios explica para qué sirven', () => {
     entorno({ escenarios: [] }).registry.mount('escenarios');
-    expect(vista().innerHTML).toContain('¿Qué son los escenarios?');
+    expect(vista().innerHTML).toContain('¿Qué son los supuestos?');
     expect(vista().querySelector('#esc-comparativa')).toBeNull();
   });
 

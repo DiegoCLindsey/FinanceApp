@@ -85,10 +85,26 @@
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   animation: toastIn 0.26s cubic-bezier(0.2,0.9,0.3,1);
 }
+/* Aviso con acción (Deshacer). Va en color de texto normal, no de estado: no
+   informa de que algo haya ido bien ni mal, pide una decisión. Y algo más ancho
+   que un aviso corriente porque dentro lleva un nombre escrito por el usuario. */
+.toast-deshacer { max-width: 420px; color: var(--text); font-weight: 400; }
 .toast-ok { border-color: rgba(46,230,168,0.42); color: var(--accent); }
 .toast-err { border-color: rgba(255,107,107,0.42); color: var(--red); }
 .toast-info { border-color: rgba(19,196,224,0.42); color: var(--blue); }
 @keyframes toastIn { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* ---- Buscador global ---- */
+.buscador-fila {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; text-align: left; padding: 8px 10px; border-radius: 12px;
+  background: transparent; border: 1px solid transparent; color: var(--text);
+  font-family: var(--font-sans); cursor: pointer;
+}
+.buscador-fila:hover { background: var(--surface); }
+/* La fila activa es la que se abre con Intro: tiene que distinguirse del hover,
+   porque con teclado el ratón puede estar encima de otra distinta. */
+.buscador-fila.activa { background: var(--surface-strong); border-color: var(--hairline); }
 
 /* ---- Modal ---- */
 .modal-overlay { position: fixed; inset: 0; z-index: 500; background: rgba(3,7,14,0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 16px; animation: fade-in 0.18s ease; }

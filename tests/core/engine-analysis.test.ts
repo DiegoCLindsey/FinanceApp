@@ -192,6 +192,26 @@ describe('paridad márgenes de seguridad', () => {
   it('saldosPorCuentaEnExtracto idéntico', () => {
     expect(saldosPorCuentaEnExtracto(extracto, accounts)).toEqual(FM.saldosPorCuentaEnExtracto(extracto, accounts));
   });
+  it('un gasto BAJA el saldo de su cuenta', () => {
+    // `cuantia` es la magnitud y el signo vive en `delta`; sumar `cuantia` a
+    // pelo hacía que toda cuenta subiera siempre y que un margen acotado a
+    // cuentas concretas no saltara nunca.
+    const cuentas = [{ _id: 'cc', saldoInicial: 1000, historicoSaldos: [] }];
+    const evs = [
+      { fecha: '2026-01-05', cuantia: 300, tipo: 'gasto', cuenta: 'cc', delta: -300 },
+      { fecha: '2026-01-25', cuantia: 900, tipo: 'ingreso', cuenta: 'cc', delta: 900 },
+    ];
+    const snaps = saldosPorCuentaEnExtracto(evs as never, cuentas as never);
+    expect(snaps[0].saldos.cc).toBe(700);
+    expect(snaps[1].saldos.cc).toBe(1600);
+    expect(snaps).toEqual(FM.saldosPorCuentaEnExtracto(evs, cuentas));
+  });
+  it('sin delta, el signo se deduce del tipo', () => {
+    const cuentas = [{ _id: 'cc', saldoInicial: 1000, historicoSaldos: [] }];
+    const evs = [{ fecha: '2026-01-05', cuantia: 300, tipo: 'gasto', cuenta: 'cc' }];
+    expect(saldosPorCuentaEnExtracto(evs as never, cuentas as never)[0].saldos.cc).toBe(700);
+    expect(FM.saldosPorCuentaEnExtracto(evs, cuentas)[0].saldos.cc).toBe(700);
+  });
   it('detectarCrucesMargenes idéntico (global, por cuentas, e inactivos ignorados)', () => {
     const saldos = saldosPorCuentaEnExtracto(extracto, accounts);
     expect(detectarCrucesMargenes(margenes, extracto, saldos, expenses, config, loans)).toEqual(

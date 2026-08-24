@@ -14,3 +14,7 @@ _site/
 .env.*.local
 firebase/firebase-config.js
 .claude/
+
+# Artefactos del banco de QA (ver tools/qa/README.md)
+qa.html
+tools/qa/vendor/

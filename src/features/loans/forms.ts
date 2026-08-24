@@ -25,7 +25,7 @@ const interruptor = (id: string, label: string, activo: boolean, nota = '') =>
 
 export function checkboxesEscenarios(escenarios: Escenario[], seleccionados: string[], clase: string): string {
   if (escenarios.length === 0) return '';
-  return `<div class="form-group mt-8"><label class="form-label">Escenarios</label>
+  return `<div class="form-group mt-8"><label class="form-label">Supuestos</label>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
       ${escenarios
         .map(

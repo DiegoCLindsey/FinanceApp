@@ -121,9 +121,15 @@ describe('lista de nóminas', () => {
   });
 
   it('la nómina secundaria de un grupo tributa más que si estuviera sola', () => {
+    // Se lee por patrón, no por posición del <div>: indexar la fila la ataba al
+    // número exacto de divs de la plantilla y cualquier retoque de maquetación
+    // la rompía dando NaN.
+    const tipoAuto = (t: string) => parseFloat(t.match(/(\d+\.\d)% \(auto\)/)?.[1] ?? 'NaN');
+
     const sola = entorno({ nominas: [nomina({ _id: 'b', bruto: 12000 })] });
     sola.registry.mount('nominas');
-    const pctSola = parseFloat(filas()[0].querySelectorAll('div')[5].textContent ?? '0');
+    const pctSola = tipoAuto(filas()[0].textContent ?? '');
+    expect(Number.isFinite(pctSola)).toBe(true);
 
     montarShell();
     const enGrupo = entorno({
@@ -133,7 +139,7 @@ describe('lista de nóminas', () => {
     const textos = filas().map((f) => f.textContent ?? '');
     // La de 12.000 € aparece con un tipo mayor que aislada
     const filaSecundaria = textos.find((t) => t.includes('12.000')) ?? '';
-    const pctGrupo = parseFloat(filaSecundaria.match(/(\d+\.\d)% \(auto\)/)?.[1] ?? '0');
+    const pctGrupo = tipoAuto(filaSecundaria);
 
     expect(pctGrupo).toBeGreaterThan(pctSola);
   });

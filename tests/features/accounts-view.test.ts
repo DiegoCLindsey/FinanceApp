@@ -572,90 +572,60 @@ describe('tramos de ganancias de capital', () => {
   });
 });
 
-describe('objetivos de ahorro', () => {
+describe('objetivos de ahorro (puente al planificador)', () => {
+  // El editor de `goals` se retiró: había dos entidades llamadas «objetivo» y
+  // dos sitios para editarlas. Lo que queda es un aviso de solo lectura sobre
+  // la copia antigua, con un camino al planificador y la opción de descartarla.
   const objetivo = (extra: Partial<Goal> = {}): Goal => ({
     _id: 'g1',
     nombre: 'Fondo de emergencia',
     targetAmount: 20000,
     targetDate: null,
     cuentaIds: [],
-    color: '#00e5a0',
+    color: '#2ee6a8',
     prioridad: 1,
     completado: false,
     usarColchon: false,
     ...extra,
   });
 
-  it('sin objetivos invita a crear el primero', () => {
+  it('sin objetivos antiguos no enseña nada', () => {
     entorno().registry.mount('accounts');
-    expect(vista().innerHTML).toContain('Sin objetivos');
+    expect(vista().innerHTML).not.toContain('Objetivos de ahorro');
   });
 
-  it('muestra progreso y marca la meta alcanzada', () => {
-    const { registry } = entorno({ goals: [objetivo({ targetAmount: 5000 })] });
-    registry.mount('accounts');
-    expect(vista().innerHTML).toContain('¡Meta alcanzada!');
-    expect(vista().innerHTML).toContain('data-completar-goal="g1"');
+  it('con objetivos antiguos explica dónde se gestionan ahora', () => {
+    entorno({ goals: [objetivo()] }).registry.mount('accounts');
+    const html = vista().innerHTML;
+    expect(html).toContain('Objetivos de ahorro (antiguos)');
+    expect(html).toContain('Objetivos financieros');
+    expect(html).toContain('data-ir-planner');
+  });
+
+  it('enseña el progreso pero NO ofrece editar', () => {
+    entorno({ goals: [objetivo({ targetAmount: 5000 })] }).registry.mount('accounts');
+    const html = vista().innerHTML;
+    expect(html).toContain('goal-bar-fill');
+    expect(html).not.toContain('data-nuevo-goal');
+    expect(html).not.toContain('data-completar-goal');
+    expect(html).not.toContain('data-borrar-goal');
   });
 
   it('escapa el nombre del objetivo', () => {
-    const { registry } = entorno({ goals: [objetivo({ nombre: '<img src=x onerror=alert(1)>' })] });
-    registry.mount('accounts');
+    entorno({ goals: [objetivo({ nombre: '<img src=x onerror=alert(1)>' })] }).registry.mount('accounts');
     expect(vista().innerHTML).not.toContain('<img src=x');
   });
 
-  it('crea un objetivo desde el formulario', () => {
-    const { store, registry } = entorno();
+  it('descartar los antiguos exige confirmación', () => {
+    const { store, registry } = entorno({ goals: [objetivo()] });
     registry.mount('accounts');
-    clic(vista(), '[data-nuevo-goal]');
-    escribir('#goal-nombre', 'Entrada del piso');
-    escribir('#goal-amount', '30000');
-    escribir('#goal-date', '2028-06-30');
-    clic(modal(), '[data-guardar-goal]');
-
-    const goals = store.get('goals');
-    expect(goals).toHaveLength(1);
-    expect(goals[0].nombre).toBe('Entrada del piso');
-    expect(goals[0].targetAmount).toBe(30000);
-    expect(goals[0].targetDate).toBe('2028-06-30');
-    expect(goals[0].usarColchon).toBe(true); // el toggle viene marcado
-  });
-
-  it('exige nombre', () => {
-    const { store, registry } = entorno();
-    registry.mount('accounts');
-    clic(vista(), '[data-nuevo-goal]');
-    clic(modal(), '[data-guardar-goal]');
-    expect(store.get('goals')).toHaveLength(0);
-  });
-
-  it('marca completado y elimina tras confirmar', () => {
-    const { store, registry } = entorno({ goals: [objetivo({ targetAmount: 5000 })] });
-    registry.mount('accounts');
-    clic(vista(), '[data-completar-goal="g1"]');
-    expect(store.get('goals')[0].completado).toBe(true);
 
     const confirmar = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    clic(vista(), '[data-borrar-goal="g1"]');
+    clic(vista(), '[data-descartar-goals]');
     expect(store.get('goals')).toHaveLength(1);
 
     confirmar.mockReturnValue(true);
-    clic(vista(), '[data-borrar-goal="g1"]');
+    clic(vista(), '[data-descartar-goals]');
     expect(store.get('goals')).toHaveLength(0);
-  });
-
-  it('limita el objetivo a las cuentas seleccionadas', () => {
-    const { store, registry } = entorno({
-      accounts: [cuenta(), cuenta({ _id: 'a2', nombre: 'Ahorro', esCuentaPrincipal: false, saldoInicial: 4000 })],
-    });
-    registry.mount('accounts');
-    clic(vista(), '[data-nuevo-goal]');
-    escribir('#goal-nombre', 'Solo ahorro');
-    escribir('#goal-amount', '10000');
-    (modal().querySelector('.goal-acc-check[value="a2"]') as HTMLInputElement).checked = true;
-    clic(modal(), '[data-guardar-goal]');
-
-    expect(store.get('goals')[0].cuentaIds).toEqual(['a2']);
-    expect(vista().innerHTML).toContain('Cuentas: Ahorro');
   });
 });

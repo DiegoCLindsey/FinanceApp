@@ -3,6 +3,11 @@
 Candidatas a eliminación o consolidación, con su justificación. **Ninguna se elimina sin
 decisión del usuario**. Decisiones tomadas el 2026-07-30 (ver registro al final).
 
+> ⚠️ Este documento describe decisiones de julio de 2026. Algunas se han
+> revertido después: **comprueba siempre el registro del final antes de borrar
+> nada**. Para el estado actual del producto, ver
+> [`05-revision-producto.md`](05-revision-producto.md).
+
 ## A. Código muerto (eliminación segura, sin impacto funcional)
 
 | # | Feature | Justificación | Decisión |
@@ -24,7 +29,7 @@ decisión del usuario**. Decisiones tomadas el 2026-07-30 (ver registro al final
 
 | # | Feature | Justificación | Decisión |
 |---|---|---|---|
-| C1 | Velas OHLC del saldo | Visualización de trading aplicada a saldo personal; información redundante con la curva de evolución + flujo mensual, y difícil de interpretar para el usuario objetivo | ✅ Eliminado |
+| C1 | Velas OHLC del saldo | Se eliminaron en julio de 2026 por redundantes con la curva de evolución. **REVERTIDO en agosto de 2026**: el usuario las pidió de vuelta expresamente («echo en falta las gráficas de vela mensuales/anuales»). Reimplementadas sin dependencia de CDN, con barras flotantes, tras el flag `velas-saldo` (encendido por defecto) | ⛔ NO eliminar — código vivo |
 | C2 | Monte Carlo (`showMC`, `mcIteraciones`) + campos `varianza` en gastos y nóminas | Coste computacional alto, valor dudoso con varianzas inventadas por el usuario; añade 2 campos de formulario que confunden. Si se mantiene: tras feature flag, off por defecto | ✅ Eliminado |
 | C3 | Simulador de prestación por desempleo (SEPE) | Muy nicho y sensible a cambios normativos (IPREM 2025 hardcodeado). Si se mantiene: tras feature flag | ✅ Eliminado |
 | C4 | Sincronización Dropbox | Requiere token de developer generado a mano que **caduca** (UX mala, soporte costoso). Firebase ya cubre la sincronización; export JSON cubre el backup manual | ❌ Se mantiene (decisión del usuario) |
@@ -42,6 +47,7 @@ decisión del usuario**. Decisiones tomadas el 2026-07-30 (ver registro al final
 | 2026-07-30 | A1, A2, A3 (código muerto) | Eliminar | Hecho en esta rama |
 | 2026-07-30 | B1 (inflación legacy) | Eliminar | Hecho en esta rama; queda solo el módulo por periodos/IPC |
 | 2026-07-30 | C1 (OHLC), C2 (Monte Carlo + varianzas), C3 (simulador paro) | Eliminar | Hecho en esta rama |
+| 2026-08-21 | C1 (velas del saldo) | **Revertida la eliminación** | Petición explícita del usuario. Reimplementadas mensuales y anuales en la visión general. Flag `velas-saldo` |
 | 2026-07-30 | B2 (colchón→margen), B3 (unificar grupos de tags) | Consolidar | Programado como tarea 1.9 del plan (necesita migración de datos) |
 | 2026-07-30 | B4 (historialPrecios) | Eliminar cuando exista el sustituto | Programado como tarea 4.8: Contabilidad + "sugerir ajuste" lo reemplazan |
 | 2026-07-30 | C4 (Dropbox) | Mantener | El usuario no lo seleccionó para eliminar |
