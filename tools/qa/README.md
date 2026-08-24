@@ -41,6 +41,11 @@ python3 -m http.server 8099
   "http://localhost:8099/tools/qa/movil.html"
 ```
 
+Sobre `file://` en vez de servidor, el móvil necesita además
+`--allow-file-access-from-files`: cada fichero local es su propio origen y sin
+esa opción el envoltorio no puede leer el informe de dentro del iframe («Blocked
+a frame with origin "null"»).
+
 `qa.html?solo=cuentas` abre esa vista y **no** vuelca el informe, para poder
 mirarla con calma.
 
@@ -66,6 +71,16 @@ mirarla con calma.
 
 `tools/qa/datos.js` siembra `localStorage` antes de que arranque la aplicación:
 cuatro cuentas (corriente, ahorro remunerado, fondo indexado y plan de
-pensiones), ocho gastos e ingresos de periodicidades distintas, dos nóminas
+pensiones), diez gastos e ingresos de periodicidades distintas, dos nóminas
 encadenadas, dos préstamos —uno con amortización extraordinaria—, inflación por
 años y un escenario. Está pensado para que ninguna vista salga vacía.
+
+Los movimientos reales cubren los **seis últimos meses cerrados** —el analizador
+de precisión descarta el mes en curso— y con **importes distintos cada mes**. No
+es un detalle cosmético: con cifras idénticas la desviación típica de cada
+estimación es 0 y la banda de confianza del dashboard, aunque se calcule bien,
+se dibuja con ancho cero y en QA parece que no está. Cada estimación aporta un
+patrón distinto a propósito: el alquiler es fijo (σ = 0), la luz alterna, el
+súper se pasa siempre (sesgo) y «ocio y varios» va a saltos. El bar y la
+gasolinera van sin estimación, para alimentar el «gasto que no tenías previsto»
+del cierre de mes.

@@ -47,6 +47,7 @@ import { createLedger, type Ledger } from './accounting/ledger';
 import { createTagService, type TagService } from './accounting/tags';
 import { createPrecisionAnalyzer, type PrecisionAnalyzer } from './accounting/precision';
 import { createAdjuster, sugerirAjuste, type Adjuster } from './accounting/adjust';
+import { bandaDeConfianza, describirBanda, medirVariabilidad } from './accounting/confianza';
 import { createSessionService, vigilarInactividad, OPCIONES_AUTOLOGOUT, type SessionService } from './auth/session';
 
 export interface FinanceAppNamespace {
@@ -104,6 +105,10 @@ export interface FinanceAppNamespace {
     precision: PrecisionAnalyzer;
     adjuster: Adjuster;
     sugerirAjuste: typeof sugerirAjuste;
+    /** Banda de confianza de la proyección, medida con la contabilidad real. */
+    medirVariabilidad: typeof medirVariabilidad;
+    bandaDeConfianza: typeof bandaDeConfianza;
+    describirBanda: typeof describirBanda;
   };
 }
 
@@ -245,7 +250,7 @@ function bootstrap(): FinanceAppNamespace {
       vigilar: (onCaducada: () => void) => vigilarInactividad({ sesion, onCaducada }),
       opciones: OPCIONES_AUTOLOGOUT,
     }),
-    accounting: { ledger, tags, precision, adjuster, sugerirAjuste },
+    accounting: { ledger, tags, precision, adjuster, sugerirAjuste, medirVariabilidad, bandaDeConfianza, describirBanda },
   };
 }
 

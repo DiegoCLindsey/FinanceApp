@@ -63,6 +63,12 @@
     { _id: 'e8', concepto: 'Reforma baño', cuantia: 3200, tipo: 'gasto', clasificacion: 'deseo',
       tipoFrecuencia: 'unico', frecuencia: 1, diaPago: 'dia:8',
       fechaInicio: desplazar(4), fechaFin: null, cuenta: 'aho', activo: true, tags: ['obras'], escenarioIds: [] },
+    { _id: 'e9', concepto: 'Luz y gas', cuantia: 95, tipo: 'gasto', clasificacion: 'basico',
+      tipoFrecuencia: 'mensual', frecuencia: 1, diaPago: 'dia:14',
+      fechaInicio: desplazar(-12), fechaFin: null, cuenta: 'cc', activo: true, tags: ['casa'], escenarioIds: [] },
+    { _id: 'e10', concepto: 'Ocio y varios', cuantia: 250, tipo: 'gasto', clasificacion: 'deseo',
+      tipoFrecuencia: 'mensual', frecuencia: 1, diaPago: 'dia:28',
+      fechaInicio: desplazar(-12), fechaFin: null, cuenta: 'cc', activo: true, tags: ['varios'], escenarioIds: [] },
   ]);
 
   set('state_nominas', [
@@ -80,20 +86,50 @@
       cuenta: 'cc', activo: true, tipo: 'frances', tags: ['coche'], amortizaciones: [] },
   ]);
 
-  // Movimientos reales de los tres últimos meses, para que el cierre de mes y
-  // la precisión tengan de qué hablar. El súper va sistemáticamente por encima
-  // de lo estimado y hay gasto que ninguna estimación prevé.
+  // Movimientos reales de los SEIS últimos meses cerrados (el analizador de
+  // precisión ignora el mes en curso, así que un mes «-0» no aportaría nada).
+  //
+  // Los importes VARÍAN de mes a mes a propósito. Con cifras idénticas cada mes
+  // la desviación típica de cada estimación es 0, y entonces la banda de
+  // confianza del dashboard se calcula bien pero se dibuja con ancho cero: en
+  // QA parece que la funcionalidad no está. Cada estimación aporta aquí un
+  // patrón distinto:
+  //   · Alquiler      → recibo fijo, σ = 0 (así se ve que el caso existe).
+  //   · Luz y gas     → estacional, se pasa y se queda corto alternando.
+  //   · Supermercado  → sistemáticamente por encima de lo estimado (sesgo).
+  //   · Ocio y varios → gasto a saltos; es el que domina la banda.
+  // Bar y gasolinera van sin estimación: son el «gasto que no tenías previsto»
+  // del cierre de mes.
   var tx = [];
   var n = 0;
   var mesISO = function (m, d) {
-    var f = new Date(hoy); f.setMonth(f.getMonth() + m); f.setDate(d); return iso(f);
+    var f = new Date(hoy);
+    // Día 1 ANTES de mover el mes: desde un día 29-31, setMonth se desborda al
+    // mes siguiente y el movimiento acaba cayendo en el mes que no es.
+    f.setDate(1); f.setMonth(f.getMonth() + m); f.setDate(d); return iso(f);
   };
-  [-3, -2, -1].forEach(function (m) {
-    tx.push({ _id: 'tx' + (++n), fecha: mesISO(m, 1),  cuentaId: 'cc', importeCts: -95000, concepto: 'ALQUILER', tags: ['vivienda'], estimacionId: 'e1', tipo: 'gasto', origen: 'importado' });
-    tx.push({ _id: 'tx' + (++n), fecha: mesISO(m, 5),  cuentaId: 'cc', importeCts: -51100, concepto: 'SUPERMERCADO', tags: ['comida'], estimacionId: 'e2', tipo: 'gasto', origen: 'importado' });
-    tx.push({ _id: 'tx' + (++n), fecha: mesISO(m, 12), cuentaId: 'cc', importeCts: -3800,  concepto: 'SUSCRIPCIONES', tags: ['ocio'], estimacionId: 'e3', tipo: 'gasto', origen: 'importado' });
-    tx.push({ _id: 'tx' + (++n), fecha: mesISO(m, 18), cuentaId: 'cc', importeCts: -6200,  concepto: 'BAR LA PLAZA', tags: [], tipo: 'gasto', origen: 'importado' });
-    tx.push({ _id: 'tx' + (++n), fecha: mesISO(m, 22), cuentaId: 'cc', importeCts: -4150,  concepto: 'GASOLINERA', tags: [], tipo: 'gasto', origen: 'importado' });
+  // mes, alquiler, súper, luz, suscripciones, ocio, bar, gasolinera (céntimos)
+  var reales = [
+    [-6, 95000, 51100,  7820, 3800, 12000, 6200, 4150],
+    [-5, 95000, 46850, 14240, 4290, 64000, 3110, 5980],
+    [-4, 95000, 55320, 10410, 3800, 31000, 8740, 3920],
+    [-3, 95000, 40210,  6190, 3800, 89000, 4560, 6310],
+    [-2, 95000, 61940,  8830, 4580, 18000, 9930, 4470],
+    [-1, 95000, 48730, 13370, 3800, 42000, 5280, 5140],
+  ];
+  reales.forEach(function (r) {
+    var m = r[0];
+    var apunte = function (dia, cts, concepto, tags, estimacionId) {
+      tx.push({ _id: 'tx' + (++n), fecha: mesISO(m, dia), cuentaId: 'cc', importeCts: -cts,
+        concepto: concepto, tags: tags, estimacionId: estimacionId, tipo: 'gasto', origen: 'importado' });
+    };
+    apunte(1,  r[1], 'ALQUILER',      ['vivienda'], 'e1');
+    apunte(5,  r[2], 'SUPERMERCADO',  ['comida'],   'e2');
+    apunte(14, r[3], 'LUZ Y GAS',     ['casa'],     'e9');
+    apunte(12, r[4], 'SUSCRIPCIONES', ['ocio'],     'e3');
+    apunte(28, r[5], 'OCIO Y VARIOS', ['varios'],   'e10');
+    apunte(18, r[6], 'BAR LA PLAZA',  [],           undefined);
+    apunte(22, r[7], 'GASOLINERA',    [],           undefined);
     tx.push({ _id: 'tx' + (++n), fecha: mesISO(m, 25), cuentaId: 'cc', importeCts: 262500, concepto: 'NOMINA', tags: [], tipo: 'ingreso', origen: 'importado' });
   });
   set('state_transacciones', tx);

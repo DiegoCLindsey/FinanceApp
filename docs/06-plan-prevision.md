@@ -112,8 +112,43 @@ inventadas por el usuario); es aritmética sobre datos observados.
 Cambia la pregunta de «¿cuánto tendré?» a «¿cuánto puedo tener como poco?», que
 es la que de verdad importa para decidir.
 
-**Coste**: medio. **Requisito**: varios meses de contabilidad, o sea que gana
-valor con el tiempo. Es la mejora natural *después* del cierre de mes.
+**Hecho** (`src/accounting/confianza.ts`, dibujada en «Evolución del saldo»).
+
+#### Lo que costó: la banda no era el ruido, era la media
+
+La primera versión sumaba solo el ruido mes a mes, que se acumula con **√meses**
+porque los errores se compensan entre sí. Matemáticamente correcto, y en pantalla
+**invisible**: a tres años vista salía ±1.800 € sobre un eje de 100.000 €, una
+raya de cuatro píxeles.
+
+Lo invisible era la pista de que faltaba un término. El ruido no es la mayor
+incertidumbre de una proyección a tres años: la mayor es que **la media también
+está estimada**. Con seis meses de datos, el gasto medio se conoce con un error
+de σ/√6, y ese error **no se compensa**: si tu media real es 40 € más alta de lo
+que crees, son 40 € más *todos* los meses. Se acumula linealmente.
+
+```
+ancho(m) = z · √( (σ·√m)²  +  (σ_deriva·m)² )
+                  ruido        no conocer la media
+```
+
+Con los datos de QA el segundo término es 2,5 veces el primero a 36 meses. La
+banda pasó de raya a envolvente, y la diferencia no es de presentación: la
+versión anterior **prometía sobre el largo plazo una precisión que no se tiene**.
+
+Dos detalles que se decidieron por el camino:
+
+- σ y σ_deriva **no se redondean a céntimos**. No son importes, son parámetros
+  que se multiplican por decenas de meses; medio céntimo de recorte ahí sí se
+  nota en el resultado.
+- Con σ = 0 —estimaciones que se desvían **siempre lo mismo**— no se pintan los
+  dos conjuntos de datos, que serían dos rayas encima de la línea y dos entradas
+  más en la leyenda. El rótulo lo explica y manda al cierre de mes, porque eso no
+  es incertidumbre, es un sesgo, y un sesgo se arregla ajustando la estimación.
+
+Y una lección de método: el fallo no lo encontró ningún test —todos pasaban, y
+seguirían pasando con el modelo corto—, lo encontró **mirar la captura**. Lo
+mismo que pasó con el doble conteo del cierre de mes.
 
 ### 3.2 Avisos con antelación
 
@@ -154,9 +189,13 @@ Primero lo que arregla el bucle, después lo que lo aprovecha.
 2. **Retirar `goals`** — deja de haber dos «objetivos». ✅
 3. **Importar CSV** — arregla «registras». ✅
 4. **Cierre de mes** — arregla «comparas» y «ajustas». ✅
-5. Banda de confianza (§3.1) — necesita 3 y 4 en uso. ⬜
+5. **Banda de confianza** (§3.1) — necesita 3 y 4 en uso. ✅
 6. Avisos con antelación (§3.2). ⬜
 7. Deshacer (§3.3). ⬜
+8. Búsqueda global (§3.4). ⬜
 
-Del 5 en adelante queda propuesto, no hecho: el 5 necesita meses de datos reales
-para valer algo, y del 6 y 7 conviene decidir antes dónde viven.
+Del 6 en adelante queda propuesto, no hecho: conviene decidir antes dónde viven.
+
+La banda gana valor sola con el tiempo: hoy se mide sobre seis meses, y cada
+cierre de mes que se hace la estrecha, porque σ_deriva baja con √n. Es la primera
+funcionalidad de la aplicación que **mejora por usarla**.
