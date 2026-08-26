@@ -295,6 +295,39 @@ const AuthModule = (() => {
     btn.textContent = busy ? '…' : label;
   }
 
+  /**
+   * ¿El almacenamiento local es, en la práctica, el estado de fábrica?
+   *
+   * La decisión de verdad vive en `state/colecciones.esEstadoVacioOPorDefecto`
+   * (TypeScript, con sus propios tests): mira el CONTENIDO de cada colección,
+   * no si `state__modificadoEn` está puesto — un sello reciente no significa
+   * que haya datos reales debajo, porque el propio arranque de la aplicación
+   * persiste el estado por defecto al migrar (ver la nota larga en
+   * `common/state.js` sobre el bug de versiones de esquema compartidas).
+   *
+   * Si el paquete nuevo no cargó, se cae a una comprobación mínima con lo que
+   * `State` conoce — peor, pero mejor que preguntar siempre.
+   */
+  function _localEsVacioOPorDefecto() {
+    if (window.FinanceApp?.datos?.esVacioOPorDefecto) return window.FinanceApp.datos.esVacioOPorDefecto();
+    const loans    = (State.get('loans')    || []).length;
+    const expenses = (State.get('expenses') || []).length;
+    const accounts = (State.get('accounts') || []).filter(a => a._id !== 'default' || (a.saldoInicial || 0) !== 0).length;
+    return loans + expenses + accounts === 0;
+  }
+
+  /** Resumen legible de qué hay guardado localmente, para el diálogo de confirmación. */
+  function _resumenLocalParaMigracion() {
+    const loans    = (State.get('loans')    || []).length;
+    const expenses = (State.get('expenses') || []).length;
+    const accounts = (State.get('accounts') || []).filter(a => a._id !== 'default' || a.saldoInicial > 0).length;
+    return [
+      expenses > 0 ? `${expenses} gasto${expenses !== 1 ? 's/ingresos' : '/ingreso'}` : '',
+      loans    > 0 ? `${loans} préstamo${loans !== 1 ? 's' : ''}` : '',
+      accounts > 0 ? `${accounts} cuenta${accounts !== 1 ? 's' : ''}` : '',
+    ].filter(Boolean).join(', ');
+  }
+
   // ── Migration helper: si la nube está vacía y hay datos locales, ofrece subirlos
   async function _offerMigration(service, modeName) {
     // Misma ruta que el arranque: si hay copia en la nube Y datos locales que
@@ -304,16 +337,10 @@ const AuthModule = (() => {
       await _sincronizarDesdeNube(service, modeName);
       return;
     }
-    // No cloud backup — check local data
-    const loans    = (State.get('loans')    || []).length;
-    const expenses = (State.get('expenses') || []).length;
-    const accounts = (State.get('accounts') || []).filter(a => a._id !== 'default' || a.saldoInicial > 0).length;
-    if (loans + expenses + accounts > 0) {
-      const parts = [
-        expenses > 0 ? `${expenses} gasto${expenses !== 1 ? 's/ingresos' : '/ingreso'}` : '',
-        loans    > 0 ? `${loans} préstamo${loans !== 1 ? 's' : ''}` : '',
-        accounts > 0 ? `${accounts} cuenta${accounts !== 1 ? 's' : ''}` : '',
-      ].filter(Boolean).join(', ');
+    // Sin backup en la nube: solo se ofrece subir si de verdad hay algo que
+    // subir, no el estado de fábrica.
+    if (!_localEsVacioOPorDefecto()) {
+      const parts = _resumenLocalParaMigracion();
       if (window.confirm(`Tienes ${parts} guardados localmente.\n¿Subir estos datos a ${modeName} ahora?`)) {
         await service.uploadBackup();
         UI.toast('Datos locales subidos a la nube ✓');
@@ -436,6 +463,14 @@ const AuthModule = (() => {
 
     // El local no se ha tocado desde que se trajo esta copia: nada que decidir.
     if (fechaNube && fechaLocal <= fechaNube) { _volcar(backup, fechaNube); return; }
+
+    // El sello puede ser reciente sin que haya datos reales debajo — un
+    // dispositivo recién estrenado persiste su estado de fábrica al arrancar,
+    // lo que marca el sello aunque el usuario no haya tecleado nada (ver
+    // `_localEsVacioOPorDefecto`). Si el local es, en la práctica, el estado
+    // vacío de fábrica, no hay nada que decidir: se restaura sin preguntar,
+    // igual que en la primera restauración.
+    if (_localEsVacioOPorDefecto()) { _volcar(backup, fechaNube); UI.toast(`Datos restaurados desde ${nombre} ✓`); return; }
 
     const eleccion = await _preguntarConflicto({
       nombre,

@@ -73,3 +73,57 @@ export function aplicarCopia(escribir: (claveLogica: string, valor: unknown) => 
 export function faltantesEnCopia(copia: Record<string, unknown>): StateKey[] {
   return COLECCIONES.filter((k) => copia[k] === undefined || copia[k] === null);
 }
+
+/**
+ * ¿Este estado es, en la práctica, el de fábrica?
+ *
+ * Existe para una decisión concreta: si al conectar la nube el local resulta
+ * ser el estado por defecto, no hay nada que decidir — se restaura sin
+ * preguntar. Antes de esto, la aplicación preguntaba «¿qué copia conservas?»
+ * incluso en un dispositivo recién estrenado, porque comprobaba SI el estado
+ * se había tocado (un sello de tiempo), no si tenía datos reales debajo.
+ *
+ * El sello de última modificación no sirve para esto: el propio arranque de
+ * la aplicación persiste el estado por defecto al migrar, así que un
+ * dispositivo sin usar también tiene un sello «reciente» — ver la nota larga
+ * en `common/state.js` sobre el bug de versiones de esquema compartidas. Por
+ * eso esta función mira el CONTENIDO, no cuándo se escribió.
+ *
+ * Una cuenta cuenta como «de fábrica» solo si es exactamente la `default` sin
+ * saldo inicial ni histórico: cualquier otra cosa —otro nombre, otro id, un
+ * saldo, un punto de control— es una cuenta que el usuario ha tocado.
+ *
+ * `planes` se comprueba aparte y NO basta con que esté vacía: la migración 008
+ * crea un plan `plan_base` (con un vehículo por cuenta y cero objetivos) en
+ * TODA instalación nueva, tenga o no el usuario datos reales. Sin este caso
+ * especial, `planes.length === 0` nunca sería cierto y esta función no
+ * detectaría NUNCA un dispositivo recién estrenado — justo el caso que existe
+ * para cubrir.
+ */
+export function esEstadoVacioOPorDefecto(snapshot: Record<string, unknown>): boolean {
+  const arr = (k: string): unknown[] => {
+    const v = snapshot[k];
+    return Array.isArray(v) ? v : [];
+  };
+  // config, accounts y planes se miran aparte; el resto basta con que estén
+  // vacías.
+  const colecciones = COLECCIONES.filter((k) => k !== 'config' && k !== 'accounts' && k !== 'planes');
+  if (!colecciones.every((k) => arr(k).length === 0)) return false;
+
+  const planes = arr('planes') as Array<{ _id?: unknown; objetivos?: unknown }>;
+  const esPlanDeFabrica =
+    planes.length === 0 ||
+    (planes.length === 1 && planes[0]?._id === 'plan_base' && !(Array.isArray(planes[0]?.objetivos) && planes[0].objetivos.length > 0));
+  if (!esPlanDeFabrica) return false;
+
+  const cuentas = arr('accounts') as Array<{ _id?: unknown; saldoInicial?: unknown; historicoSaldos?: unknown }>;
+  return cuentas.every(
+    (a) =>
+      a._id === 'default' &&
+      // Cualquier saldo inicial distinto de cero es un dato real, incluido uno
+      // negativo (una cuenta que arranca en descubierto sigue siendo un dato
+      // que el usuario ha tecleado, no el valor de fábrica).
+      !(typeof a.saldoInicial === 'number' && a.saldoInicial !== 0) &&
+      !(Array.isArray(a.historicoSaldos) && a.historicoSaldos.length > 0),
+  );
+}

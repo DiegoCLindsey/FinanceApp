@@ -127,6 +127,77 @@ El temporizador de autoguardado pasa por el mismo aviso, así que enseña el mis
 
 ---
 
+## 2.3 El diálogo de conflicto aparecía siempre, incluso con el local vacío
+
+Reportado después de lo anterior: *«Al iniciar sesión (siempre) dice que hay
+una versión local y la de la nube (la local sin datos y la de la nube con
+datos). Debe checkear bien si de verdad la versión local no es vacía/cuenta
+por defecto.»*
+
+### La causa: dos números de versión compartiendo una sola clave
+
+`common/state.js` (legacy) y `src/state/store.ts` (nuevo) escriben la MISMA
+clave física de localStorage para «versión del esquema» —
+`financeapp_state__schemaVersion`— pero cada uno con **su propio número**:
+legacy usa `4`, el store nuevo usa `8`.
+
+El bundle nuevo carga y arranca **antes** que los scripts legacy (`<script>`
+clásico y bloqueante, antes en `index.html`), así que en cada carga de página:
+
+```
+1. El store nuevo lee la clave. Si no vale 8, "migra" y la deja en 8.
+   Al migrar, RE-PERSISTE todas sus colecciones -> resella
+   `state__modificadoEn` a "ahora mismo", tenga o no datos reales.
+
+2. Más tarde, `State.load()` (legacy) lee la MISMA clave. Como ya no vale 4
+   (el paso 1 la dejó en 8), legacy cree que TAMBIÉN tiene que migrar.
+   Migra (sin dañar nada: sus migraciones son idempotentes) y al final
+   escribe la clave... con SU número: la deja en 4 otra vez.
+
+3. Siguiente carga de página: la clave vuelve a valer 4, así que el store
+   nuevo vuelve a pensar que tiene que migrar. Vuelta al paso 1.
+```
+
+Un ping-pong infinito. Consecuencia real: **`state__modificadoEn` se resella
+a «ahora» en cada carga de página**, haya cambiado algo o no. Eso hace que el
+sello local parezca siempre más reciente que el de la nube, así que
+`_sincronizarDesdeNube` nunca toma el atajo «el local no se ha tocado desde
+esta copia» y siempre pregunta — incluso en un dispositivo recién estrenado
+cuyo único «cambio» es el propio arranque persistiendo el estado de fábrica.
+
+**Arreglado**: si `window.FinanceApp` existe, `common/state.js` ya no migra ni
+toca esa clave — se fía por completo del store nuevo, cuya migración 005
+(`src/state/migrations/005-normalize.ts`) hace todo lo que hacía la rama
+legacy y más. La rama legacy se conserva solo como red de seguridad para
+cuando el bundle nuevo no ha podido cargar.
+
+Verificado en un navegador real, no solo deducido: con el fix, la clave de
+versión y el sello se quedan estables tras releer dos y tres veces seguidas;
+revirtiendo el fix (con `git stash`) el mismo test reproduce el ping-pong
+exacto que se describe arriba.
+
+### La comprobación defensiva que se pidió, además de la causa
+
+Aunque el ping-pong es la causa raíz, se añadió igualmente lo que se pidió
+explícitamente: no preguntar si el local **de verdad** no tiene datos.
+`src/state/colecciones.ts` exporta `esEstadoVacioOPorDefecto()`, que mira el
+**contenido** de cada colección (no un sello de tiempo) y solo confía en el
+sello para lo que el sello sí sabe: cuándo se escribió.
+
+El primer intento de esta función fallaba con datos reales, y de una forma
+instructiva: **cada instalación nueva arranca con un plan `plan_base`** (la
+migración 008 crea un vehículo por cuenta y cero objetivos, tenga el usuario
+datos o no), así que «`planes` debe estar vacía» no era cierto NUNCA en la
+práctica — la comprobación no habría disparado jamás en el caso exacto que
+existe para cubrir: un dispositivo recién estrenado. Se encontró probando
+contra un `localStorage` limpio de verdad en un navegador real, no contra
+datos de prueba fabricados a mano — los tests con fixtures a mano habían
+pasado igual, porque nadie había escrito a mano un plan de fábrica en el
+fixture. Ahora `planes` se compara contra la forma exacta que deja la
+migración (un `plan_base` sin objetivos), no solo contra «vacía».
+
+---
+
 ## 3. Lo que sigue pendiente
 
 - Una cuenta sigue teniendo **tres fuentes de verdad** para su saldo (`saldo`,

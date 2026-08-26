@@ -60,6 +60,36 @@ const State = (() => {
   async function load() {
     const _stateKeys = Object.keys(DEFAULT_STATE);
     for (const k of _stateKeys) { const val = StorageAdapter.get(`state_${k}`); if (val !== null) state[k] = val; }
+
+    // El paquete nuevo, si cargó, YA ha migrado y persistido el estado antes de
+    // que se ejecute ninguna función de aquí abajo: su <script> (assets/
+    // financeapp-core.js) es clásico y bloqueante, y va ANTES que este fichero
+    // en index.html, así que corre en orden y termina primero.
+    //
+    // Comparte la MISMA clave física de versión de esquema
+    // (`financeapp_state__schemaVersion`) que este módulo, pero con SU PROPIO
+    // número (`src/state/schema.ts`), mayor que el `SCHEMA_VERSION` de aquí
+    // abajo. Si este módulo TAMBIÉN migrara y volviera a escribir esa clave con
+    // su número (4), la del paquete nuevo (8) quedaría «atrás» en la siguiente
+    // carga: el paquete nuevo pensaría que hace falta volver a migrar, y
+    // volvería a persistir TODAS sus colecciones — lo que resella
+    // `state__modificadoEn` a «ahora» en CADA carga de página, aunque no haya
+    // cambiado nada real.
+    //
+    // Consecuencia real, encontrada el 2026-08-24: el diálogo «Hay dos
+    // versiones de tus datos» aparecía en CADA inicio de sesión, incluso con
+    // el local recién estrenado y vacío, porque el sello de modificación local
+    // siempre parecía más reciente que el de la copia en la nube.
+    //
+    // La migración 005 (`src/state/migrations/005-normalize.ts`) hace TODO lo
+    // que hace la rama de abajo —y más—, así que no hay nada que perder por
+    // dejarle el trabajo. La rama de abajo se conserva solo como red de
+    // seguridad para cuando el bundle nuevo no ha podido cargar.
+    if (window.FinanceApp) {
+      ensureDefaultAccount();
+      return;
+    }
+
     // Skip migration if schema is already at current version
     if (StorageAdapter.get('state__schemaVersion') === SCHEMA_VERSION) {
       ensureDefaultAccount();

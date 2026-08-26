@@ -315,8 +315,13 @@ const DataIO = (() => {
       document.getElementById('dm-fbx-save')?.addEventListener('click', async () => {
         const btn = document.getElementById('dm-fbx-save');
         btn.disabled = true; btn.textContent = '…';
+        // El botón se quedaba en «…» para siempre tras un guardado CORRECTO: el
+        // reseteo solo estaba en el `catch`, nunca en el camino feliz. El toast
+        // decía «Guardado ✓» pero el botón seguía deshabilitado, así que parecía
+        // que algo se había quedado a medias.
         try { await FirebaseService.uploadBackup(); UI.toast('Guardado en Firebase ✓'); }
-        catch (e) { UI.toast('Error: ' + e.message, 'err'); btn.disabled = false; btn.textContent = 'Guardar ahora'; }
+        catch (e) { UI.toast('Error: ' + e.message, 'err'); }
+        finally { btn.disabled = false; btn.textContent = 'Guardar ahora'; }
       });
 
       document.getElementById('dm-fbx-load')?.addEventListener('click', async () => {
@@ -361,7 +366,8 @@ const DataIO = (() => {
         const btn = document.getElementById('dm-dbx-save');
         btn.disabled = true; btn.textContent = '…';
         try { await DropboxService.uploadBackup(); UI.toast('Guardado en Dropbox ✓'); }
-        catch (e) { UI.toast('Error: ' + e.message, 'err'); btn.disabled = false; btn.textContent = 'Guardar ahora'; }
+        catch (e) { UI.toast('Error: ' + e.message, 'err'); }
+        finally { btn.disabled = false; btn.textContent = 'Guardar ahora'; }
       });
 
       document.getElementById('dm-dbx-logout')?.addEventListener('click', async () => {

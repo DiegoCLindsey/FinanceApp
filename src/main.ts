@@ -27,7 +27,7 @@ import { proyectarRetencionesFiscales } from './engine/providers/withholdings';
 import { proyectarInflacionGastos, proyectarPerdidaAhorro } from './engine/providers/inflation-events';
 import { createStore, type Store } from './state/store';
 import { crearRegistroCambios, type RegistroCambios } from './state/cambios';
-import { aplicarCopia, COLECCIONES, faltantesEnCopia, snapshotParaCopia } from './state/colecciones';
+import { aplicarCopia, COLECCIONES, esEstadoVacioOPorDefecto, faltantesEnCopia, snapshotParaCopia } from './state/colecciones';
 import { adoptarClavesHuerfanas, createLocalStorageAdapter } from './state/storage/local';
 import { SCHEMA_VERSION } from './state/schema';
 import { createFlags, type Flags } from './flags/service';
@@ -138,6 +138,12 @@ export interface FinanceAppNamespace {
     faltantes: (copia: Record<string, unknown>) => string[];
     /** Relee el almacenamiento en el store (tras una escritura externa). */
     recargar: () => void;
+    /**
+     * ¿El estado local es, en la práctica, el de fábrica? Lo usa `auth.js` para
+     * no preguntar «¿qué copia conservas?» cuando el local no tiene nada real
+     * que perder. Ver `state/colecciones.esEstadoVacioOPorDefecto`.
+     */
+    esVacioOPorDefecto: () => boolean;
   };
   /** Contabilidad real (F4): ledger, etiquetas compartidas y precisión. */
   accounting: {
@@ -368,6 +374,7 @@ function bootstrap(): FinanceAppNamespace {
         return escritas;
       },
       faltantes: (copia) => faltantesEnCopia(copia),
+      esVacioOPorDefecto: () => esEstadoVacioOPorDefecto(snapshotParaCopia(almacen)),
       recargar: () => {
         store.load();
         cambios.marcar('recarga-externa');
