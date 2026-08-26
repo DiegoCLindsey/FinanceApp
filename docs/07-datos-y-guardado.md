@@ -1,9 +1,10 @@
 # 07 — Datos, guardado y recálculo
 
 > Por qué «recargo y vuelven datos antiguos», por qué las gráficas no se
-> enteraban de nada, y qué se ha hecho con las dos cosas.
+> enteraban de nada, por qué el diálogo de conflicto salía siempre y el botón
+> de guardado se quedaba en «…», y el desbloqueo con huella nuevo.
 >
-> Fecha: 2026-08-24.
+> Fecha: 2026-08-24, ampliado 2026-08-26.
 
 ---
 
@@ -196,9 +197,159 @@ pasado igual, porque nadie había escrito a mano un plan de fábrica en el
 fixture. Ahora `planes` se compara contra la forma exacta que deja la
 migración (un `plan_base` sin objetivos), no solo contra «vacía».
 
+## 2.4 El botón de guardado se quedaba en «…» aunque el guardado fuera bien
+
+Reportado junto con lo anterior: *«Siempre uso el botón de guardar datos
+manualmente que muestra el "guardado correctamente", sin embargo, sigue
+apareciendo el "..." en el botón.»*
+
+### La causa: el reseteo solo vivía en el `catch`
+
+Los manejadores de `dm-fbx-save` y `dm-dbx-save` (`data-io/data-io.js`)
+deshabilitaban el botón y lo ponían en `…` antes de subir la copia, y lo
+devolvían a `Guardar ahora` — pero solo dentro del `catch`:
+
+```js
+try { await FirebaseService.uploadBackup(); UI.toast('Guardado en Firebase ✓'); }
+catch (e) { UI.toast('Error: ' + e.message, 'err'); btn.disabled = false; btn.textContent = 'Guardar ahora'; }
+```
+
+En el camino feliz —que es el único que importa aquí, porque el usuario decía
+ver el toast de «guardado correctamente»— nada volvía a tocar el botón. Se
+quedaba deshabilitado y en `…` hasta la siguiente vez que se abriera el modal
+y se regenerara desde cero.
+
+**Arreglado**: el reseteo se movió a `finally`, así se ejecuta tanto si el
+guardado sale bien como si falla:
+
+```js
+try { await FirebaseService.uploadBackup(); UI.toast('Guardado en Firebase ✓'); }
+catch (e) { UI.toast('Error: ' + e.message, 'err'); }
+finally { btn.disabled = false; btn.textContent = 'Guardar ahora'; }
+```
+
+Verificado en un navegador real con `FirebaseService.uploadBackup` mockeado
+para resolver con retraso: se observaron los tres estados en orden (reposo →
+`…`/deshabilitado → reposo/habilitado de nuevo), tanto para Firebase como para
+Dropbox.
+
 ---
 
-## 3. Lo que sigue pendiente
+## 4. Desbloqueo con huella dactilar
+
+> «Me gustaría implementar el guardado/cargado con huella dactilar en la PWA.
+> Que pida la contraseña de guardado, la cifre con la huella y la pida para
+> descifrar y guardar con la clave guardada. Si la huella no está habilitada o
+> disponible, símplemente se pedirá la contraseña si aplica. (no pedir
+> contraseña en los próximos X minutos)»
+
+### El mecanismo: WebAuthn + la extensión PRF
+
+`src/auth/biometria.ts` es el módulo nuevo. No inventa un segundo secreto: la
+clave de cifrado de la nube ya se guarda en claro en la sesión persistida (ver
+la nota larga en `auth/session.ts`) porque protege la copia **frente al
+proveedor** (Firebase/Dropbox), no frente a quien tiene el dispositivo en la
+mano — el localStorage ya expone todo lo demás igual. Lo que da la huella es
+una forma más cómoda de volver a demostrar «soy yo» sin teclear la clave cada
+vez, no un cambio de ese modelo de amenaza.
+
+El mecanismo es una credencial WebAuthn de plataforma con la extensión `prf`:
+tras verificar la huella (o Face ID, o Windows Hello — lo que dé el
+autenticador), el navegador entrega 32 bytes deterministas ligados a esa
+credencial y a una entrada fija (`salt`). Esos bytes, pasados por HKDF-SHA256,
+son la clave AES-GCM que envuelve la passphrase. Sin la huella no hay forma de
+volver a obtener esos bytes, así que sin ella no se descifra nada.
+
+Registrar hace `navigator.credentials.create()` y, si el autenticador no
+entrega los bytes PRF en ese mismo paso (algunos no lo hacen), un
+`get()` inmediato de refuerzo con la misma entrada. Desbloquear siempre usa
+`get()`.
+
+### Dónde vive el secreto
+
+Cuatro claves de localStorage nuevas, deliberadamente **fuera** del prefijo
+`state_` que respalda `state/colecciones.ts`: `financeapp_bio_credencial`,
+`financeapp_bio_secreto`, `financeapp_bio_ultimo_desbloqueo`,
+`financeapp_bio_gracia_min`. Son secretos de este dispositivo, ligados a su
+autenticador — meterlos en una copia de seguridad los llevaría a otro
+dispositivo donde no sirven de nada.
+
+### Activar la huella no reutiliza una passphrase a ciegas
+
+El toggle de la sección "👆 Huella" del modal "Administrar datos" pide
+confirmar la clave de cifrado actual antes de envolverla — no reutiliza en
+silencio lo que hubiera en memoria. Para evitar que un despiste al escribirla
+envuelva la clave equivocada (y rompa el desbloqueo más adelante sin ningún
+aviso hasta mucho después), se comprueba contra la clave realmente activa con
+un verificador nuevo y estrecho — `FirebaseService.esClaveActual(passphrase)` /
+`DropboxService.esClaveActual(passphrase)` — que no expone la clave, solo dice
+si coincide.
+
+### Un bug real, encontrado probando el flujo completo en un navegador
+
+`UI.openModal`/`closeModal` no llevan pila: hay un único contenedor de modal,
+y abrir uno nuevo **sustituye** el contenido del anterior. El diálogo de
+confirmación de clave (`_pedirPassphraseParaHuella`) abre su propio modal
+sobre el mismo contenedor que "Administrar datos" — así que al terminar
+(`UI.closeModal()`), lo que se cerraba era el modal entero, no solo el
+diálogo de confirmación. El usuario volvía de golpe a la aplicación, sin ver
+que el interruptor había quedado activado ni la fila de minutos de gracia.
+
+Se encontró simulando el flujo real en Chromium sin cabecera (WebAuthn
+mockeado, cifrado real): el toggle y la fila de gracia, releídos por
+`document.getElementById` justo después de registrar la credencial, ya no
+estaban en el documento — habían quedado en un `#modal-content` que el
+segundo `openModal()` había reemplazado. **Arreglado** reabriendo
+"Administrar datos" (`openDataModal()`) al terminar el flujo del interruptor,
+en los tres desenlaces (cancelado, clave incorrecta, activado), para que
+siempre se repinte desde el estado real en vez de tocar referencias sueltas.
+
+### Gracia: se resuelve como una extensión de la sesión, no un mecanismo aparte
+
+«No pedir contraseña en los próximos X minutos» se implementó como un gancho
+inyectado en `auth/session.ts`: `caducada()` acepta una función
+`graciaActiva()` y, mientras da `true`, la sesión nunca se da por caducada,
+sin importar la inactividad. Como `caducada()` es el único sitio que decide
+esto — tanto al recargar como en el vigilante de inactividad en segundo
+plano— un solo gancho cubre los dos casos.
+
+`dentroDeGracia()` exige que haya una credencial de huella registrada en este
+dispositivo antes de conceder nada: sin eso, la gracia no significa nada — es
+un beneficio de haber activado la huella, no un cambio de comportamiento de
+serie para quien nunca la ha configurado. `marcarDesbloqueo()` se llama tanto
+tras un desbloqueo con huella como tras uno manual con la clave tecleada a
+mano, para que el mecanismo sea el mismo dé igual cómo se haya demostrado
+«soy yo».
+
+Los minutos de gracia son configurables (por defecto 5, `0` los apaga). Un
+primer intento confundía «nunca se ha configurado nada» con «se guardó un 0
+explícito», y devolvía el valor por defecto en los dos casos — deshaciendo en
+silencio un apagado intencionado. Lo cazaron los propios tests nuevos.
+
+### Verificación
+
+- 20 tests nuevos en `tests/auth/biometria.test.ts` (round-trip criptográfico
+  real con `crypto.subtle`, WebAuthn mockeado; ceremonia única y de dos pasos;
+  credencial ajena que no descifra nada legible; `olvidar()`).
+- 4 tests nuevos en `tests/auth/session.test.ts` para el gancho de gracia,
+  incluido el vigilante de inactividad en segundo plano.
+- Flujo completo en Chromium sin cabecera, en dos procesos separados: uno
+  registra la huella desde el modal "Administrar datos" (con la clave
+  correcta, y con una incorrecta para comprobar que se rechaza), el otro
+  arranca ya con esa credencial guardada y comprueba que el botón "👆
+  Desbloquear con huella" de la pantalla de acceso descifra exactamente la
+  misma passphrase y completa el acceso — la prueba de que el envoltorio
+  sobrevive de verdad entre sesiones del navegador, no solo dentro del mismo
+  proceso de test.
+- Capturas a 1400 px y a 390 px de viewport real (vía el envoltorio de
+  `<iframe>` de `tools/qa/movil.html` — un `--window-size` sin cabecera no
+  baja de 500 px, así que sin el iframe todo parece desbordar): la sección
+  "Huella" del modal y el botón de la pantalla de acceso encajan en las dos
+  anchuras.
+
+---
+
+## 5. Lo que sigue pendiente
 
 - Una cuenta sigue teniendo **tres fuentes de verdad** para su saldo (`saldo`,
   `saldoInicial`@fecha, `historicoSaldos`). Es deuda conocida y exige migración.

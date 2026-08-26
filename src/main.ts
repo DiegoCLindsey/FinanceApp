@@ -55,6 +55,7 @@ import { createPrecisionAnalyzer, type PrecisionAnalyzer } from './accounting/pr
 import { createAdjuster, sugerirAjuste, type Adjuster } from './accounting/adjust';
 import { bandaAcumulada, bandaDeConfianza, describirBanda, medirVariabilidad } from './accounting/confianza';
 import { createSessionService, vigilarInactividad, OPCIONES_AUTOLOGOUT, type SessionService } from './auth/session';
+import { crearBiometria, type Biometria } from './auth/biometria';
 
 export interface FinanceAppNamespace {
   version: number;
@@ -118,6 +119,12 @@ export interface FinanceAppNamespace {
     vigilar: (onCaducada: () => void) => () => void;
     opciones: typeof OPCIONES_AUTOLOGOUT;
   };
+  /**
+   * Desbloqueo con huella dactilar (o el autenticador de plataforma que dé el
+   * dispositivo) para la clave de cifrado de la copia en la nube. Ver
+   * `auth/biometria`.
+   */
+  biometria: Biometria;
   /**
    * Señal única de «ha cambiado algo». De ella cuelgan el recálculo perezoso de
    * las gráficas y el aviso de cambios sin guardar. Ver `state/cambios`.
@@ -193,11 +200,16 @@ function bootstrap(): FinanceAppNamespace {
   // datos siga siendo legacy, es `State` quien tiene la copia recién escrita y
   // la del store se queda atrás hasta la siguiente recarga. Puente temporal,
   // como `refrescarLegacy` (se retira al portar el modal de datos, tarea 1.7).
+  const biometria = crearBiometria();
   const sesion = createSessionService({
     autoLogoutMinutos: () => {
       const legacy = (globalThis as { State?: { get?: (k: string) => { autoLogoutMinutos?: number } | undefined } }).State?.get?.('config');
       return Number(legacy?.autoLogoutMinutos ?? store.get('config').autoLogoutMinutos ?? 0);
     },
+    // «No pedir nada en los próximos X minutos» tras desbloquear (con huella o
+    // tecleando la clave): mientras dure la gracia, un cierre por inactividad
+    // no se aplica. Ver `auth/biometria`.
+    graciaActiva: () => biometria.dentroDeGracia(),
   });
   const ledger = createLedger(store);
   const tags = createTagService(store);
@@ -348,6 +360,7 @@ function bootstrap(): FinanceAppNamespace {
       vigilar: (onCaducada: () => void) => vigilarInactividad({ sesion, onCaducada }),
       opciones: OPCIONES_AUTOLOGOUT,
     }),
+    biometria,
     cambios,
     datos: {
       colecciones: COLECCIONES,

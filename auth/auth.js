@@ -252,9 +252,14 @@ const DropboxService = (() => {
     }
   }
 
+  /** ¿Es esta la clave activa ahora mismo? No expone `_passphrase`, solo dice si coincide. */
+  function esClaveActual(passphrase) {
+    return !!_passphrase && passphrase === _passphrase;
+  }
+
   return {
     setup, unlock, restore, hasSavedSession, isConnected, forget,
-    uploadBackup, downloadBackup, ultimaFechaBackup, tokenAgeHours, couldBeExpired,
+    uploadBackup, downloadBackup, ultimaFechaBackup, tokenAgeHours, couldBeExpired, esClaveActual,
   };
 })();
 
@@ -702,6 +707,8 @@ const AuthModule = (() => {
       warningEl.classList.remove('hidden');
     }
 
+    _ofrecerDesbloqueoConHuella('dropbox', document.getElementById('dbx-unlock-passphrase'), 'btn-dropbox-unlock');
+
     const doUnlock = async () => {
       _err('dbx-unlock-error', '');
       const pass = document.getElementById('dbx-unlock-passphrase')?.value;
@@ -715,6 +722,7 @@ const AuthModule = (() => {
         await _sincronizarDesdeNube(DropboxService, 'Dropbox');
 
         await launch('dropbox', { passphrase: pass });
+        window.FinanceApp?.biometria?.marcarDesbloqueo?.();
       } catch (err) {
         _err('dbx-unlock-error', err.message);
       } finally {
@@ -833,6 +841,68 @@ const AuthModule = (() => {
     });
   }
 
+  // ── Desbloqueo con huella (WebAuthn + PRF) ────────────────────────────────────
+  // La lógica de cifrado vive en src/auth/biometria.ts; aquí solo se pinta el
+  // botón y se engancha al flujo de acceso ya existente.
+  //
+  // Al pulsarlo, la huella recupera la passphrase y se mete en el MISMO campo
+  // que se rellenaría a mano, disparando el MISMO botón "Continuar" /
+  // "Desbloquear" — así el camino biométrico corre la lógica exacta de
+  // siempre (sincronizar, lanzar la app…) sin duplicarla en dos sitios que
+  // podrían acabar divergiendo.
+  function _ofrecerDesbloqueoConHuella(modo, inputEl, botonContinuarId) {
+    // Idempotente: si esta pantalla se recablea (p.ej. "Cambiar cuenta"), no
+    // se acumulan botones.
+    document.getElementById('bio-unlock-wrap')?.remove();
+
+    const bio = window.FinanceApp?.biometria;
+    const cred = bio?.leerCredencial?.();
+    if (!bio || !cred || cred.modo !== modo || !inputEl) return;
+
+    const contenedor = inputEl.closest('.form-group') || inputEl.parentElement;
+    if (!contenedor?.parentElement) return;
+
+    const envoltorio = document.createElement('div');
+    envoltorio.id = 'bio-unlock-wrap';
+    envoltorio.style.marginBottom = '10px';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-secondary full-width';
+    btn.textContent = '👆 Desbloquear con huella';
+
+    const errorEl = document.createElement('div');
+    errorEl.className = 'auth-error hidden';
+    errorEl.style.marginTop = '6px';
+
+    btn.addEventListener('click', async () => {
+      errorEl.classList.add('hidden');
+      const textoOriginal = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Verificando…';
+      try {
+        const passphrase = await bio.desbloquear();
+        inputEl.value = passphrase;
+        document.getElementById(botonContinuarId)?.click();
+      } catch (e) {
+        // Cancelar el gesto biométrico (Esc / "Cancelar" en el diálogo del
+        // sistema) no es un error que merezca alarmar: se queda el campo
+        // manual, como si el botón no se hubiera pulsado.
+        if (e?.name !== 'NotAllowedError') {
+          errorEl.textContent = e.message || 'No se ha podido desbloquear con huella.';
+          errorEl.classList.remove('hidden');
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = textoOriginal;
+      }
+    });
+
+    envoltorio.appendChild(btn);
+    envoltorio.appendChild(errorEl);
+    contenedor.parentElement.insertBefore(envoltorio, contenedor);
+  }
+
   // ── Paso: desbloqueo de sesión Firebase guardada ─────────────────────────────
   function _wireFirebaseUnlockStep() {
     _err('fbx-unlock-error', '');
@@ -847,6 +917,7 @@ const AuthModule = (() => {
       phase2?.classList.remove('hidden');
       const emailEl = document.getElementById('fbx-unlock-connected-email');
       if (emailEl) emailEl.textContent = email;
+      _ofrecerDesbloqueoConHuella('firebase', document.getElementById('fbx-unlock-passphrase'), 'btn-firebase-unlock');
       setTimeout(() => document.getElementById('fbx-unlock-passphrase')?.focus(), 50);
     };
 
@@ -860,6 +931,9 @@ const AuthModule = (() => {
         FirebaseService.setPassphrase(passphrase);
         await _sincronizarDesdeNube(FirebaseService, 'Firebase');
         await launch('firebase', { passphrase });
+        // Da igual si "soy yo" se demostró con huella o tecleando: la gracia
+        // cuenta desde cualquier desbloqueo correcto.
+        window.FinanceApp?.biometria?.marcarDesbloqueo?.();
       } catch (err) {
         _err('fbx-unlock-passphrase-error', err.message);
       } finally {

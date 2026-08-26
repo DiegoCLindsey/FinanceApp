@@ -295,10 +295,11 @@ const DataIO = (() => {
             <button class="btn-secondary dm-btn" id="dm-import">↑ Importar JSON</button>
           </div>
         </div>
-        ${fbxSection}${dbxSection}${noCloud}${_sesionSection(cfg, { yaHayCierre: fbx || dbx })}
+        ${fbxSection}${dbxSection}${noCloud}${(fbx || dbx) ? _bioSection(fbx ? 'firebase' : 'dropbox') : ''}${_sesionSection(cfg, { yaHayCierre: fbx || dbx })}
       </div>`, 'Administrar datos');
 
     _wireSesionSection();
+    if (fbx || dbx) _wireBioSection(fbx ? 'firebase' : 'dropbox');
 
     // Upgrade to cloud (shown when no cloud connected)
     if (!fbx && !dbx) {
@@ -397,7 +398,119 @@ const DataIO = (() => {
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────────
+  // ── Desbloqueo con huella ─────────────────────────────────────────────────────
+  // Detectar si hay autenticador de plataforma es asíncrono
+  // (`isUserVerifyingPlatformAuthenticatorAvailable`), pero abrir el modal de
+  // datos es una acción del usuario que no puede esperar a una promesa: se
+  // comprueba UNA vez al arrancar y se cachea. Es un hecho del dispositivo que
+  // no cambia a media sesión.
+  let _bioDisponible = false;
+  function _comprobarBioDisponible() {
+    window.FinanceApp?.biometria?.disponible().then(v => { _bioDisponible = v; }).catch(() => {});
+  }
+
+  /** Pide la clave de cifrado ACTUAL para envolverla — no la inventa ni la reutiliza a ciegas. */
+  function _pedirPassphraseParaHuella() {
+    return new Promise(resolve => {
+      UI.openModal(`
+        <p style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:14px">
+          Para activar el desbloqueo con huella hace falta confirmar tu clave de
+          cifrado actual una vez. A partir de ahora, la huella la recuerda por ti.
+        </p>
+        <div class="form-group" style="margin-bottom:14px">
+          <input type="password" id="bio-confirm-pass" class="auth-input" placeholder="Tu clave de cifrado" autocomplete="current-password"/>
+        </div>
+        <div id="bio-confirm-error" class="auth-error hidden" style="margin-bottom:10px"></div>
+        <div class="flex gap-8" style="justify-content:flex-end">
+          <button class="btn-secondary" id="bio-confirm-cancel">Cancelar</button>
+          <button class="btn-primary" id="bio-confirm-ok">Continuar</button>
+        </div>`,
+        'Confirma tu clave de cifrado');
+      const input = document.getElementById('bio-confirm-pass');
+      input?.focus();
+      const terminar = valor => { UI.closeModal(); resolve(valor); };
+      document.getElementById('bio-confirm-cancel')?.addEventListener('click', () => terminar(null));
+      document.getElementById('bio-confirm-ok')?.addEventListener('click', () => {
+        const v = input?.value;
+        if (!v) { document.getElementById('bio-confirm-error').textContent = 'Introduce tu clave.'; document.getElementById('bio-confirm-error').classList.remove('hidden'); return; }
+        terminar(v);
+      });
+      input?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('bio-confirm-ok')?.click(); });
+    });
+  }
+
+  /** Sección "Desbloqueo con huella", solo con nube conectada y autenticador disponible. */
+  function _bioSection(modo) {
+    const bio = window.FinanceApp?.biometria;
+    if (!bio || !_bioDisponible) return '';
+    const activo = bio.registrada();
+    const graciaActual = bio.graciaMinutos();
+    return `
+      <div class="dm-section">
+        <div class="dm-section-head">
+          <span class="dm-badge dm-badge--local">👆 Huella</span>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)">
+          <label class="toggle"><input type="checkbox" id="dm-bio-toggle" ${activo ? 'checked' : ''}/><span class="toggle-slider"></span></label>
+          Desbloquear con huella dactilar (o el sensor de este dispositivo)
+        </label>
+        <div id="dm-bio-gracia-row" style="margin-top:10px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)${activo ? '' : ';display:none'}">
+          No pedir nada durante
+          <input type="number" id="dm-bio-gracia" value="${graciaActual}" min="0" max="120" style="width:56px" class="auth-input"/>
+          min. tras desbloquear
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5">
+          Solo funciona en este dispositivo. Si lo desactivas o cambias de
+          dispositivo, seguirá pidiéndose la clave de siempre.
+        </div>
+      </div>`;
+  }
+
+  function _wireBioSection(modo) {
+    const bio = window.FinanceApp?.biometria;
+    if (!bio) return;
+    const toggle = document.getElementById('dm-bio-toggle');
+    const graciaRow = document.getElementById('dm-bio-gracia-row');
+    const graciaInput = document.getElementById('dm-bio-gracia');
+
+    toggle?.addEventListener('change', async () => {
+      if (toggle.checked) {
+        const pass = await _pedirPassphraseParaHuella();
+        // El diálogo de confirmación reutiliza el mismo modal que "Administrar
+        // datos" (no hay pila de modales, ver UI.openModal): al abrirse
+        // sustituye su contenido, y al cerrarse deja el modal cerrado del
+        // todo. Por eso este modal se reabre siempre al terminar — si no, el
+        // usuario se quedaba fuera sin más, y `toggle`/`graciaRow` habrían
+        // dejado de estar en el documento.
+        if (!pass) { openDataModal(); return; }
+        const servicio = modo === 'firebase' ? FirebaseService : DropboxService;
+        if (!servicio.esClaveActual(pass)) {
+          UI.toast('Esa no es tu clave de cifrado actual.', 'err');
+          openDataModal();
+          return;
+        }
+        try {
+          await bio.registrar(pass, modo);
+          UI.toast('Huella activada ✓');
+        } catch (e) {
+          UI.toast('No se ha podido activar: ' + e.message, 'err');
+        } finally {
+          openDataModal();
+        }
+      } else {
+        bio.olvidar();
+        UI.toast('Huella desactivada');
+        if (graciaRow) graciaRow.style.display = 'none';
+      }
+    });
+
+    graciaInput?.addEventListener('change', () => {
+      bio.configurarGracia(parseInt(graciaInput.value, 10) || 0);
+    });
+  }
+
   function init() {
+    _comprobarBioDisponible();
     // Botón único de gestión de datos
     document.getElementById('btn-data-mgmt')?.addEventListener('click', openDataModal);
 

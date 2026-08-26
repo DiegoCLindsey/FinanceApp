@@ -387,6 +387,17 @@ const FirebaseService = (() => {
     _passphrase = passphrase;
   }
 
+  /**
+   * ¿Es esta la clave activa ahora mismo? No expone `_passphrase`: solo dice
+   * si coincide. La usa el desbloqueo con huella para comprobar que lo que el
+   * usuario ha vuelto a teclear es de verdad la clave en uso, y no envolver un
+   * error de tecleo que rompería el desbloqueo la próxima vez sin que nadie
+   * se entere hasta entonces.
+   */
+  function esClaveActual(passphrase) {
+    return !!_passphrase && passphrase === _passphrase;
+  }
+
   function isAdmin() { return _isAdmin; }
 
   async function setUserAdmin(email, adminStatus) {
@@ -398,7 +409,7 @@ const FirebaseService = (() => {
     isConfigured, getConfig, hasInjectedConfig, hasSavedSession, savedEmail,
     isConnected, currentUserEmail, isAdmin,
     login, register, loginWithGoogle, restoreSession, logout, forget,
-    uploadBackup, downloadBackup, ultimaFechaBackup, setPassphrase,
+    uploadBackup, downloadBackup, ultimaFechaBackup, setPassphrase, esClaveActual,
     listWhitelist, addToWhitelist, removeFromWhitelist, setUserAdmin,
   };
 })();
