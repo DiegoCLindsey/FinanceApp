@@ -163,6 +163,47 @@ const DashboardModule = (() => {
     render();
   }
 
+  // ── Recálculo perezoso ──────────────────────────────────────────────────────
+  // El cuadro de mando es caro: proyecta el extracto entero y monta ocho
+  // gráficas. Antes había dos opciones malas —recalcular en cada navegación, o
+  // no recalcular y obligar a darle a «Actualizar» a mano— y estaba en la
+  // segunda: cambiabas un gasto, volvías al cuadro de mando y seguía el de
+  // antes.
+  //
+  // Ahora los datos llevan un contador de revisión (`FinanceApp.cambios`, que se
+  // alimenta de TODA escritura en el store) y el cuadro de mando se queda con
+  // una marca de agua. Al abrirlo se compara: si nada ha cambiado desde el
+  // último pintado, no se toca nada; si algo ha cambiado, se recalcula. El
+  // trabajo se hace cuando se va a ver, no cuando se produce el cambio.
+  let _marca = null;
+  let _yaPintado = false;
+  function _marcaCambios() {
+    if (_marca) return _marca;
+    const reg = window.FinanceApp?.cambios;
+    if (!reg?.crearMarca) return null;   // sin el paquete nuevo: siempre repinta
+    _marca = reg.crearMarca('dashboard');
+    return _marca;
+  }
+
+  /**
+   * Punto de entrada del router. Decide si hace falta recalcular.
+   *
+   * `render()` sigue siendo incondicional a propósito: lo llaman los controles
+   * del propio cuadro de mando (filtros, pestañas, plegados) y ahí el usuario
+   * espera ver el efecto en el momento.
+   */
+  function abrir() {
+    const marca = _marcaCambios();
+    if (!_yaPintado || !marca || marca.pendiente()) {
+      // Los datos pueden haber cambiado desde otra vista, y `State` es una copia
+      // en memoria: releerla es justo lo que hacía a mano el botón «Actualizar».
+      if (marca?.pendiente()) {
+        try { State.load(); } catch (e) { console.error('[Dashboard] No se ha podido releer el estado:', e); }
+      }
+      render();
+    }
+  }
+
   function render() {
     if (_chartTimer !== null) { clearTimeout(_chartTimer); _chartTimer = null; }
     destroyCharts();
@@ -967,6 +1008,13 @@ const DashboardModule = (() => {
     const _otrosTagData = Object.entries(_otrosTagMap)
       .map(([label, total]) => ({ label, value: total / numMeses }))
       .sort((a, b) => b.value - a.value);
+    // Al día aquí y no dentro del temporizador de las gráficas: el HTML y todos
+    // los cálculos ya están hechos, y solo queda pintar. Marcarlo dentro del
+    // temporizador dejaba una ventana de 60 ms en la que dos navegaciones
+    // seguidas recalculaban dos veces el cuadro de mando entero.
+    _yaPintado = true;
+    _marcaCambios()?.alDia();
+
     _chartTimer = setTimeout(()=>{
       _chartTimer = null;
       _registrarModoPorFecha();
@@ -1814,5 +1862,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, actualizar, setVentanaVelas, limpiarSimulaciones, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis };
+  return { render, abrir, actualizar, setVentanaVelas, limpiarSimulaciones, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis };
 })();

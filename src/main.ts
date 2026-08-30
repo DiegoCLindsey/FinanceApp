@@ -26,14 +26,20 @@ import { proyectarAportaciones } from './engine/providers/contributions';
 import { proyectarRetencionesFiscales } from './engine/providers/withholdings';
 import { proyectarInflacionGastos, proyectarPerdidaAhorro } from './engine/providers/inflation-events';
 import { createStore, type Store } from './state/store';
+import { crearRegistroCambios, type RegistroCambios } from './state/cambios';
+import { aplicarCopia, COLECCIONES, esEstadoVacioOPorDefecto, faltantesEnCopia, snapshotParaCopia } from './state/colecciones';
 import { adoptarClavesHuerfanas, createLocalStorageAdapter } from './state/storage/local';
+import { crearServicioProyectos, leerColeccionesDeProyecto, namespaceDeProyecto, remapearIds, type Proyecto } from './state/proyectos';
+import type { AppState, CollectionKey } from './state/schema';
 import { SCHEMA_VERSION } from './state/schema';
 import { createFlags, type Flags } from './flags/service';
 import { FEATURES, featuresPorGrupo } from './flags/registry';
 import { createFeaturesModal } from './ui/features-modal';
+import { createProyectosModal } from './ui/proyectos-modal';
 import { createGating } from './ui/gating';
 import { instalarDeshacer } from './ui/deshacer';
 import { instalarBuscador } from './ui/buscador';
+import { instalarAvisoGuardado, type Guardado } from './ui/guardado';
 import { instalarConsultaFlags } from './flags/guard';
 import { createFeatureRegistry, type FeatureRegistry } from './app/feature-registry';
 import { createAccountingFeature } from './features/accounting';
@@ -52,6 +58,7 @@ import { createPrecisionAnalyzer, type PrecisionAnalyzer } from './accounting/pr
 import { createAdjuster, sugerirAjuste, type Adjuster } from './accounting/adjust';
 import { bandaAcumulada, bandaDeConfianza, describirBanda, medirVariabilidad } from './accounting/confianza';
 import { createSessionService, vigilarInactividad, OPCIONES_AUTOLOGOUT, type SessionService } from './auth/session';
+import { crearBiometria, type Biometria } from './auth/biometria';
 
 export interface FinanceAppNamespace {
   version: number;
@@ -87,6 +94,8 @@ export interface FinanceAppNamespace {
   ui: {
     /** Abre la ventana de configuración de funcionalidades. */
     openFeatures: () => void;
+    /** Abre la ventana de proyectos: cambiar, crear, renombrar, duplicar, importar. */
+    openProyectos: () => void;
     /** Re-aplica el gating de los flags al shell (sidebar y vista activa). */
     applyGating: () => void;
     /**
@@ -101,6 +110,11 @@ export interface FinanceAppNamespace {
     instalarDeshacer: () => () => void;
     /** Monta la búsqueda global (Ctrl+K y lupa). Devuelve el `detener`. */
     instalarBuscador: () => () => void;
+    /**
+     * Monta el aviso de «cambios sin guardar». Lo consume `data-io` para que el
+     * temporizador de autoguardado enseñe el mismo «Subiendo… → ¡Guardado!».
+     */
+    avisoGuardado: Guardado | null;
   };
   /** Registro de vistas del paquete nuevo; lo consulta el router del shell. */
   app: FeatureRegistry;
@@ -109,6 +123,70 @@ export interface FinanceAppNamespace {
     /** Arranca la vigilancia de inactividad; devuelve el `detener`. */
     vigilar: (onCaducada: () => void) => () => void;
     opciones: typeof OPCIONES_AUTOLOGOUT;
+  };
+  /**
+   * Desbloqueo con huella dactilar (o el autenticador de plataforma que dé el
+   * dispositivo) para la clave de cifrado de la copia en la nube. Ver
+   * `auth/biometria`.
+   */
+  biometria: Biometria;
+  /**
+   * Señal única de «ha cambiado algo». De ella cuelgan el recálculo perezoso de
+   * las gráficas y el aviso de cambios sin guardar. Ver `state/cambios`.
+   */
+  cambios: RegistroCambios;
+  /** Copias de seguridad: una sola lista de colecciones para las cuatro rutas. */
+  datos: {
+    /** Todas las colecciones del esquema. */
+    colecciones: typeof COLECCIONES;
+    /** Copia completa leída del almacenamiento (no de una copia en memoria). */
+    snapshot: () => Record<string, unknown>;
+    /**
+     * Vuelca una copia y RECARGA el store. Sin la recarga, el store se queda
+     * con lo de antes y la primera escritura resucita los datos viejos.
+     */
+    aplicar: (copia: Record<string, unknown>, opciones?: { sellar?: boolean }) => string[];
+    /** Colecciones que la copia no trae y que se quedan como estaban. */
+    faltantes: (copia: Record<string, unknown>) => string[];
+    /** Relee el almacenamiento en el store (tras una escritura externa). */
+    recargar: () => void;
+    /**
+     * ¿El estado local es, en la práctica, el de fábrica? Lo usa `auth.js` para
+     * no preguntar «¿qué copia conservas?» cuando el local no tiene nada real
+     * que perder. Ver `state/colecciones.esEstadoVacioOPorDefecto`.
+     */
+    esVacioOPorDefecto: () => boolean;
+  };
+  /**
+   * Varios proyectos para un mismo usuario: cada uno es una instancia
+   * separada (sus propias cuentas, gastos, préstamos... todo), en un espacio
+   * de nombres de localStorage distinto. Ver `state/proyectos`.
+   */
+  proyectos: {
+    /** Todos los proyectos (siempre incluye `default`, el de siempre). */
+    listar: () => Proyecto[];
+    /** El proyecto que está cargado ahora mismo en esta pestaña. */
+    activo: () => Proyecto;
+    /** Colecciones que se pueden importar de un proyecto a otro (todo menos `config`). */
+    colecciones: CollectionKey[];
+    crear: (nombre: string) => Proyecto;
+    renombrar: (id: string, nombre: string) => void;
+    /** Copia el estado entero a un proyecto nuevo e independiente. */
+    duplicar: (id: string, nombreNuevo?: string) => Proyecto;
+    eliminar: (id: string) => void;
+    /**
+     * Marca qué proyecto está activo. Cambiar de proyecto de verdad exige
+     * recargar la página (el store, los servicios y las vistas se calculan
+     * una sola vez al arrancar) — esta función solo dice cuál tocará cargar
+     * la próxima vez; recargar es cosa de quien la llame.
+     */
+    cambiarA: (id: string) => void;
+    /**
+     * Trae colecciones de OTRO proyecto al activo, con ids nuevos y las
+     * referencias cruzadas entre ellas ya corregidas (ver `remapearIds`). Se
+     * añaden a lo que ya hay — no sustituye nada.
+     */
+    importarDesde: (idOrigen: string, colecciones: CollectionKey[]) => { importadas: CollectionKey[] };
   };
   /** Contabilidad real (F4): ledger, etiquetas compartidas y precisión. */
   accounting: {
@@ -134,11 +212,57 @@ function bootstrap(): FinanceAppNamespace {
       console.info(`[FinanceApp] Recuperadas claves escritas fuera del espacio de nombres: ${adoptadas.join(', ')}`);
     }
   }
-  const store = createStore({ adapter: createLocalStorageAdapter() });
+  // Varios proyectos: el registro vive fuera de cualquier espacio de nombres
+  // de proyecto (si no, cada proyecto vería una lista distinta), y decide qué
+  // espacio de nombres usa TODO lo demás de este arranque — el adapter, el
+  // store, y más abajo el puente legacy y las rutas de copia en la nube. Ver
+  // `state/proyectos`.
+  const proyectosSvc = crearServicioProyectos();
+  const idProyectoActivo = proyectosSvc.activo();
+  const namespaceActivo = namespaceDeProyecto(idProyectoActivo);
+
+  // El adapter se guarda: las copias de seguridad se leen y se escriben DESDE
+  // EL ALMACENAMIENTO, no desde ninguna copia en memoria. Ver `state/colecciones`.
+  const almacen = createLocalStorageAdapter(localStorage, namespaceActivo);
+  const store = createStore({ adapter: almacen });
+  const cambios = crearRegistroCambios();
   const { applied } = store.load();
   if (applied.length > 0) {
     console.info(`[FinanceApp] Migraciones aplicadas: ${applied.join(', ')} (esquema v${SCHEMA_VERSION})`);
   }
+  // Cualquier escritura en el store marca los datos como cambiados. Va aquí y
+  // no en cada vista por lo mismo que el deshacer: el store es el embudo por el
+  // que pasan todos los cambios, así que engancharlo una vez lo cubre todo y
+  // ninguna pantalla futura puede olvidarse de avisar.
+  store.subscribe((clave) => cambios.marcar(clave));
+
+  // Se construye aquí (no en el objeto de retorno) porque también lo necesita
+  // `proyectosModal`, más abajo, para poder abrirse desde el sidebar.
+  const proyectosAPI: FinanceAppNamespace['proyectos'] = {
+    listar: () => proyectosSvc.listar(),
+    activo: () => proyectosSvc.listar().find((p) => p._id === idProyectoActivo) ?? proyectosSvc.listar()[0],
+    colecciones: COLECCIONES.filter((k): k is CollectionKey => k !== 'config'),
+    crear: (nombre) => proyectosSvc.crear(nombre),
+    renombrar: (id, nombre) => proyectosSvc.renombrar(id, nombre),
+    duplicar: (id, nombreNuevo) => proyectosSvc.duplicar(id, nombreNuevo),
+    eliminar: (id) => proyectosSvc.eliminar(id),
+    cambiarA: (id) => proyectosSvc.establecerActivo(id),
+    importarDesde: (idOrigen, colecciones) => {
+      const leidas = leerColeccionesDeProyecto(localStorage, idOrigen, colecciones);
+      const remapeadas = remapearIds(leidas);
+      const importadas: CollectionKey[] = [];
+      for (const col of colecciones) {
+        const nuevos = remapeadas[col];
+        if (!Array.isArray(nuevos) || nuevos.length === 0) continue;
+        const actuales = store.get(col) as unknown[];
+        store.set(col, [...actuales, ...nuevos] as unknown as AppState[CollectionKey]);
+        importadas.push(col);
+      }
+      if (importadas.length > 0) cambios.marcar('importado-de-otro-proyecto');
+      return { importadas };
+    },
+  };
+
   const flags = createFlags(store);
   // Segunda línea de defensa: a partir de aquí, las operaciones de las
   // funcionalidades opcionales fallan si su flag está apagado en vez de
@@ -148,11 +272,16 @@ function bootstrap(): FinanceAppNamespace {
   // datos siga siendo legacy, es `State` quien tiene la copia recién escrita y
   // la del store se queda atrás hasta la siguiente recarga. Puente temporal,
   // como `refrescarLegacy` (se retira al portar el modal de datos, tarea 1.7).
+  const biometria = crearBiometria();
   const sesion = createSessionService({
     autoLogoutMinutos: () => {
       const legacy = (globalThis as { State?: { get?: (k: string) => { autoLogoutMinutos?: number } | undefined } }).State?.get?.('config');
       return Number(legacy?.autoLogoutMinutos ?? store.get('config').autoLogoutMinutos ?? 0);
     },
+    // «No pedir nada en los próximos X minutos» tras desbloquear (con huella o
+    // tecleando la clave): mientras dure la gracia, un cierre por inactividad
+    // no se aplica. Ver `auth/biometria`.
+    graciaActiva: () => biometria.dentroDeGracia(),
   });
   const ledger = createLedger(store);
   const tags = createTagService(store);
@@ -171,6 +300,7 @@ function bootstrap(): FinanceAppNamespace {
       (globalThis as { Router?: { rerender?: () => void } }).Router?.rerender?.();
     },
   });
+  const proyectosModal = createProyectosModal({ proyectos: proyectosAPI });
 
   // Recarga del State legacy: comparte las claves de localStorage con el store
   // nuevo, pero mantiene su propia copia en memoria. Hasta portar el dashboard
@@ -260,6 +390,7 @@ function bootstrap(): FinanceAppNamespace {
     featureRegistry: { all: FEATURES, porGrupo: featuresPorGrupo },
     ui: {
       openFeatures: featuresModal.open,
+      openProyectos: proyectosModal.open,
       applyGating: gating.apply,
       watchGating: () => gating.observar(),
       instalarDeshacer: () =>
@@ -275,6 +406,9 @@ function bootstrap(): FinanceAppNamespace {
             g.Router?.rerender?.();
           },
         }),
+      // Lo rellena `arrancarAvisoGuardado()` al montar el shell; hasta entonces
+      // es null y quien lo consulte debe comprobarlo.
+      avisoGuardado: null as Guardado | null,
       instalarBuscador: () =>
         instalarBuscador({
           // Lecturas directas y no `snapshot()`: esto se llama en CADA tecla y
@@ -300,6 +434,40 @@ function bootstrap(): FinanceAppNamespace {
       vigilar: (onCaducada: () => void) => vigilarInactividad({ sesion, onCaducada }),
       opciones: OPCIONES_AUTOLOGOUT,
     }),
+    biometria,
+    cambios,
+    datos: {
+      colecciones: COLECCIONES,
+      snapshot: () => snapshotParaCopia(almacen) as Record<string, unknown>,
+      aplicar: (copia, { sellar = true } = {}) => {
+        // `setRestaurando` del legacy escribe SIN mover el sello de última
+        // modificación: lo que baja de la nube no es una modificación tuya.
+        const escribir = sellar
+          ? (k: string, v: unknown) => almacen.set(k, v)
+          : (k: string, v: unknown) => {
+              const legacy = (globalThis as { StorageAdapter?: { setRestaurando?: (k: string, v: unknown) => void } }).StorageAdapter;
+              if (legacy?.setRestaurando) legacy.setRestaurando(k, v);
+              else almacen.set(k, v);
+            };
+        const escritas = aplicarCopia(escribir, copia);
+        // Recargar NO es opcional. El store se carga al arrancar la página, y
+        // una restauración o un import ocurren después: sin releer, su copia en
+        // memoria sigue siendo la de antes y la siguiente escritura devuelve al
+        // almacenamiento los datos viejos. Es la causa de «recargo y vuelven
+        // datos antiguos». Además, así una copia con esquema viejo pasa por las
+        // migraciones en vez de quedarse a medias.
+        store.load();
+        cambios.marcar('copia-restaurada');
+        return escritas;
+      },
+      faltantes: (copia) => faltantesEnCopia(copia),
+      esVacioOPorDefecto: () => esEstadoVacioOPorDefecto(snapshotParaCopia(almacen)),
+      recargar: () => {
+        store.load();
+        cambios.marcar('recarga-externa');
+      },
+    },
+    proyectos: proyectosAPI,
     accounting: { ledger, tags, precision, adjuster, sugerirAjuste, medirVariabilidad, bandaDeConfianza, bandaAcumulada, describirBanda },
   };
 }
@@ -350,6 +518,33 @@ if (app) {
       app.ui.watchGating();
       app.ui.instalarDeshacer();
       app.ui.instalarBuscador();
+      // El aviso de cambios sin guardar. Solo tiene sentido con un destino de
+      // copia configurado: sin nube no hay nada que subir y el aviso sería ruido.
+      const g = globalThis as {
+        FirebaseService?: { isConnected?: () => boolean; uploadBackup?: () => Promise<void> };
+        DropboxService?: { isConnected?: () => boolean; uploadBackup?: () => Promise<void> };
+      };
+      const destino = () =>
+        g.FirebaseService?.isConnected?.() ? g.FirebaseService : g.DropboxService?.isConnected?.() ? g.DropboxService : null;
+      app.ui.avisoGuardado = instalarAvisoGuardado({
+        cambios: app.cambios,
+        hayDestino: () => destino() !== null,
+        guardar: async () => {
+          const s = destino();
+          if (!s?.uploadBackup) throw new Error('No hay ningún destino de copia conectado.');
+          await s.uploadBackup();
+        },
+      });
+      // Proyecto activo, siempre visible en el sidebar — sin esto no hay forma
+      // de saber, de un vistazo, en cuál de varios proyectos se está.
+      const badgeProyecto = document.getElementById('sidebar-proyecto-activo');
+      const nombreProyecto = document.getElementById('sidebar-proyecto-activo-nombre');
+      if (badgeProyecto && nombreProyecto) {
+        nombreProyecto.textContent = app.proyectos.activo().nombre;
+        badgeProyecto.classList.remove('hidden');
+        badgeProyecto.addEventListener('click', () => app.ui.openProyectos());
+      }
+      document.getElementById('btn-proyectos')?.addEventListener('click', () => app.ui.openProyectos());
     }
   };
   if (document.readyState === 'loading') {

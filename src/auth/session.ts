@@ -62,9 +62,23 @@ export interface SessionDeps {
   /** Minutos de inactividad tras los que cerrar sola la sesión; 0 = nunca. */
   autoLogoutMinutos?: () => number;
   ahora?: () => number;
+  /**
+   * ¿Sigue dentro del periodo de gracia de un desbloqueo con huella? Mientras
+   * sea `true`, la sesión no se da por caducada aunque se haya superado
+   * `autoLogoutMinutos` — es lo que implementa «no pedir nada en los próximos
+   * X minutos» tras desbloquear (con huella o tecleando la clave). Por
+   * defecto no hay gracia (`false`): el comportamiento de siempre. Ver
+   * `auth/biometria.dentroDeGracia`.
+   */
+  graciaActiva?: () => boolean;
 }
 
-export function createSessionService({ storage, autoLogoutMinutos = () => 0, ahora = () => Date.now() }: SessionDeps = {}) {
+export function createSessionService({
+  storage,
+  autoLogoutMinutos = () => 0,
+  ahora = () => Date.now(),
+  graciaActiva = () => false,
+}: SessionDeps = {}) {
   const store = (): Storage | null => storage ?? (typeof localStorage !== 'undefined' ? localStorage : null);
 
   function escribir(reg: RegistroSesion | null): void {
@@ -98,6 +112,9 @@ export function createSessionService({ storage, autoLogoutMinutos = () => 0, aho
   function caducada(): boolean {
     const limite = autoLogoutMinutos();
     if (!Number.isFinite(limite) || limite <= 0) return false; // 0 = nunca caduca
+    // La gracia manda sobre el límite: es justo lo que pide, "no preguntes
+    // nada todavía", aunque el reloj de inactividad ya lo permitiera.
+    if (graciaActiva()) return false;
     const inactiva = inactividadMinutos();
     return inactiva !== null && inactiva >= limite;
   }

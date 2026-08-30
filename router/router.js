@@ -53,6 +53,9 @@ const Router = (() => {
     _todasLasRutas().forEach(v=>document.getElementById(`view-${v}`)?.classList.toggle('hidden',v!==view));
     document.querySelectorAll('.nav-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.view===view));
     if (_esNueva(view)) _nuevas().mount(view);
+    // `abrir()` decide si hace falta recalcular; `render()` recalcula siempre.
+    // El cuadro de mando es la vista cara y es la única que ofrece `abrir()`.
+    else if (mods[view]?.abrir) mods[view].abrir();
     else mods[view]?.render();
     // Close mobile sidebar
     document.getElementById('sidebar')?.classList.remove('open');

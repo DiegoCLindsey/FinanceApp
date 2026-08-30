@@ -191,6 +191,60 @@ describe('vigilancia mientras la pestaña está abierta', () => {
   });
 });
 
+describe('gracia del desbloqueo con huella', () => {
+  it('con gracia activa, no caduca aunque se supere el límite', () => {
+    const r = reloj();
+    const s = createSessionService({ ahora: r.ahora, autoLogoutMinutos: () => 15, graciaActiva: () => true });
+    s.abrir({ modo: 'firebase', passphrase: 'k' });
+
+    r.avanzarMin(60); // muy por encima del límite de 15
+    expect(s.caducada()).toBe(false);
+    expect(s.leer()).not.toBeNull();
+  });
+
+  it('cuando la gracia se acaba, vuelve a aplicar el límite de siempre', () => {
+    const r = reloj();
+    let gracia = true;
+    const s = createSessionService({ ahora: r.ahora, autoLogoutMinutos: () => 15, graciaActiva: () => gracia });
+    s.abrir({ modo: 'firebase', passphrase: 'k' });
+
+    r.avanzarMin(60);
+    expect(s.caducada()).toBe(false); // protegido por la gracia
+
+    gracia = false; // la gracia terminó (p.ej. han pasado los X minutos del desbloqueo)
+    expect(s.caducada()).toBe(true); // la inactividad real seguía ahí, se aplica ya
+  });
+
+  it('sin graciaActiva (por defecto), el comportamiento es el de siempre', () => {
+    const r = reloj();
+    const s = createSessionService({ ahora: r.ahora, autoLogoutMinutos: () => 15 });
+    s.abrir({ modo: 'local' });
+    r.avanzarMin(16);
+    expect(s.caducada()).toBe(true);
+  });
+
+  it('la gracia también evita que el vigilante en segundo plano cierre la sesión', () => {
+    vi.useFakeTimers();
+    try {
+      const r = reloj();
+      const s = createSessionService({ ahora: r.ahora, autoLogoutMinutos: () => 15, graciaActiva: () => true });
+      s.abrir({ modo: 'local' });
+      const onCaducada = vi.fn();
+      const detener = vigilarInactividad({ sesion: s, onCaducada, intervaloMs: 1000 });
+      try {
+        r.avanzarMin(60);
+        vi.advanceTimersByTime(1000);
+        expect(onCaducada).not.toHaveBeenCalled();
+        expect(s.leer()).not.toBeNull();
+      } finally {
+        detener();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('opciones de la UI', () => {
   it('la primera opción es "nunca" y todas son minutos válidos', () => {
     expect(OPCIONES_AUTOLOGOUT[0].minutos).toBe(0);

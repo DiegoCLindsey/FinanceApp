@@ -372,6 +372,14 @@
         <span class="logo-mark">F</span>
         <span class="logo-text" style="font-size:15px">Finance<span class="logo-accent">App</span></span>
       </div>
+      <!-- Proyecto activo: solo aparece con el paquete nuevo cargado (proyectos.ts). -->
+      <button id="sidebar-proyecto-activo" class="hidden" title="Cambiar de proyecto"
+              style="display:flex;align-items:center;gap:6px;width:calc(100% - 24px);margin:0 12px 8px;padding:5px 9px;
+                     background:var(--surface);border:1px solid var(--hairline-soft);border-radius:8px;cursor:pointer;
+                     font-size:11px;color:var(--text2);text-align:left;overflow:hidden">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--accent);flex:none"></span>
+        <span id="sidebar-proyecto-activo-nombre" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+      </button>
       <ul class="nav-list">
 
         <!-- ── INICIO ─────────────────────────────────────── -->
@@ -398,6 +406,10 @@
 
       </ul>
       <div class="sidebar-footer">
+        <button id="btn-proyectos" class="nav-btn" title="Cambiar, crear o duplicar proyectos">
+          <svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+          <span>Proyectos</span>
+        </button>
         <button id="btn-features" class="nav-btn" title="Activar o desactivar funcionalidades">
           <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 00-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 118.4 12 3.6 3.6 0 0112 15.6z"/></svg>
           <span>Funcionalidades</span>

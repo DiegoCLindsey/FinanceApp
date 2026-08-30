@@ -12,6 +12,19 @@ const FirebaseService = (() => {
   const LS_CONFIG = 'financeapp_fbx_config';  // JSON de configuración del proyecto Firebase
   const LS_EMAIL  = 'financeapp_fbx_email';   // Último email autenticado
 
+  /**
+   * Id del documento de backup en Firestore. El proyecto `default` usa
+   * `'backup'`, el de siempre — así una cuenta ya conectada antes de que
+   * existieran los proyectos (financeapp) sigue encontrando su copia donde la
+   * dejó. El resto tienen su propio documento: la cuenta de Firebase (quién
+   * ha iniciado sesión) es del dispositivo/navegador y se comparte entre
+   * proyectos, pero cada proyecto sube y baja su propia copia.
+   */
+  function _backupDocId() {
+    const id = window.FinanceApp?.proyectos?.activo?.()?._id;
+    return !id || id === 'default' ? 'backup' : `backup_${id}`;
+  }
+
   let _app        = null;
   let _auth       = null;
   let _db         = null;
@@ -304,17 +317,27 @@ const FirebaseService = (() => {
     if (!isConnected()) throw new Error('No autenticado en Firebase.');
     if (!_passphrase)   throw new Error('Clave de cifrado no disponible.');
 
-    const snapshot = {};
-    for (const k of ['loans','expenses','accounts','history','goals','nominas','inflacion',
-                     'tramosGananciasCapitalHistorico','tramosIRPFHistorico','escenarios','config']) {
-      snapshot[k] = State.get(k);
-    }
+    // Del ALMACENAMIENTO y con la lista del esquema, no de `State.get` con una
+    // lista escrita a mano. Lo de antes fallaba por los dos lados: `State` es
+    // una copia en memoria que puede ir por detrás de lo que hay en disco, y la
+    // lista no incluía planes, transacciones ni puntos de control, así que el
+    // planificador y la contabilidad no se subían a la nube. Nunca.
+    const snapshot = window.FinanceApp?.datos?.snapshot?.()
+      ?? (() => {
+        console.warn('[Firebase] El paquete nuevo no está: la copia irá incompleta.');
+        const out = {};
+        for (const k of ['loans','expenses','accounts','goals','nominas','inflacion',
+                         'tramosGananciasCapitalHistorico','tramosIRPFHistorico','escenarios','config']) {
+          out[k] = State.get(k);
+        }
+        return out;
+      })();
 
     const cipher = await CryptoService.encryptPortable(_passphrase, snapshot);
 
     await _db
       .collection('users').doc(_user.uid)
-      .collection('data').doc('backup')
+      .collection('data').doc(_backupDocId())
       .set({
         cipher,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -329,7 +352,7 @@ const FirebaseService = (() => {
 
     const doc = await _db
       .collection('users').doc(_user.uid)
-      .collection('data').doc('backup')
+      .collection('data').doc(_backupDocId())
       .get();
 
     if (!doc.exists) return null;
@@ -377,6 +400,17 @@ const FirebaseService = (() => {
     _passphrase = passphrase;
   }
 
+  /**
+   * ¿Es esta la clave activa ahora mismo? No expone `_passphrase`: solo dice
+   * si coincide. La usa el desbloqueo con huella para comprobar que lo que el
+   * usuario ha vuelto a teclear es de verdad la clave en uso, y no envolver un
+   * error de tecleo que rompería el desbloqueo la próxima vez sin que nadie
+   * se entere hasta entonces.
+   */
+  function esClaveActual(passphrase) {
+    return !!_passphrase && passphrase === _passphrase;
+  }
+
   function isAdmin() { return _isAdmin; }
 
   async function setUserAdmin(email, adminStatus) {
@@ -388,7 +422,7 @@ const FirebaseService = (() => {
     isConfigured, getConfig, hasInjectedConfig, hasSavedSession, savedEmail,
     isConnected, currentUserEmail, isAdmin,
     login, register, loginWithGoogle, restoreSession, logout, forget,
-    uploadBackup, downloadBackup, ultimaFechaBackup, setPassphrase,
+    uploadBackup, downloadBackup, ultimaFechaBackup, setPassphrase, esClaveActual,
     listWhitelist, addToWhitelist, removeFromWhitelist, setUserAdmin,
   };
 })();

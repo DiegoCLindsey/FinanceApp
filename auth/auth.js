@@ -42,7 +42,18 @@ GDRIVE_DISABLED_END */
 // Fichero en Dropbox: /financeapp_backup.enc (texto cifrado)
 // ─────────────────────────────────────────────────────────────────────────────
 const DropboxService = (() => {
-  const FILE_PATH      = '/financeapp_backup.enc';
+  /**
+   * Ruta del backup en Dropbox. El proyecto `default` usa la de siempre, sin
+   * sufijo — así una cuenta Dropbox ya conectada antes de que existieran los
+   * proyectos sigue encontrando su copia exactamente donde la dejó. El resto
+   * de proyectos tienen su propio fichero, independiente: la CONEXIÓN a
+   * Dropbox (el token) es del dispositivo y se comparte entre proyectos, pero
+   * cada proyecto sube y baja su propia copia.
+   */
+  function FILE_PATH() {
+    const id = window.FinanceApp?.proyectos?.activo?.()?._id;
+    return !id || id === 'default' ? '/financeapp_backup.enc' : `/financeapp_backup_${id}.enc`;
+  }
   const LS_TOKEN       = 'financeapp_dbx_token_enc';  // token cifrado con la passphrase
   const LS_SALT        = 'financeapp_dbx_salt';
   const LS_TOKEN_META  = 'financeapp_dbx_token_meta'; // { savedAt: ISO string }
@@ -181,10 +192,17 @@ const DropboxService = (() => {
   async function uploadBackup() {
     if (!isConnected()) throw new Error('No conectado a Dropbox.');
 
-    const snapshot = {};
-    for (const k of ['loans', 'expenses', 'accounts', 'history', 'goals', 'nominas', 'inflacion', 'tramosGananciasCapitalHistorico', 'tramosIRPFHistorico', 'escenarios', 'config']) {
-      snapshot[k] = State.get(k);
-    }
+    // Ver la nota en firebase-service.js: del almacenamiento y con la lista del
+    // esquema, que es la única que no se queda atrás.
+    const snapshot = window.FinanceApp?.datos?.snapshot?.()
+      ?? (() => {
+        console.warn('[Dropbox] El paquete nuevo no está: la copia irá incompleta.');
+        const out = {};
+        for (const k of ['loans', 'expenses', 'accounts', 'goals', 'nominas', 'inflacion', 'tramosGananciasCapitalHistorico', 'tramosIRPFHistorico', 'escenarios', 'config']) {
+          out[k] = State.get(k);
+        }
+        return out;
+      })();
 
     // Cifrado portátil: sal embebida, no depende del localStorage local
     const cipher = await CryptoService.encryptPortable(_passphrase, snapshot);
@@ -196,7 +214,7 @@ const DropboxService = (() => {
         Authorization:     'Bearer ' + _token,
         'Content-Type':    'application/octet-stream',
         'Dropbox-API-Arg': JSON.stringify({
-          path: FILE_PATH, mode: 'overwrite', autorename: false, mute: true,
+          path: FILE_PATH(), mode: 'overwrite', autorename: false, mute: true,
         }),
       },
       body: blob,
@@ -219,7 +237,7 @@ const DropboxService = (() => {
       method:  'POST',
       headers: {
         Authorization:     'Bearer ' + _token,
-        'Dropbox-API-Arg': JSON.stringify({ path: FILE_PATH }),
+        'Dropbox-API-Arg': JSON.stringify({ path: FILE_PATH() }),
       },
     });
 
@@ -245,9 +263,14 @@ const DropboxService = (() => {
     }
   }
 
+  /** ¿Es esta la clave activa ahora mismo? No expone `_passphrase`, solo dice si coincide. */
+  function esClaveActual(passphrase) {
+    return !!_passphrase && passphrase === _passphrase;
+  }
+
   return {
     setup, unlock, restore, hasSavedSession, isConnected, forget,
-    uploadBackup, downloadBackup, ultimaFechaBackup, tokenAgeHours, couldBeExpired,
+    uploadBackup, downloadBackup, ultimaFechaBackup, tokenAgeHours, couldBeExpired, esClaveActual,
   };
 })();
 
@@ -288,6 +311,39 @@ const AuthModule = (() => {
     btn.textContent = busy ? '…' : label;
   }
 
+  /**
+   * ¿El almacenamiento local es, en la práctica, el estado de fábrica?
+   *
+   * La decisión de verdad vive en `state/colecciones.esEstadoVacioOPorDefecto`
+   * (TypeScript, con sus propios tests): mira el CONTENIDO de cada colección,
+   * no si `state__modificadoEn` está puesto — un sello reciente no significa
+   * que haya datos reales debajo, porque el propio arranque de la aplicación
+   * persiste el estado por defecto al migrar (ver la nota larga en
+   * `common/state.js` sobre el bug de versiones de esquema compartidas).
+   *
+   * Si el paquete nuevo no cargó, se cae a una comprobación mínima con lo que
+   * `State` conoce — peor, pero mejor que preguntar siempre.
+   */
+  function _localEsVacioOPorDefecto() {
+    if (window.FinanceApp?.datos?.esVacioOPorDefecto) return window.FinanceApp.datos.esVacioOPorDefecto();
+    const loans    = (State.get('loans')    || []).length;
+    const expenses = (State.get('expenses') || []).length;
+    const accounts = (State.get('accounts') || []).filter(a => a._id !== 'default' || (a.saldoInicial || 0) !== 0).length;
+    return loans + expenses + accounts === 0;
+  }
+
+  /** Resumen legible de qué hay guardado localmente, para el diálogo de confirmación. */
+  function _resumenLocalParaMigracion() {
+    const loans    = (State.get('loans')    || []).length;
+    const expenses = (State.get('expenses') || []).length;
+    const accounts = (State.get('accounts') || []).filter(a => a._id !== 'default' || a.saldoInicial > 0).length;
+    return [
+      expenses > 0 ? `${expenses} gasto${expenses !== 1 ? 's/ingresos' : '/ingreso'}` : '',
+      loans    > 0 ? `${loans} préstamo${loans !== 1 ? 's' : ''}` : '',
+      accounts > 0 ? `${accounts} cuenta${accounts !== 1 ? 's' : ''}` : '',
+    ].filter(Boolean).join(', ');
+  }
+
   // ── Migration helper: si la nube está vacía y hay datos locales, ofrece subirlos
   async function _offerMigration(service, modeName) {
     // Misma ruta que el arranque: si hay copia en la nube Y datos locales que
@@ -297,16 +353,10 @@ const AuthModule = (() => {
       await _sincronizarDesdeNube(service, modeName);
       return;
     }
-    // No cloud backup — check local data
-    const loans    = (State.get('loans')    || []).length;
-    const expenses = (State.get('expenses') || []).length;
-    const accounts = (State.get('accounts') || []).filter(a => a._id !== 'default' || a.saldoInicial > 0).length;
-    if (loans + expenses + accounts > 0) {
-      const parts = [
-        expenses > 0 ? `${expenses} gasto${expenses !== 1 ? 's/ingresos' : '/ingreso'}` : '',
-        loans    > 0 ? `${loans} préstamo${loans !== 1 ? 's' : ''}` : '',
-        accounts > 0 ? `${accounts} cuenta${accounts !== 1 ? 's' : ''}` : '',
-      ].filter(Boolean).join(', ');
+    // Sin backup en la nube: solo se ofrece subir si de verdad hay algo que
+    // subir, no el estado de fábrica.
+    if (!_localEsVacioOPorDefecto()) {
+      const parts = _resumenLocalParaMigracion();
       if (window.confirm(`Tienes ${parts} guardados localmente.\n¿Subir estos datos a ${modeName} ahora?`)) {
         await service.uploadBackup();
         UI.toast('Datos locales subidos a la nube ✓');
@@ -382,12 +432,25 @@ const AuthModule = (() => {
     ? new Date(ms).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })
     : 'fecha desconocida';
 
-  /** Vuelca una copia de la nube al almacenamiento local. */
+  /**
+   * Vuelca una copia de la nube al almacenamiento local.
+   *
+   * Y RECARGA el store del paquete nuevo. Esto último no es un detalle: el store
+   * se carga cuando arranca la página, y esta restauración pasa después, al
+   * entrar. Sin releer, su copia en memoria seguía siendo la de antes de
+   * restaurar, y la primera vez que el usuario tocaba cualquier cosa desde una
+   * vista nueva se reescribía el almacenamiento con los datos VIEJOS. Era una de
+   * las dos causas de «recargo y aparecen datos antiguos».
+   */
   function _volcar(backup, fechaNube) {
-    for (const [k, v] of Object.entries(backup)) {
-      // setRestaurando: esto no es una modificación del usuario, así que no
-      // debe mover el sello. Después se sella con la fecha de la copia.
-      if (v !== undefined) StorageAdapter.setRestaurando('state_' + k, v);
+    const aplicar = window.FinanceApp?.datos?.aplicar;
+    if (aplicar) {
+      // sellar:false → lo que baja de la nube no es una modificación tuya.
+      aplicar(backup, { sellar: false });
+    } else {
+      for (const [k, v] of Object.entries(backup)) {
+        if (v !== undefined) StorageAdapter.setRestaurando('state_' + k, v);
+      }
     }
     StorageAdapter.sellar(fechaNube || Date.now());
   }
@@ -416,6 +479,14 @@ const AuthModule = (() => {
 
     // El local no se ha tocado desde que se trajo esta copia: nada que decidir.
     if (fechaNube && fechaLocal <= fechaNube) { _volcar(backup, fechaNube); return; }
+
+    // El sello puede ser reciente sin que haya datos reales debajo — un
+    // dispositivo recién estrenado persiste su estado de fábrica al arrancar,
+    // lo que marca el sello aunque el usuario no haya tecleado nada (ver
+    // `_localEsVacioOPorDefecto`). Si el local es, en la práctica, el estado
+    // vacío de fábrica, no hay nada que decidir: se restaura sin preguntar,
+    // igual que en la primera restauración.
+    if (_localEsVacioOPorDefecto()) { _volcar(backup, fechaNube); UI.toast(`Datos restaurados desde ${nombre} ✓`); return; }
 
     const eleccion = await _preguntarConflicto({
       nombre,
@@ -647,6 +718,8 @@ const AuthModule = (() => {
       warningEl.classList.remove('hidden');
     }
 
+    _ofrecerDesbloqueoConHuella('dropbox', document.getElementById('dbx-unlock-passphrase'), 'btn-dropbox-unlock');
+
     const doUnlock = async () => {
       _err('dbx-unlock-error', '');
       const pass = document.getElementById('dbx-unlock-passphrase')?.value;
@@ -660,6 +733,7 @@ const AuthModule = (() => {
         await _sincronizarDesdeNube(DropboxService, 'Dropbox');
 
         await launch('dropbox', { passphrase: pass });
+        window.FinanceApp?.biometria?.marcarDesbloqueo?.();
       } catch (err) {
         _err('dbx-unlock-error', err.message);
       } finally {
@@ -778,6 +852,68 @@ const AuthModule = (() => {
     });
   }
 
+  // ── Desbloqueo con huella (WebAuthn + PRF) ────────────────────────────────────
+  // La lógica de cifrado vive en src/auth/biometria.ts; aquí solo se pinta el
+  // botón y se engancha al flujo de acceso ya existente.
+  //
+  // Al pulsarlo, la huella recupera la passphrase y se mete en el MISMO campo
+  // que se rellenaría a mano, disparando el MISMO botón "Continuar" /
+  // "Desbloquear" — así el camino biométrico corre la lógica exacta de
+  // siempre (sincronizar, lanzar la app…) sin duplicarla en dos sitios que
+  // podrían acabar divergiendo.
+  function _ofrecerDesbloqueoConHuella(modo, inputEl, botonContinuarId) {
+    // Idempotente: si esta pantalla se recablea (p.ej. "Cambiar cuenta"), no
+    // se acumulan botones.
+    document.getElementById('bio-unlock-wrap')?.remove();
+
+    const bio = window.FinanceApp?.biometria;
+    const cred = bio?.leerCredencial?.();
+    if (!bio || !cred || cred.modo !== modo || !inputEl) return;
+
+    const contenedor = inputEl.closest('.form-group') || inputEl.parentElement;
+    if (!contenedor?.parentElement) return;
+
+    const envoltorio = document.createElement('div');
+    envoltorio.id = 'bio-unlock-wrap';
+    envoltorio.style.marginBottom = '10px';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-secondary full-width';
+    btn.textContent = '👆 Desbloquear con huella';
+
+    const errorEl = document.createElement('div');
+    errorEl.className = 'auth-error hidden';
+    errorEl.style.marginTop = '6px';
+
+    btn.addEventListener('click', async () => {
+      errorEl.classList.add('hidden');
+      const textoOriginal = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Verificando…';
+      try {
+        const passphrase = await bio.desbloquear();
+        inputEl.value = passphrase;
+        document.getElementById(botonContinuarId)?.click();
+      } catch (e) {
+        // Cancelar el gesto biométrico (Esc / "Cancelar" en el diálogo del
+        // sistema) no es un error que merezca alarmar: se queda el campo
+        // manual, como si el botón no se hubiera pulsado.
+        if (e?.name !== 'NotAllowedError') {
+          errorEl.textContent = e.message || 'No se ha podido desbloquear con huella.';
+          errorEl.classList.remove('hidden');
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = textoOriginal;
+      }
+    });
+
+    envoltorio.appendChild(btn);
+    envoltorio.appendChild(errorEl);
+    contenedor.parentElement.insertBefore(envoltorio, contenedor);
+  }
+
   // ── Paso: desbloqueo de sesión Firebase guardada ─────────────────────────────
   function _wireFirebaseUnlockStep() {
     _err('fbx-unlock-error', '');
@@ -792,6 +928,7 @@ const AuthModule = (() => {
       phase2?.classList.remove('hidden');
       const emailEl = document.getElementById('fbx-unlock-connected-email');
       if (emailEl) emailEl.textContent = email;
+      _ofrecerDesbloqueoConHuella('firebase', document.getElementById('fbx-unlock-passphrase'), 'btn-firebase-unlock');
       setTimeout(() => document.getElementById('fbx-unlock-passphrase')?.focus(), 50);
     };
 
@@ -805,6 +942,9 @@ const AuthModule = (() => {
         FirebaseService.setPassphrase(passphrase);
         await _sincronizarDesdeNube(FirebaseService, 'Firebase');
         await launch('firebase', { passphrase });
+        // Da igual si "soy yo" se demostró con huella o tecleando: la gracia
+        // cuenta desde cualquier desbloqueo correcto.
+        window.FinanceApp?.biometria?.marcarDesbloqueo?.();
       } catch (err) {
         _err('fbx-unlock-passphrase-error', err.message);
       } finally {

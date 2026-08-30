@@ -2,14 +2,27 @@
 // Almacenamiento local únicamente — localStorage como store principal.
 // La nube (Firebase/Dropbox) es copia de seguridad, no store primario.
 const StorageAdapter = (() => {
-  const P = 'financeapp_';
+  /**
+   * Espacio de nombres del proyecto activo (ver `state/proyectos.ts`). Es una
+   * función, no una constante: `window.FinanceApp` decide qué proyecto está
+   * activo, y este adapter tiene que seguirlo en cada llamada, no fijarlo al
+   * evaluarse el módulo (que es antes de que exista `window.FinanceApp`,
+   * aunque para cuando se LLAMA a `get`/`set` ya existe siempre — ver la nota
+   * en `common/state.js` sobre el orden de carga de los scripts). Sin
+   * `window.FinanceApp` (el bundle no ha podido cargar), se cae al proyecto
+   * de siempre.
+   */
+  function P() {
+    const id = window.FinanceApp?.proyectos?.activo?.()?._id;
+    return !id || id === 'default' ? 'financeapp_' : `financeapp_p_${id}_`;
+  }
   /** Clave del sello: cuándo se tocó por última vez algo de los datos. */
   const SELLO = 'state__modificadoEn';
 
-  function get(key)        { const r = localStorage.getItem(P + key); return r ? JSON.parse(r) : null; }
-  function remove(key)     { localStorage.removeItem(P + key); return true; }
+  function get(key)        { const r = localStorage.getItem(P() + key); return r ? JSON.parse(r) : null; }
+  function remove(key)     { localStorage.removeItem(P() + key); return true; }
 
-  function _escribir(key, value) { localStorage.setItem(P + key, JSON.stringify(value)); return true; }
+  function _escribir(key, value) { localStorage.setItem(P() + key, JSON.stringify(value)); return true; }
 
   /**
    * Escribe y sella la hora.
