@@ -12,6 +12,19 @@ const FirebaseService = (() => {
   const LS_CONFIG = 'financeapp_fbx_config';  // JSON de configuración del proyecto Firebase
   const LS_EMAIL  = 'financeapp_fbx_email';   // Último email autenticado
 
+  /**
+   * Id del documento de backup en Firestore. El proyecto `default` usa
+   * `'backup'`, el de siempre — así una cuenta ya conectada antes de que
+   * existieran los proyectos (financeapp) sigue encontrando su copia donde la
+   * dejó. El resto tienen su propio documento: la cuenta de Firebase (quién
+   * ha iniciado sesión) es del dispositivo/navegador y se comparte entre
+   * proyectos, pero cada proyecto sube y baja su propia copia.
+   */
+  function _backupDocId() {
+    const id = window.FinanceApp?.proyectos?.activo?.()?._id;
+    return !id || id === 'default' ? 'backup' : `backup_${id}`;
+  }
+
   let _app        = null;
   let _auth       = null;
   let _db         = null;
@@ -324,7 +337,7 @@ const FirebaseService = (() => {
 
     await _db
       .collection('users').doc(_user.uid)
-      .collection('data').doc('backup')
+      .collection('data').doc(_backupDocId())
       .set({
         cipher,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -339,7 +352,7 @@ const FirebaseService = (() => {
 
     const doc = await _db
       .collection('users').doc(_user.uid)
-      .collection('data').doc('backup')
+      .collection('data').doc(_backupDocId())
       .get();
 
     if (!doc.exists) return null;

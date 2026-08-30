@@ -29,10 +29,13 @@ import { createStore, type Store } from './state/store';
 import { crearRegistroCambios, type RegistroCambios } from './state/cambios';
 import { aplicarCopia, COLECCIONES, esEstadoVacioOPorDefecto, faltantesEnCopia, snapshotParaCopia } from './state/colecciones';
 import { adoptarClavesHuerfanas, createLocalStorageAdapter } from './state/storage/local';
+import { crearServicioProyectos, leerColeccionesDeProyecto, namespaceDeProyecto, remapearIds, type Proyecto } from './state/proyectos';
+import type { AppState, CollectionKey } from './state/schema';
 import { SCHEMA_VERSION } from './state/schema';
 import { createFlags, type Flags } from './flags/service';
 import { FEATURES, featuresPorGrupo } from './flags/registry';
 import { createFeaturesModal } from './ui/features-modal';
+import { createProyectosModal } from './ui/proyectos-modal';
 import { createGating } from './ui/gating';
 import { instalarDeshacer } from './ui/deshacer';
 import { instalarBuscador } from './ui/buscador';
@@ -91,6 +94,8 @@ export interface FinanceAppNamespace {
   ui: {
     /** Abre la ventana de configuración de funcionalidades. */
     openFeatures: () => void;
+    /** Abre la ventana de proyectos: cambiar, crear, renombrar, duplicar, importar. */
+    openProyectos: () => void;
     /** Re-aplica el gating de los flags al shell (sidebar y vista activa). */
     applyGating: () => void;
     /**
@@ -152,6 +157,37 @@ export interface FinanceAppNamespace {
      */
     esVacioOPorDefecto: () => boolean;
   };
+  /**
+   * Varios proyectos para un mismo usuario: cada uno es una instancia
+   * separada (sus propias cuentas, gastos, préstamos... todo), en un espacio
+   * de nombres de localStorage distinto. Ver `state/proyectos`.
+   */
+  proyectos: {
+    /** Todos los proyectos (siempre incluye `default`, el de siempre). */
+    listar: () => Proyecto[];
+    /** El proyecto que está cargado ahora mismo en esta pestaña. */
+    activo: () => Proyecto;
+    /** Colecciones que se pueden importar de un proyecto a otro (todo menos `config`). */
+    colecciones: CollectionKey[];
+    crear: (nombre: string) => Proyecto;
+    renombrar: (id: string, nombre: string) => void;
+    /** Copia el estado entero a un proyecto nuevo e independiente. */
+    duplicar: (id: string, nombreNuevo?: string) => Proyecto;
+    eliminar: (id: string) => void;
+    /**
+     * Marca qué proyecto está activo. Cambiar de proyecto de verdad exige
+     * recargar la página (el store, los servicios y las vistas se calculan
+     * una sola vez al arrancar) — esta función solo dice cuál tocará cargar
+     * la próxima vez; recargar es cosa de quien la llame.
+     */
+    cambiarA: (id: string) => void;
+    /**
+     * Trae colecciones de OTRO proyecto al activo, con ids nuevos y las
+     * referencias cruzadas entre ellas ya corregidas (ver `remapearIds`). Se
+     * añaden a lo que ya hay — no sustituye nada.
+     */
+    importarDesde: (idOrigen: string, colecciones: CollectionKey[]) => { importadas: CollectionKey[] };
+  };
   /** Contabilidad real (F4): ledger, etiquetas compartidas y precisión. */
   accounting: {
     ledger: Ledger;
@@ -176,9 +212,18 @@ function bootstrap(): FinanceAppNamespace {
       console.info(`[FinanceApp] Recuperadas claves escritas fuera del espacio de nombres: ${adoptadas.join(', ')}`);
     }
   }
+  // Varios proyectos: el registro vive fuera de cualquier espacio de nombres
+  // de proyecto (si no, cada proyecto vería una lista distinta), y decide qué
+  // espacio de nombres usa TODO lo demás de este arranque — el adapter, el
+  // store, y más abajo el puente legacy y las rutas de copia en la nube. Ver
+  // `state/proyectos`.
+  const proyectosSvc = crearServicioProyectos();
+  const idProyectoActivo = proyectosSvc.activo();
+  const namespaceActivo = namespaceDeProyecto(idProyectoActivo);
+
   // El adapter se guarda: las copias de seguridad se leen y se escriben DESDE
   // EL ALMACENAMIENTO, no desde ninguna copia en memoria. Ver `state/colecciones`.
-  const almacen = createLocalStorageAdapter();
+  const almacen = createLocalStorageAdapter(localStorage, namespaceActivo);
   const store = createStore({ adapter: almacen });
   const cambios = crearRegistroCambios();
   const { applied } = store.load();
@@ -190,6 +235,33 @@ function bootstrap(): FinanceAppNamespace {
   // que pasan todos los cambios, así que engancharlo una vez lo cubre todo y
   // ninguna pantalla futura puede olvidarse de avisar.
   store.subscribe((clave) => cambios.marcar(clave));
+
+  // Se construye aquí (no en el objeto de retorno) porque también lo necesita
+  // `proyectosModal`, más abajo, para poder abrirse desde el sidebar.
+  const proyectosAPI: FinanceAppNamespace['proyectos'] = {
+    listar: () => proyectosSvc.listar(),
+    activo: () => proyectosSvc.listar().find((p) => p._id === idProyectoActivo) ?? proyectosSvc.listar()[0],
+    colecciones: COLECCIONES.filter((k): k is CollectionKey => k !== 'config'),
+    crear: (nombre) => proyectosSvc.crear(nombre),
+    renombrar: (id, nombre) => proyectosSvc.renombrar(id, nombre),
+    duplicar: (id, nombreNuevo) => proyectosSvc.duplicar(id, nombreNuevo),
+    eliminar: (id) => proyectosSvc.eliminar(id),
+    cambiarA: (id) => proyectosSvc.establecerActivo(id),
+    importarDesde: (idOrigen, colecciones) => {
+      const leidas = leerColeccionesDeProyecto(localStorage, idOrigen, colecciones);
+      const remapeadas = remapearIds(leidas);
+      const importadas: CollectionKey[] = [];
+      for (const col of colecciones) {
+        const nuevos = remapeadas[col];
+        if (!Array.isArray(nuevos) || nuevos.length === 0) continue;
+        const actuales = store.get(col) as unknown[];
+        store.set(col, [...actuales, ...nuevos] as unknown as AppState[CollectionKey]);
+        importadas.push(col);
+      }
+      if (importadas.length > 0) cambios.marcar('importado-de-otro-proyecto');
+      return { importadas };
+    },
+  };
 
   const flags = createFlags(store);
   // Segunda línea de defensa: a partir de aquí, las operaciones de las
@@ -228,6 +300,7 @@ function bootstrap(): FinanceAppNamespace {
       (globalThis as { Router?: { rerender?: () => void } }).Router?.rerender?.();
     },
   });
+  const proyectosModal = createProyectosModal({ proyectos: proyectosAPI });
 
   // Recarga del State legacy: comparte las claves de localStorage con el store
   // nuevo, pero mantiene su propia copia en memoria. Hasta portar el dashboard
@@ -317,6 +390,7 @@ function bootstrap(): FinanceAppNamespace {
     featureRegistry: { all: FEATURES, porGrupo: featuresPorGrupo },
     ui: {
       openFeatures: featuresModal.open,
+      openProyectos: proyectosModal.open,
       applyGating: gating.apply,
       watchGating: () => gating.observar(),
       instalarDeshacer: () =>
@@ -393,6 +467,7 @@ function bootstrap(): FinanceAppNamespace {
         cambios.marcar('recarga-externa');
       },
     },
+    proyectos: proyectosAPI,
     accounting: { ledger, tags, precision, adjuster, sugerirAjuste, medirVariabilidad, bandaDeConfianza, bandaAcumulada, describirBanda },
   };
 }
@@ -460,6 +535,16 @@ if (app) {
           await s.uploadBackup();
         },
       });
+      // Proyecto activo, siempre visible en el sidebar — sin esto no hay forma
+      // de saber, de un vistazo, en cuál de varios proyectos se está.
+      const badgeProyecto = document.getElementById('sidebar-proyecto-activo');
+      const nombreProyecto = document.getElementById('sidebar-proyecto-activo-nombre');
+      if (badgeProyecto && nombreProyecto) {
+        nombreProyecto.textContent = app.proyectos.activo().nombre;
+        badgeProyecto.classList.remove('hidden');
+        badgeProyecto.addEventListener('click', () => app.ui.openProyectos());
+      }
+      document.getElementById('btn-proyectos')?.addEventListener('click', () => app.ui.openProyectos());
     }
   };
   if (document.readyState === 'loading') {

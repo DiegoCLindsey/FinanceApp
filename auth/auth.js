@@ -42,7 +42,18 @@ GDRIVE_DISABLED_END */
 // Fichero en Dropbox: /financeapp_backup.enc (texto cifrado)
 // ─────────────────────────────────────────────────────────────────────────────
 const DropboxService = (() => {
-  const FILE_PATH      = '/financeapp_backup.enc';
+  /**
+   * Ruta del backup en Dropbox. El proyecto `default` usa la de siempre, sin
+   * sufijo — así una cuenta Dropbox ya conectada antes de que existieran los
+   * proyectos sigue encontrando su copia exactamente donde la dejó. El resto
+   * de proyectos tienen su propio fichero, independiente: la CONEXIÓN a
+   * Dropbox (el token) es del dispositivo y se comparte entre proyectos, pero
+   * cada proyecto sube y baja su propia copia.
+   */
+  function FILE_PATH() {
+    const id = window.FinanceApp?.proyectos?.activo?.()?._id;
+    return !id || id === 'default' ? '/financeapp_backup.enc' : `/financeapp_backup_${id}.enc`;
+  }
   const LS_TOKEN       = 'financeapp_dbx_token_enc';  // token cifrado con la passphrase
   const LS_SALT        = 'financeapp_dbx_salt';
   const LS_TOKEN_META  = 'financeapp_dbx_token_meta'; // { savedAt: ISO string }
@@ -203,7 +214,7 @@ const DropboxService = (() => {
         Authorization:     'Bearer ' + _token,
         'Content-Type':    'application/octet-stream',
         'Dropbox-API-Arg': JSON.stringify({
-          path: FILE_PATH, mode: 'overwrite', autorename: false, mute: true,
+          path: FILE_PATH(), mode: 'overwrite', autorename: false, mute: true,
         }),
       },
       body: blob,
@@ -226,7 +237,7 @@ const DropboxService = (() => {
       method:  'POST',
       headers: {
         Authorization:     'Bearer ' + _token,
-        'Dropbox-API-Arg': JSON.stringify({ path: FILE_PATH }),
+        'Dropbox-API-Arg': JSON.stringify({ path: FILE_PATH() }),
       },
     });
 
