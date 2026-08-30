@@ -72,7 +72,12 @@
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
 .grid-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; }
-@media (max-width: 900px) { .grid-4 { grid-template-columns: 1fr 1fr; } }
+/* `.grid-3` se quedaba en tres columnas hasta los 600px: entre 601 y 900px
+   (justo el ancho de una tablet en vertical) tres columnas no dejan sitio ni
+   para el contenido de una tarjeta de cuenta, y el botón de borrar de una se
+   solapaba con la cabecera de la siguiente. `.grid-4` ya bajaba a dos aquí;
+   `.grid-3` se une a la misma regla en vez de abrir un tercer punto de corte. */
+@media (max-width: 900px) { .grid-3, .grid-4 { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 600px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
 
 /* Un hijo de rejilla no baja de su tamaño mínimo de contenido salvo que se le
