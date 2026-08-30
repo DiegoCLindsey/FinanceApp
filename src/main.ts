@@ -36,6 +36,7 @@ import { createFlags, type Flags } from './flags/service';
 import { FEATURES, featuresPorGrupo } from './flags/registry';
 import { createFeaturesModal } from './ui/features-modal';
 import { createProyectosModal } from './ui/proyectos-modal';
+import { createPersonasModal } from './ui/personas-modal';
 import { createGating } from './ui/gating';
 import { instalarDeshacer } from './ui/deshacer';
 import { instalarBuscador } from './ui/buscador';
@@ -96,6 +97,8 @@ export interface FinanceAppNamespace {
     openFeatures: () => void;
     /** Abre la ventana de proyectos: cambiar, crear, renombrar, duplicar, importar. */
     openProyectos: () => void;
+    /** Abre la ventana de personas: crear, renombrar, marcar por defecto, activar/desactivar. */
+    openPersonas: () => void;
     /** Re-aplica el gating de los flags al shell (sidebar y vista activa). */
     applyGating: () => void;
     /**
@@ -326,6 +329,7 @@ function bootstrap(): FinanceAppNamespace {
       console.error('[FinanceApp] No se ha podido repintar el cuadro de mando tras el cambio:', e);
     }
   };
+  const personasModal = createPersonasModal({ store, onDatosCambiados: refrescarLegacy });
 
   // El ORDEN IMPORTA: el registro añade cada botón al final de su sección, así
   // que este es el orden en que aparecen en el menú. Se mantiene el que el
@@ -391,6 +395,7 @@ function bootstrap(): FinanceAppNamespace {
     ui: {
       openFeatures: featuresModal.open,
       openProyectos: proyectosModal.open,
+      openPersonas: personasModal.open,
       applyGating: gating.apply,
       watchGating: () => gating.observar(),
       instalarDeshacer: () =>
@@ -545,6 +550,7 @@ if (app) {
         badgeProyecto.addEventListener('click', () => app.ui.openProyectos());
       }
       document.getElementById('btn-proyectos')?.addEventListener('click', () => app.ui.openProyectos());
+      document.getElementById('btn-personas')?.addEventListener('click', () => app.ui.openPersonas());
     }
   };
   if (document.readyState === 'loading') {

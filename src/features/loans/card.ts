@@ -11,8 +11,9 @@ import { formatEUR, formatPct } from '@/core/money';
 import { labelDiaPago } from '@/core/dates';
 import { resumenPrestamoConAhorro, resumenPrestamo, type FilaAmortizacion, type LoanInput } from '@/core/loan';
 import { calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, type PeriodoInflacion } from '@/core/inflation';
-import type { Loan } from '@/state/schema';
+import type { Loan, Persona } from '@/state/schema';
 import { esc } from '../accounting/dom';
+import { resumenRepartoDoble } from '../shared/reparto-widget';
 
 export interface ContextoTarjeta {
   periodos: PeriodoInflacion[];
@@ -23,6 +24,7 @@ export interface ContextoTarjeta {
   cuotaMes: number;
   completado: boolean;
   nombreEscenario: (id: string) => string;
+  personas: Persona[];
 }
 
 /** Suma de intereses de una tabla deflactados a euros de hoy. */
@@ -98,6 +100,12 @@ export function renderLoanCard(loan: Loan, ctx: ContextoTarjeta): string {
         ${!loan.activo ? '<span class="badge badge-inactive">Inactivo</span>' : ''}
         ${loan.tipoTasa === 'variable' ? '<span class="badge badge-orange">Variable</span>' : ''}
         ${loan.basico !== false ? '<span class="badge badge-orange" title="Cuota incluida en el colchón económico">⚑ básico</span>' : ''}
+        ${(() => {
+          const resumen = resumenRepartoDoble(loan.repartoConsumo, loan.repartoPago, ctx.personas);
+          return resumen
+            ? `<span class="badge" style="background:rgba(139,92,246,0.12);color:#a78bfa" title="${esc(resumen)}">👥 reparto</span>`
+            : '';
+        })()}
         ${(loan.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join('')}
       </div>
       <div class="loan-card-meta">

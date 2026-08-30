@@ -10,9 +10,10 @@ import { formatEUR } from '@/core/money';
 import { todayISO, type ISODate } from '@/core/dates';
 import { calcBaseImponibleTrabajo, calcIRPF, type Tramos } from '@/core/tax/irpf';
 import { SS_PCT_DEFECTO } from '@/core/tax/nomina-grupo';
-import type { Account, Escenario, Nomina } from '@/state/schema';
+import type { Account, Escenario, Nomina, Persona } from '@/state/schema';
 import { esc, onChange, onClick, toast } from '../accounting/dom';
 import { checkboxesEscenarios } from '../loans/forms';
+import { leerRepartoWidget, repartoWidget, sincronizarRepartoWidget } from '../shared/reparto-widget';
 
 /** Componente de retribución flexible en edición. */
 export interface ComponenteFlex {
@@ -86,6 +87,7 @@ export interface FormularioNominaDeps {
   accounts: Account[];
   escenarios: Escenario[];
   nominas: Nomina[];
+  personas: Persona[];
   cuentaPrincipal: string;
   tramos: Tramos;
   hoy?: ISODate;
@@ -166,6 +168,8 @@ export function formularioNomina(n: Nomina | null, deps: FormularioNominaDeps): 
           <div id="flex-comp-container"></div>
         </div>
         ${checkboxesEscenarios(deps.escenarios, n?.escenarioIds ?? [], 'nom-escenario')}
+        ${repartoWidget('Reparto de consumo', n?.repartoConsumo, deps.personas, 'consumo')}
+        ${repartoWidget('Reparto de pago', n?.repartoPago, deps.personas, 'pago')}
       </div>
     </details>
 
@@ -200,6 +204,8 @@ export function leerFormulario(el: HTMLElement, flex: ComponenteFlex[]) {
     mesActualizacionIPC: parseInt(val('#nf-mes-ipc'), 10) || null,
     escenarioIds: [...el.querySelectorAll<HTMLInputElement>('.nom-escenario:checked')].map((i) => i.value),
     retribucionFlexible: flex,
+    repartoConsumo: leerRepartoWidget(el, 'consumo'),
+    repartoPago: leerRepartoWidget(el, 'pago'),
   };
 }
 
@@ -278,6 +284,8 @@ export function wireFormulario(el: HTMLElement, flex: ComponenteFlex[], deps: Fo
     if ((ev.target as HTMLElement)?.closest('#nf-bruto, #nf-irpfpct, #nf-npagas-custom, #nf-grupo, #nf-sspct')) pintarPreview();
   });
   onChange(el, '#nf-npagas, #nf-irpfmodo, #nf-representacion', refrescar);
+  onChange(el, '[data-reparto-modo="consumo"]', () => sincronizarRepartoWidget(el, 'consumo'));
+  onChange(el, '[data-reparto-modo="pago"]', () => sincronizarRepartoWidget(el, 'pago'));
 
   onClick(el, '[data-flex-anadir]', () => {
     const tipo = (el.querySelector('#fc-tipo') as HTMLSelectElement | null)?.value || 'transporte';

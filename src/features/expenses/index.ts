@@ -16,14 +16,16 @@
 import { formatEUR } from '@/core/money';
 import { labelDiaPago, todayISO, type ISODate } from '@/core/dates';
 import type { FeatureManifest } from '@/app/feature-registry';
-import type { Account, Escenario, Expense, TipoExpense } from '@/state/schema';
+import type { Account, Escenario, Expense, Persona, TipoExpense } from '@/state/schema';
 import { confirmar, esc, onChange, onClick, toast } from '../accounting/dom';
 import { diaPagoWidget, leerDiaPago, sincronizarDiaPago } from '../shared/dia-pago';
+import { leerRepartoWidget, repartoWidget, resumenRepartoDoble, sincronizarRepartoWidget } from '../shared/reparto-widget';
 
 export interface ExpensesStoreLike {
   get(key: 'expenses'): Expense[];
   get(key: 'accounts'): Account[];
   get(key: 'escenarios'): Escenario[];
+  get(key: 'personas'): Persona[];
   addItem(col: 'expenses', item: Omit<Expense, '_id'> & { _id?: string }): Expense;
   updateItem(col: 'expenses', id: string, patch: Partial<Expense>): void;
   removeItem(col: 'expenses', id: string): void;
@@ -129,6 +131,7 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
 
   function fila(exp: Expense): string {
     const esTransferencia = exp.tipo === 'transferencia';
+    const resumenReparto = resumenRepartoDoble(exp.repartoConsumo, exp.repartoPago, deps.store.get('personas'));
     const dia = labelDiaPago(exp.diaPago ?? '');
     const frecuencia =
       exp.tipoFrecuencia === 'extraordinario'
@@ -166,6 +169,7 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
         ${exp.tipo === 'gasto' && exp.clasificacion === null ? '<span class="badge badge-inactive" title="Excluido del análisis de distribución">sin clasificar</span>' : ''}
         ${exp.basico ? '<span class="badge badge-orange" title="Gasto básico">⚑ básico</span>' : ''}
         ${exp.ajustadaDesdeId ? `<span class="badge" style="background:rgba(99,179,237,0.12);color:#63b3ed" title="Creada por un ajuste automático el ${esc(exp.ajustadaEn ?? '')}">ajustada</span>` : ''}
+        ${resumenReparto ? `<span class="badge" style="background:rgba(139,92,246,0.12);color:#a78bfa" title="${esc(resumenReparto)}">👥 reparto</span>` : ''}
         ${expirado ? '<span class="badge badge-inactive">Exp.</span>' : ''}
       </div>
       <div class="flex gap-8" style="flex-wrap:nowrap;align-items:center">
@@ -227,6 +231,7 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
   function formularioHtml(exp: Partial<Expense> | null): string {
     const esTransferencia = exp?.tipo === 'transferencia';
     const escenarios = deps.store.get('escenarios');
+    const personas = deps.store.get('personas');
     const seleccionados = exp?.escenarioIds || [];
     const campo = (id: string, label: string, tipo: string, valor: string | number, placeholder = '') =>
       `<div class="form-group"><label class="form-label">${esc(label)}</label>
@@ -310,6 +315,12 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
                   </div></div>`
               : ''
           }
+          ${
+            esTransferencia
+              ? ''
+              : `${repartoWidget('Reparto de consumo', exp?.repartoConsumo, personas, 'consumo')}
+                 ${repartoWidget('Reparto de pago', exp?.repartoPago, personas, 'pago')}`
+          }
         </div>
       </details>
 
@@ -341,6 +352,8 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
 
     onChange(content, '#ef-tipo', () => sincronizarTipo(content));
     onChange(content, '[data-dp-modo]', () => sincronizarDiaPago(content));
+    onChange(content, '[data-reparto-modo="consumo"]', () => sincronizarRepartoWidget(content, 'consumo'));
+    onChange(content, '[data-reparto-modo="pago"]', () => sincronizarRepartoWidget(content, 'pago'));
     onClick(content, '[data-cancelar]', () => overlay.classList.add('hidden'));
     onClick(content, '[data-guardar]', (el) => {
       if (guardar(content, el.getAttribute('data-guardar') || '')) {
@@ -388,6 +401,8 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
             .map((t) => t.trim())
             .filter(Boolean),
       escenarioIds: [...content.querySelectorAll<HTMLInputElement>('.ef-escenario:checked')].map((i) => i.value),
+      repartoConsumo: esTransferencia ? undefined : leerRepartoWidget(content, 'consumo'),
+      repartoPago: esTransferencia ? undefined : leerRepartoWidget(content, 'pago'),
     };
 
     if (id) {

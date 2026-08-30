@@ -15,10 +15,12 @@ import { crearResolverTramos } from '@/core/tax/tables';
 import { TRAMOS_IRPF_DEFAULT, type Tramos } from '@/core/tax/irpf';
 import { agruparNominas, desgloseNomina, irpfGrupo } from '@/core/tax/nomina-grupo';
 import type { FeatureManifest } from '@/app/feature-registry';
-import type { Account, AppConfig, Escenario, Nomina, PeriodoInflacion, TablaFiscalAnual } from './store-tipos';
+import type { Account, AppConfig, Escenario, Nomina, PeriodoInflacion, Persona, TablaFiscalAnual } from './store-tipos';
 import { confirmar, esc, onChange, onClick, toast } from '../accounting/dom';
 import { formularioNomina, leerFormulario, wireFormulario, type ComponenteFlex } from './form';
 import { createTramosModal } from './tramos';
+import { idPersonaPorDefecto, personasImplicadas } from '@/core/reparto';
+import { resumenRepartoDoble } from '../shared/reparto-widget';
 import {
   construirPension,
   esPlanPension,
@@ -34,6 +36,7 @@ export interface SalariesStoreLike {
   get(key: 'escenarios'): Escenario[];
   get(key: 'inflacion'): PeriodoInflacion[];
   get(key: 'tramosIRPFHistorico'): TablaFiscalAnual[];
+  get(key: 'personas'): Persona[];
   get(key: 'config'): AppConfig;
   set(key: 'tramosIRPFHistorico', value: TablaFiscalAnual[]): void;
   patchConfig(patch: Partial<AppConfig>): void;
@@ -60,6 +63,22 @@ export function createSalariesFeature(deps: SalariesViewDeps): FeatureManifest {
   const hoy = deps.hoy ?? todayISO;
   const notificar = () => deps.onDatosCambiados?.();
 
+  /** `null` = "Todas". Vive fuera de `render` para sobrevivir a los repintados. */
+  let personaTabId: string | null = null;
+
+  /** Pestañas por persona, solo con dos o más activas — igual que el widget de reparto. */
+  function tabsPersonaHtml(personas: Persona[]): string {
+    const activas = personas.filter((p) => p.activo);
+    if (activas.length < 2) return '';
+    const boton = (id: string | null, etiqueta: string) =>
+      `<button class="btn-secondary btn-sm" data-persona-tab="${id === null ? '' : esc(id)}"
+               style="${personaTabId === id ? 'background:var(--accent);color:#04120c;border-color:var(--accent)' : ''}">${esc(etiqueta)}</button>`;
+    return `<div class="flex gap-6 mt-8 flex-wrap">
+      ${boton(null, 'Todas')}
+      ${activas.map((p) => boton(p._id, p.nombre)).join('')}
+    </div>`;
+  }
+
   /** Tramos del ejercicio en curso, resolviendo el histórico. */
   function tramosDelAño(): Tramos {
     const cfg = deps.store.get('config');
@@ -71,6 +90,7 @@ export function createSalariesFeature(deps: SalariesViewDeps): FeatureManifest {
   function filaNomina(n: Nomina, grupo: Nomina[] | null, tramos: Tramos): string {
     const d = desgloseNomina(n, grupo, tramos);
     const enGrupo = !!grupo && n.irpfModo !== 'manual';
+    const resumenReparto = resumenRepartoDoble(n.repartoConsumo, n.repartoPago, deps.store.get('personas'));
     const badges = [
       n.mesActualizacionIPC
         ? `<span class="badge badge-blue" title="Actualización IPC en el mes ${n.mesActualizacionIPC}">IPC m${n.mesActualizacionIPC}</span>`
@@ -80,6 +100,9 @@ export function createSalariesFeature(deps: SalariesViewDeps): FeatureManifest {
         : '',
       Math.abs(d.ssPct - 6.35) > 0.01
         ? `<span class="badge" style="background:rgba(255,200,80,0.12);color:var(--yellow)" title="Cotización SS del empleado personalizada">SS ${d.ssPct.toFixed(2)}%</span>`
+        : '',
+      resumenReparto
+        ? `<span class="badge" style="background:rgba(139,92,246,0.12);color:#a78bfa" title="${esc(resumenReparto)}">👥 reparto</span>`
         : '',
     ].join('');
 
@@ -134,10 +157,18 @@ export function createSalariesFeature(deps: SalariesViewDeps): FeatureManifest {
 
   function render(container: HTMLElement): void {
     const tramos = tramosDelAño();
-    const nominas = [...deps.store.get('nominas')].sort((a, b) => (b.bruto || 0) - (a.bruto || 0));
+    const personas = deps.store.get('personas');
+    const idDefecto = idPersonaPorDefecto(personas);
+    const todasLasNominas = [...deps.store.get('nominas')].sort((a, b) => (b.bruto || 0) - (a.bruto || 0));
+    // El filtro por persona actúa ANTES de agrupar: un grupo con nóminas de
+    // más de una persona se enseña incompleto en una pestaña concreta, que es
+    // justo lo que se pide al elegirla.
+    const nominas = personaTabId
+      ? todasLasNominas.filter((n) => personasImplicadas(n.repartoConsumo, n.repartoPago, idDefecto).has(personaTabId as string))
+      : todasLasNominas;
     const { grupos, sueltas } = agruparNominas(nominas);
     const planes = deps.store.get('accounts').filter(esPlanPension);
-    const activas = nominas.filter((n) => n.activo !== false);
+    const activas = todasLasNominas.filter((n) => n.activo !== false);
 
     container.innerHTML = `
       <div class="page-header">
@@ -148,6 +179,7 @@ export function createSalariesFeature(deps: SalariesViewDeps): FeatureManifest {
           <button class="btn-primary" data-nueva-nomina>+ Nueva nómina</button>
         </div>
       </div>
+      ${tabsPersonaHtml(personas)}
       ${
         deps.store.get('inflacion').length > 0
           ? `<div class="auth-hint mt-8" style="font-size:12px">📈 Módulo de inflación activo — las nóminas con <em>Mes actualización IPC</em> se actualizarán anualmente según los datos de inflación configurados.</div>`
@@ -201,6 +233,7 @@ export function createSalariesFeature(deps: SalariesViewDeps): FeatureManifest {
       accounts: deps.store.get('accounts'),
       escenarios: deps.store.get('escenarios'),
       nominas: deps.store.get('nominas'),
+      personas: deps.store.get('personas'),
       cuentaPrincipal: deps.store.getPrincipalAccountId(),
       tramos: tramosDelAño(),
       hoy: hoy(),
@@ -257,6 +290,10 @@ export function createSalariesFeature(deps: SalariesViewDeps): FeatureManifest {
   // ── Cableado ────────────────────────────────────────────────────────────────
 
   function wire(container: HTMLElement, refrescar: () => void, tramosModal: ReturnType<typeof createTramosModal>): void {
+    onClick(container, '[data-persona-tab]', (el) => {
+      personaTabId = el.getAttribute('data-persona-tab') || null;
+      refrescar();
+    });
     onClick(container, '[data-nueva-nomina]', () => abrirFormularioNomina(null, refrescar));
     onClick(container, '[data-editar-nom]', (el) => abrirFormularioNomina(el.getAttribute('data-editar-nom'), refrescar));
     onClick(container, '[data-borrar-nom]', (el) => {

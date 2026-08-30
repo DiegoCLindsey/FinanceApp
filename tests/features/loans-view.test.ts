@@ -89,6 +89,7 @@ const ctxBase = {
   cuotaMes: 0,
   completado: false,
   nombreEscenario: (id: string) => id,
+  personas: [],
 };
 
 describe('tarjeta de préstamo', () => {
@@ -315,6 +316,67 @@ describe('formulario de préstamo', () => {
     (modal().querySelector('[data-guardar-loan]') as HTMLElement).click();
 
     expect(store.get('loans')[0].escenarioIds).toEqual(['s1']);
+  });
+
+  it('sin una segunda persona, no aparece el widget de reparto', () => {
+    const { registry } = entorno({ loans: [] });
+    registry.mount('loans');
+    (vista().querySelector('[data-nuevo-loan]') as HTMLElement).click();
+    expect(modal().querySelector('[data-reparto="consumo"]')).toBeNull();
+  });
+
+  it('con dos personas, guarda el reparto de consumo', () => {
+    const { registry, store } = entorno({ loans: [] });
+    store.set('personas', [...store.get('personas'), { _id: 'p2', nombre: 'Pareja', esPorDefecto: false, activo: true }]);
+    registry.mount('loans');
+    (vista().querySelector('[data-nuevo-loan]') as HTMLElement).click();
+    escribir('#f-nombre', 'Con reparto');
+    escribir('#f-capital', '10000');
+    escribir('#f-tin', '3');
+    escribir('#f-meses', '48');
+
+    const modo = modal().querySelector('[data-reparto-modo="consumo"]') as HTMLSelectElement;
+    modo.value = 'partesIguales';
+    modo.dispatchEvent(new Event('change', { bubbles: true }));
+    modal()
+      .querySelectorAll<HTMLInputElement>('[data-reparto-persona="consumo"]')
+      .forEach((c) => (c.checked = true));
+    (modal().querySelector('[data-guardar-loan]') as HTMLElement).click();
+
+    expect(store.get('loans')[0].repartoConsumo?.modo).toBe('partesIguales');
+    expect(store.get('loans')[0].repartoConsumo?.participantes).toHaveLength(2);
+  });
+});
+
+describe('préstamos: pestañas por persona', () => {
+  beforeEach(() => montarShell());
+
+  it('sin una segunda persona activa, no aparecen pestañas', () => {
+    const { registry } = entorno();
+    registry.mount('loans');
+    expect(vista().querySelector('[data-persona-tab]')).toBeNull();
+  });
+
+  it('con dos personas, filtra las tarjetas al elegir una pestaña', () => {
+    const mio = prestamo({ _id: 'l1', nombre: 'Mío' });
+    const deLaPareja = prestamo({
+      _id: 'l2',
+      nombre: 'De mi pareja',
+      repartoPago: { modo: 'porcentaje', participantes: [{ personaId: 'p2', valor: 100 }] },
+    });
+    const { registry, store } = entorno({ loans: [mio, deLaPareja] });
+    store.set('personas', [...store.get('personas'), { _id: 'p2', nombre: 'Pareja', esPorDefecto: false, activo: true }]);
+    registry.mount('loans');
+
+    expect(tarjetas()).toHaveLength(2);
+
+    (vista().querySelector('[data-persona-tab="p2"]') as HTMLElement).click();
+    expect(tarjetas()).toHaveLength(1);
+    expect(vista().textContent).toContain('De mi pareja');
+    expect(vista().textContent).not.toContain('Mío');
+
+    (vista().querySelector('[data-persona-tab=""]') as HTMLElement).click(); // "Todas"
+    expect(tarjetas()).toHaveLength(2);
   });
 });
 

@@ -23,6 +23,7 @@ describe('COLECCIONES', () => {
         'inflacion',
         'loans',
         'nominas',
+        'personas',
         'planes',
         'puntosControl',
         'tramosGananciasCapitalHistorico',
@@ -173,5 +174,24 @@ describe('esEstadoVacioOPorDefecto', () => {
 
   it('config no cuenta para nada: son preferencias, no datos', () => {
     expect(esEstadoVacioOPorDefecto({ config: { colchonMeses: 12, autoSave: true, onboardingDone: true } })).toBe(true);
+  });
+
+  it('la persona por defecto que crea la migración 009 en TODA instalación nueva sigue siendo de fábrica', () => {
+    // Mismo caso que plan_base: la migración 009 siembra una persona en
+    // cualquier instalación, tenga o no el usuario datos reales.
+    const personaDefecto = { _id: 'default', nombre: 'Yo', esPorDefecto: true, activo: true };
+    expect(esEstadoVacioOPorDefecto({ accounts: [CUENTA_DEFAULT], personas: [personaDefecto] })).toBe(true);
+  });
+
+  it('una segunda persona ya no es de fábrica: alguien la ha creado a mano', () => {
+    const personaDefecto = { _id: 'default', esPorDefecto: true, activo: true };
+    const pareja = { _id: 'p2', nombre: 'Pareja', esPorDefecto: false, activo: true };
+    expect(esEstadoVacioOPorDefecto({ accounts: [CUENTA_DEFAULT], personas: [personaDefecto, pareja] })).toBe(false);
+  });
+
+  it('una persona con OTRO id (renombrada o recreada) ya no es de fábrica', () => {
+    expect(esEstadoVacioOPorDefecto({ accounts: [CUENTA_DEFAULT], personas: [{ _id: 'yo', esPorDefecto: true, activo: true }] })).toBe(
+      false,
+    );
   });
 });

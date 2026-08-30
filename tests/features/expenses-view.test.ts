@@ -362,6 +362,79 @@ describe('formulario de gastos', () => {
     expect(store.get('expenses')).toHaveLength(0);
   });
 
+  it('sin una segunda persona, no aparece el widget de reparto', () => {
+    const { registry } = entorno({ expenses: [] });
+    abrirNuevo(registry);
+    expect(modal().querySelector('[data-reparto="consumo"]')).toBeNull();
+    expect(modal().querySelector('[data-reparto="pago"]')).toBeNull();
+  });
+
+  it('con dos personas, guarda repartoConsumo y repartoPago de forma independiente', () => {
+    const { registry, store } = entorno({ expenses: [] });
+    store.addItem('personas', { nombre: 'Pareja', esPorDefecto: false, activo: true });
+    abrirNuevo(registry);
+    escribir('#ef-concepto', 'Luz');
+    escribir('#ef-cuantia', '60');
+
+    // Pago: 100% "Yo" (la persona por defecto) — el ejemplo del pedido.
+    fijar(modal(), '[data-reparto-modo="pago"]', 'porcentaje');
+    (modal().querySelector('[data-reparto-persona="pago"][value="default"]') as HTMLInputElement).checked = true;
+    (modal().querySelector('[data-reparto-valor="pago"][data-persona="default"]') as HTMLInputElement).value = '100';
+
+    // Consumo: partes iguales entre las dos personas.
+    fijar(modal(), '[data-reparto-modo="consumo"]', 'partesIguales');
+    modal()
+      .querySelectorAll<HTMLInputElement>('[data-reparto-persona="consumo"]')
+      .forEach((c) => (c.checked = true));
+
+    guardar();
+
+    const guardado = store.get('expenses')[0];
+    expect(guardado.repartoPago).toEqual({ modo: 'porcentaje', participantes: [{ personaId: 'default', valor: 100 }] });
+    expect(guardado.repartoConsumo?.modo).toBe('partesIguales');
+    expect(guardado.repartoConsumo?.participantes).toHaveLength(2);
+  });
+
+  it('una transferencia no guarda reparto aunque el widget estuviera relleno', () => {
+    const { registry, store } = entorno({ expenses: [] });
+    store.addItem('personas', { nombre: 'Pareja', esPorDefecto: false, activo: true });
+    abrirNuevo(registry);
+    fijar(modal(), '#ef-tipo', 'transferencia');
+    escribir('#ef-concepto', 'Movimiento interno');
+    escribir('#ef-cuantia', '100');
+    guardar();
+
+    const guardado = store.get('expenses')[0];
+    expect(guardado.repartoConsumo).toBeUndefined();
+    expect(guardado.repartoPago).toBeUndefined();
+  });
+
+  it('editar un gasto con reparto lo precarga marcado en el formulario', () => {
+    const conReparto = gasto({
+      _id: 'e2',
+      repartoPago: { modo: 'importe', participantes: [{ personaId: 'p2', valor: 20 }] },
+    });
+    const { registry, store } = entorno({ expenses: [conReparto] });
+    store.set('personas', [...store.get('personas'), { _id: 'p2', nombre: 'Pareja', esPorDefecto: false, activo: true }]);
+    registry.mount('expenses');
+    (vista().querySelector('[data-editar="e2"]') as HTMLElement).click();
+
+    expect(opcionMarcada(modal(), '[data-reparto-modo="pago"]')).toBe('importe');
+    expect((modal().querySelector('[data-reparto-persona="pago"][value="p2"]') as HTMLInputElement).checked).toBe(true);
+    expect((modal().querySelector('[data-reparto-valor="pago"][data-persona="p2"]') as HTMLInputElement).value).toBe('20');
+  });
+
+  it('la fila de la lista enseña un distintivo cuando hay reparto', () => {
+    const conReparto = gasto({
+      repartoConsumo: { modo: 'partesIguales', participantes: [{ personaId: 'default' }, { personaId: 'p2' }] },
+    });
+    const { registry, store } = entorno({ expenses: [conReparto] });
+    store.set('personas', [...store.get('personas'), { _id: 'p2', nombre: 'Pareja', esPorDefecto: false, activo: true }]);
+    registry.mount('expenses');
+
+    expect(vista().textContent).toContain('reparto');
+  });
+
   it('muestra el selector de escenarios solo si los hay, y guarda la selección', () => {
     const sinEsc = entorno({ expenses: [] });
     abrirNuevo(sinEsc.registry);

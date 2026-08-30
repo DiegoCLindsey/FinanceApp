@@ -7,6 +7,7 @@ export * from './health';
 export * from './accounts';
 export * from './goals';
 export * from './scenarios';
+export * from './reparto';
 export * from './tax/irpf';
 export * from './tax/ahorro';
 export * from './tax/pension';
