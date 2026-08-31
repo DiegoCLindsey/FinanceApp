@@ -309,14 +309,9 @@ Chart.js por defecto (`animation` sin configurar). Se montó una demo con
 4 variantes por familia (línea, velas, barras, dona) para elegir a ojo en
 vez de a ciegas. Elegidas:
 
-- **Línea** (`renderChartSaldo`, `chart-saldo`): trazo progresivo. La línea
-  se dibuja de izquierda a derecha en vez de aparecer entera. Nuevo helper
-  `ANIM_TRAZO_PROGRESIVO` justo antes de `renderChartSaldo`: la `x` de cada
-  punto arranca en `NaN` y la `y` arranca en el píxel del punto anterior,
-  con el `delay` de cada punto encadenado al anterior — la receta oficial
-  de Chart.js para «progressive line», generalizada para no depender de un
-  dataset concreto (todo sale de `ctx.chart`, sirve para cualquiera de los
-  datasets que se apilan en ese chart: histórico, margen, críticos…).
+- **Línea** (`renderChartSaldo`, `chart-saldo`): se probó el trazo
+  progresivo (`ANIM_TRAZO_PROGRESIVO`, ver commit anterior) y se descartó
+  tras verlo — vuelve a la animación por defecto de Chart.js.
 - **Velas** (`renderChartVelas`, `chart-velas`) y **barras**
   (`renderChartMediaMensual`/`chart-media-mensual` y
   `renderChartBreakdown`/`chart-breakdown-mensual`): aparecen escalonadas,
@@ -334,3 +329,99 @@ nuevo sin romperse (el cambio es enteramente en `dashboard.js`, sin tests
 propios). Las variantes elegidas ya se vieron animando en un navegador de
 verdad en la demo previa a aplicarlas, con la misma configuración de
 Chart.js.
+
+## 11. Repintado acotado por gráfica
+
+El usuario notó que cambiar cualquier control —por ejemplo, las velas de
+mensual a anual— reanimaba las 9 gráficas del dashboard enteras (las 4
+pestañas, no solo la visible), en vez de solo la que había cambiado.
+
+Causa: `render()` sustituye el HTML de `#view-dashboard` entero en cada
+llamada (con `view.innerHTML = ...`), lo que destruye TODOS los `<canvas>`
+como nodos del DOM. Como una gráfica no puede pintarse en un canvas que ya
+no existe, hasta ahora cualquier cambio de estado —incluido un toggle
+puramente visual como `ventanaVelas`— pasaba por `render()` completo:
+recalcular todo el HTML, tirar los 9 `Chart` y crearlos de nuevo.
+
+De los toggles del dashboard, unos cambian datos (`toggleAccFilter`,
+`clearAccFilter`, `setDashScope`, `toggleTag`/`toggleTagGrupo`/
+`toggleTagCategoria`) — ésos necesitan legítimamente recalcular el extracto
+y, con él, potencialmente cualquier gráfica; un `render()` completo ahí es
+correcto. Pero `setVentanaVelas`, `setChartMode` y `setTagGroupsMode` no
+tocan el extracto, solo cómo se pinta una gráfica ya calculada — no había
+motivo para tirar las otras 8.
+
+Arreglo, sin tocar la arquitectura de `render()` de raíz:
+
+- `_ultimasGraficas` guarda, tras cada `render()` completo, los cierres
+  `[nombre, pintarFn]` de la última pasada (siguen viendo el `extracto` y
+  demás variables de esa llamada porque son `const` de esa invocación de
+  `render()`, así que un toggle posterior que NO cambia datos puede
+  reinvocar el mismo cierre y obtener una gráfica al día).
+- `_repintarGraficas(nombres)` destruye solo las instancias de `Chart` de
+  `_CHARTS_POR_NOMBRE[nombre]` (una gráfica puede ser más de un canvas: la
+  entrada `'tags'` cubre `chart-gastos-tags` y `chart-media-mensual`) y
+  vuelve a invocar su cierre — nada más. Si el dashboard no se ha pintado
+  todavía (`_ultimasGraficas` a `null`), no hace nada y devuelve `false`
+  para que el llamador caiga a un `render()` completo.
+- `setVentanaVelas`/`setChartMode`/`setTagGroupsMode` usan
+  `_repintarGraficas` y, si repintó, parchean a mano el trocito de DOM que
+  antes solo se actualizaba reconstruyendo todo el HTML: el estado
+  «activo» de sus propios botones (`_marcarActivo`, vía `data-toggle`/
+  `data-valor` en el HTML) y, en `chartMode`, el rótulo de banda de
+  confianza (`_bandaConfianzaHtml`, extraído a función para poder
+  regenerar solo ese `<div id="banda-confianza">`) y, en `tagGroupsMode`,
+  el `(desglosado)/(por grupos)` del título de «Media mensual» (`<span
+  id="media-mensual-modo">`).
+
+Mismo patrón que ya usaba `setDashTab` para cambiar de pestaña (actualiza
+`display`/estilos de botón a mano, sin `render()`) — no es una técnica
+nueva en el fichero, es aplicarla también a estos tres toggles.
+
+No verificado visualmente por la misma limitación de red de la sandbox
+(§10). Verificado: sintaxis, `comprobar-estaticos.mjs`, revisión manual
+confirmando que cada nombre de `_CHARTS_POR_NOMBRE` coincide exactamente
+con las claves reales que usa cada `charts[...] = new Chart(...)`.
+
+## 12. IRPF/SS de una nómina en modo detallado, ausentes del ahorro
+
+El usuario reportó que las gráficas no contaban los impuestos de una nómina
+en modo "detallado". Causa, en `engine/providers/salaries.ts`: en modo
+detallado el ingreso que se registra es el bruto (`brutoCashPorPaga`, sin
+restar SS/IRPF) y la SS/el IRPF se registran como dos eventos de gasto
+aparte, con `sourceType: 'nomina'` (etiquetas `seguridad-social`/`irpf` +
+`fiscal`) — no `sourceType: 'expense'`, porque no hay ficha de gasto que
+consultar. (En modo "simplificado" el ingreso ya sale neto y no hace falta
+ningún gasto aparte — por eso el bug solo se veía en detallado.)
+
+Varios cálculos de `dashboard.js` filtraban gasto por `sourceType==='expense'`
+a secas, así que estos dos eventos caían en un agujero: no contaban ni como
+cuota de préstamo ni como gasto de una ficha de `expenses`. Efecto medible:
+el "ahorro" (ingresos − gastos) salía inflado exactamente en SS + IRPF,
+porque el ingreso bruto sí se contaba pero el gasto que lo compensa no.
+Afectaba a "Distribución media mensual", "Disfrute vs básico vs ahorro" y
+al ahorro de "Este mes"; y "Gastos con repetidos" nunca mostraba IRPF/SS
+aunque se repitan en cada nómina.
+
+Arreglo: un helper nuevo, `_esFiscalNomina(e)` (evento de nómina con tag
+`fiscal`), y `_esGastoClasificable(e)` (`sourceType==='expense'` O
+`_esFiscalNomina(e)`), sustituyendo al filtro estrecho en
+`gastosBasicosMesActual`/`gastosOtrosMesActual`/`gastosBasicosMediaMes`/
+`gastosDeseoMediaMes`. Como estos eventos no tienen ficha de `expenses`,
+`_clas(expenses.find(...))` da `undefined` — que, por la convención ya
+existente del dashboard (`undefined` = básico), los clasifica como básico
+automáticamente, sin código de clasificación nuevo. `_splitDisfruteBasico`
+(el bloque "Disfrute vs básico vs ahorro") y `_gastosRepetidos` (que usa
+directamente `e.concepto` — `"IRPF <nómina>"`/`"SS <nómina>"` — porque no
+hay `ex.concepto` al que recurrir) reciben el mismo tratamiento.
+
+`renderChartBreakdown` (el desglose "Ingresos vs Gastos por categoría") no
+se ha tocado: su propio `esFiscal` ya filtraba por la etiqueta `fiscal`
+directamente, sin mirar `sourceType`, así que nunca tuvo este bug.
+
+Verificado numéricamente en aislado (sin poder levantar el dashboard real
+en esta sandbox): con una nómina de 2000€ brutos, 127€ de SS y 300€ de
+IRPF, el ahorro de "este mes" pasaba de 1900€ (antes, sin contar
+SS+IRPF) a 1473€ (ahora) — la diferencia son exactamente los 427€ de
+SS+IRPF; y "IRPF Nómina" con dos pagas se agrupa como gasto repetido
+(antes no aparecía). Sintaxis y `comprobar-estaticos.mjs` limpios.

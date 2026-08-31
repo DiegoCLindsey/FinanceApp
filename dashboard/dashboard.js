@@ -29,6 +29,62 @@ const DashboardModule = (() => {
 
   function destroyCharts() { Object.values(charts).forEach(c=>{try{c.destroy();}catch{}}); charts={}; }
 
+  // Toggles puramente visuales (ventanaVelas, chartMode, tagGroupsMode) no
+  // cambian ni un euro del extracto: repintar TODO el dashboard —las otras
+  // 3 pestañas incluidas— solo para eso reanima gráficas que no tienen nada
+  // que ver. `_ultimasGraficas` guarda los cierres de la última pasada de
+  // render() (siguen viendo `extracto`/`config` frescos porque son `const`
+  // de esa llamada) para poder repintar solo la(s) gráfica(s) que de verdad
+  // cambian, sin tocar el resto del DOM ni de los charts.
+  let _ultimasGraficas = null;
+  let _ultimoExpensesFiltrados = [];
+  const _CHARTS_POR_NOMBRE = {
+    saldo: ['saldo'],
+    tags: ['chart-gastos-tags', 'chart-media-mensual'],
+    breakdown: ['chart-breakdown-mensual'],
+    gastos: ['chart-expense-donut'],
+    otros: ['chart-otros-donut'],
+    saldos: ['chart-saldos-donut'],
+    personas: ['chart-personas-donut'],
+    velas: ['velas'],
+  };
+  // true si repintó (el dashboard ya se había pintado al menos una vez);
+  // false si no había nada que repintar y toca un render() completo.
+  function _repintarGraficas(nombres) {
+    if (!_ultimasGraficas) return false;
+    for (const nombre of nombres) {
+      const entry = _ultimasGraficas.find(([n]) => n === nombre);
+      if (!entry) continue;
+      for (const key of _CHARTS_POR_NOMBRE[nombre] || []) {
+        try { charts[key]?.destroy(); } catch {}
+        delete charts[key];
+      }
+      try { entry[1](); }
+      catch (e) { console.error(`[Dashboard] La gráfica "${nombre}" no se ha podido repintar:`, e); }
+    }
+    return true;
+  }
+  function _marcarActivo(toggle, valor) {
+    document.querySelectorAll(`[data-toggle="${toggle}"]`).forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.valor === valor);
+    });
+  }
+
+  // Rótulo de la banda de confianza bajo el saldo. Se pinta también cuando NO
+  // hay datos suficientes: así el usuario sabe que la línea es una raya sin
+  // margen y qué le falta para tenerlo, en vez de no enterarse. Solo tiene
+  // sentido en modo "∑ Total" (las demás vistas ya muestran varias líneas).
+  function _bandaConfianzaHtml(expenses, chartMode) {
+    const _acc = window.FinanceApp?.accounting;
+    if (!_acc?.medirVariabilidad || chartMode !== 'summed') return '';
+    try {
+      const v = _acc.medirVariabilidad(_acc.precision.analizarTodas(expenses));
+      return `<div class="text-sm mt-8" style="color:var(--text3);line-height:1.6">
+        ${v.fiable && v.sigmaMensual > 0 ? '◫ ' : '· '}${_acc.describirBanda(v)}
+      </div>`;
+    } catch { return ''; }
+  }
+
   /** Un par estimado/real con su diferencia, con el mismo diseño que ya usaba «Saldo real vs proyectado hoy». */
   function _tarjetaEstimadoVsReal(etiqueta, estimado, real, sub) {
     const diff = real - estimado;
@@ -285,7 +341,11 @@ const DashboardModule = (() => {
     sello.textContent = 'Actualizado ' + _ultimaActualizacion.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
   }
 
-  function setVentanaVelas(v) { ventanaVelas = v; render(); }
+  function setVentanaVelas(v) {
+    ventanaVelas = v;
+    if (_repintarGraficas(['velas'])) { _marcarActivo('ventanaVelas', v); return; }
+    render();
+  }
   function setDashScope(v) { dashScope = v; render(); }
 
   /**
@@ -488,8 +548,14 @@ const DashboardModule = (() => {
     const cuotasMesActual        = evsMesActual.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto'&&_loanIdsIniciados.has(e.sourceId)).reduce((s,e)=>s+Math.abs(e.cuantia),0);
     // clasificacion: 'necesidad'|undefined = necesidad (default); 'deseo' = deseo; null = excluido
     const _clas = ex => ex?.clasificacion;
-    const gastosBasicosMesActual = evsMesActual.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c!=='deseo'&&c!==null;}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
-    const gastosOtrosMesActual   = evsMesActual.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c==='deseo';}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
+    // El IRPF y la SS de una nómina en modo "detallado" son gasto real, pero
+    // llegan como `sourceType:'nomina'` (no 'expense': no hay ficha de gasto
+    // que consultar) — sin esto, todo lo que filtraba por sourceType==='expense'
+    // los perdía del todo y el ahorro salía inflado por exactamente esa cantidad.
+    const _esFiscalNomina = e => e.sourceType === 'nomina' && (e.tags||[]).includes('fiscal');
+    const _esGastoClasificable = e => e.sourceType === 'expense' || _esFiscalNomina(e);
+    const gastosBasicosMesActual = evsMesActual.filter(e=>e.tipo==='gasto'&&_esGastoClasificable(e)).filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c!=='deseo'&&c!==null;}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
+    const gastosOtrosMesActual   = evsMesActual.filter(e=>e.tipo==='gasto'&&_esGastoClasificable(e)).filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c==='deseo';}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
     const gastosTosMesActual     = cuotasMesActual + gastosBasicosMesActual + gastosOtrosMesActual;
 
     const dS = new Date(config.dashboardStart+'T00:00:00');
@@ -502,8 +568,8 @@ const DashboardModule = (() => {
     const cuotasMediaMes          = evSinTransf.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto').reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
     const amortizacionesMediaMes  = evSinTransf.filter(e=>e.sourceType==='loan-amort').reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
     const gastosMediaMes          = evSinTransf.filter(e=>e.tipo==='gasto'&&e.sourceType!=='loan'&&e.sourceType!=='loan-amort').reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
-    const gastosBasicosMediaMes = evSinTransf.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c!=='deseo'&&c!==null;}).reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
-    const gastosDeseoMediaMes   = evSinTransf.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c==='deseo';}).reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
+    const gastosBasicosMediaMes = evSinTransf.filter(e=>e.tipo==='gasto'&&_esGastoClasificable(e)).filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c!=='deseo'&&c!==null;}).reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
+    const gastosDeseoMediaMes   = evSinTransf.filter(e=>e.tipo==='gasto'&&_esGastoClasificable(e)).filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c==='deseo';}).reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
 
     // ── Consumo y gasto por persona ─────────────────────────────────────────────
     // Mismo extracto (evSinTransf) del que salen el resto de medias mensuales de
@@ -664,6 +730,7 @@ const DashboardModule = (() => {
         let concepto = null;
         if (e.sourceType === 'expense') concepto = expenses.find(x=>x._id===e.sourceId)?.concepto;
         else if (e.sourceType === 'loan') concepto = loans.find(x=>x._id===e.sourceId)?.nombre;
+        else if (_esFiscalNomina(e)) concepto = e.concepto; // "IRPF <nómina>" / "SS <nómina>" ya viene en el evento
         if (!concepto) continue;
         const cur = porConcepto.get(concepto) || { count: 0, total: 0 };
         cur.count++; cur.total += Math.abs(e.cuantia);
@@ -688,7 +755,7 @@ const DashboardModule = (() => {
       let basico = 0, deseo = 0;
       for (const e of evs) {
         if (e.tipo !== 'gasto') continue;
-        if (e.sourceType === 'loan') { basico += Math.abs(e.cuantia); continue; }
+        if (e.sourceType === 'loan' || _esFiscalNomina(e)) { basico += Math.abs(e.cuantia); continue; }
         if (e.sourceType !== 'expense') continue;
         const ex = expenses.find(x => x._id === e.sourceId);
         if (ex?.clasificacion === null) continue;
@@ -824,10 +891,10 @@ const DashboardModule = (() => {
           <div class="card-title" style="margin:0">Evolución del saldo</div>
           <div class="flex gap-8 items-center flex-wrap">
             <div class="period-selector">
-              <button class="period-btn ${chartMode==='summed'?'active':''}" onclick="DashboardModule.setChartMode('summed')" title="Suma de cuentas seleccionadas">∑ Total</button>
-              <button class="period-btn ${chartMode==='lines'?'active':''}" onclick="DashboardModule.setChartMode('lines')" title="Una línea independiente por cuenta">∥ Líneas</button>
-              <button class="period-btn ${chartMode==='stacked'?'active':''}" onclick="DashboardModule.setChartMode('stacked')" title="Apilado — más área debajo">▲ Apilado</button>
-              <button class="period-btn ${chartMode==='stacked-rev'?'active':''}" onclick="DashboardModule.setChartMode('stacked-rev')" title="Apilado — menos área debajo">▽ Apilado</button>
+              <button class="period-btn ${chartMode==='summed'?'active':''}" data-toggle="chartMode" data-valor="summed" onclick="DashboardModule.setChartMode('summed')" title="Suma de cuentas seleccionadas">∑ Total</button>
+              <button class="period-btn ${chartMode==='lines'?'active':''}" data-toggle="chartMode" data-valor="lines" onclick="DashboardModule.setChartMode('lines')" title="Una línea independiente por cuenta">∥ Líneas</button>
+              <button class="period-btn ${chartMode==='stacked'?'active':''}" data-toggle="chartMode" data-valor="stacked" onclick="DashboardModule.setChartMode('stacked')" title="Apilado — más área debajo">▲ Apilado</button>
+              <button class="period-btn ${chartMode==='stacked-rev'?'active':''}" data-toggle="chartMode" data-valor="stacked-rev" onclick="DashboardModule.setChartMode('stacked-rev')" title="Apilado — menos área debajo">▽ Apilado</button>
             </div>
             ${alertas.length>0?`<button class="btn-secondary btn-sm" data-feature="puntos-criticos" style="font-size:11px;color:${config.showCriticos!==false?'var(--yellow)':'var(--text3)'}" onclick="DashboardModule.toggleCriticos()">
               ⚠️ ${alertas.length} punto${alertas.length>1?'s':''} crítico${alertas.length>1?'s':''} ${config.showCriticos!==false?'(visible)':'(oculto)'}
@@ -835,19 +902,7 @@ const DashboardModule = (() => {
           </div>
         </div>
         <div class="chart-wrap-lg"><canvas id="chart-saldo"></canvas></div>
-        ${(() => {
-          // Rótulo de la banda de confianza. Se pinta también cuando NO hay
-          // datos suficientes: así el usuario sabe que la línea es una raya sin
-          // margen y qué le falta para tenerlo, en vez de no enterarse.
-          const _acc = window.FinanceApp?.accounting;
-          if (!_acc?.medirVariabilidad || chartMode !== 'summed') return '';
-          try {
-            const v = _acc.medirVariabilidad(_acc.precision.analizarTodas(expenses));
-            return `<div class="text-sm mt-8" style="color:var(--text3);line-height:1.6">
-              ${v.fiable && v.sigmaMensual > 0 ? '◫ ' : '· '}${_acc.describirBanda(v)}
-            </div>`;
-          } catch { return ''; }
-        })()}
+        <div id="banda-confianza">${_bandaConfianzaHtml(expenses, chartMode)}</div>
       </div>
 
       <!-- Velas del saldo (mensual / anual) -->
@@ -855,8 +910,8 @@ const DashboardModule = (() => {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
           <div class="card-title" style="margin:0">Velas del saldo</div>
           <div class="period-selector">
-            <button class="period-btn ${ventanaVelas==='mes'?'active':''}" onclick="DashboardModule.setVentanaVelas('mes')">Mensual</button>
-            <button class="period-btn ${ventanaVelas==='anio'?'active':''}" onclick="DashboardModule.setVentanaVelas('anio')">Anual</button>
+            <button class="period-btn ${ventanaVelas==='mes'?'active':''}" data-toggle="ventanaVelas" data-valor="mes" onclick="DashboardModule.setVentanaVelas('mes')">Mensual</button>
+            <button class="period-btn ${ventanaVelas==='anio'?'active':''}" data-toggle="ventanaVelas" data-valor="anio" onclick="DashboardModule.setVentanaVelas('anio')">Anual</button>
           </div>
         </div>
         <div class="chart-wrap-lg"><canvas id="chart-velas"></canvas></div>
@@ -1091,8 +1146,8 @@ const DashboardModule = (() => {
             <div class="card-title" style="margin:0">Gastos por etiqueta</div>
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
               <div class="period-selector">
-                <button class="period-btn ${tagGroupsMode==='desglosado'?'active':''}" onclick="DashboardModule.setTagGroupsMode('desglosado')" title="Muestra cada etiqueta de forma independiente">Desglosado</button>
-                <button class="period-btn ${tagGroupsMode==='porgrupos'?'active':''}" onclick="DashboardModule.setTagGroupsMode('porgrupos')" title="Agrupa los gastos bajo su etiqueta de grupo">Por grupos</button>
+                <button class="period-btn ${tagGroupsMode==='desglosado'?'active':''}" data-toggle="tagGroupsMode" data-valor="desglosado" onclick="DashboardModule.setTagGroupsMode('desglosado')" title="Muestra cada etiqueta de forma independiente">Desglosado</button>
+                <button class="period-btn ${tagGroupsMode==='porgrupos'?'active':''}" data-toggle="tagGroupsMode" data-valor="porgrupos" onclick="DashboardModule.setTagGroupsMode('porgrupos')" title="Agrupa los gastos bajo su etiqueta de grupo">Por grupos</button>
               </div>
               <button class="btn-secondary btn-sm" onclick="DashboardModule.toggleGruposPanel()" title="Configurar qué etiquetas actúan como grupos">⚙ Grupos</button>
             </div>
@@ -1110,7 +1165,7 @@ const DashboardModule = (() => {
       <!-- Charts row 3 -->
       <div class="grid-2 mb-14">
         <div class="card" data-feature="graficos-etiquetas">
-          <div class="card-title">Media mensual de gastos por etiqueta <span style="font-size:11px;color:var(--text3);font-weight:400">(${tagGroupsMode==='porgrupos'?'por grupos':'desglosado'})</span></div>
+          <div class="card-title">Media mensual de gastos por etiqueta <span id="media-mensual-modo" style="font-size:11px;color:var(--text3);font-weight:400">(${tagGroupsMode==='porgrupos'?'por grupos':'desglosado'})</span></div>
           <div class="chart-wrap"><canvas id="chart-media-mensual"></canvas></div>
         </div>
         <div class="card">
@@ -1181,50 +1236,12 @@ const DashboardModule = (() => {
         try { pintar(); }
         catch (e) { console.error(`[Dashboard] La gráfica "${nombre}" no se ha podido pintar:`, e); }
       }
+      _ultimasGraficas = _graficas;
+      _ultimoExpensesFiltrados = expenses;
       _ultimaActualizacion = new Date();
       _pintarSelloActualizacion();
     }, 60);
   }
-
-  // Cada punto se dibuja de izquierda a derecha en vez de aparecer todos a la
-  // vez: la x avanza desde NaN y la y arranca desde el pixel del punto
-  // anterior, con el `delay` de cada punto encadenado al del anterior — la
-  // receta oficial de Chart.js para «progressive line». Sin estado propio:
-  // todo sale de `ctx`, así que sirve para cualquier dataset de este chart.
-  function _valorPunto(d) {
-    if (d == null) return 0;
-    return typeof d === 'object' ? (d.y ?? 0) : d;
-  }
-  const ANIM_TRAZO_PROGRESIVO = {
-    x: {
-      type: 'number', easing: 'linear', from: NaN,
-      duration: ctx => 1400 / ((ctx.chart?.data?.datasets?.[ctx.datasetIndex]?.data?.length) || 1),
-      delay(ctx) {
-        if (ctx.type !== 'data' || ctx.xStarted) return 0;
-        ctx.xStarted = true;
-        const n = ctx.chart.data.datasets[ctx.datasetIndex].data.length || 1;
-        return ctx.index * (1400 / n);
-      }
-    },
-    y: {
-      type: 'number', easing: 'linear',
-      duration: ctx => 1400 / ((ctx.chart?.data?.datasets?.[ctx.datasetIndex]?.data?.length) || 1),
-      from(ctx) {
-        if (ctx.index === 0) {
-          return ctx.chart.scales.y.getPixelForValue(_valorPunto(ctx.chart.data.datasets[ctx.datasetIndex].data[0]));
-        }
-        const meta = ctx.chart.getDatasetMeta(ctx.datasetIndex);
-        const prev = meta.data[ctx.index - 1];
-        return prev ? prev.getProps(['y'], true).y : undefined;
-      },
-      delay(ctx) {
-        if (ctx.type !== 'data' || ctx.yStarted) return 0;
-        ctx.yStarted = true;
-        const n = ctx.chart.data.datasets[ctx.datasetIndex].data.length || 1;
-        return ctx.index * (1400 / n);
-      }
-    }
-  };
 
   function renderChartSaldo(extracto, extractoCanonico) {
     const ctx=document.getElementById('chart-saldo'); if(!ctx)return;
@@ -1539,7 +1556,6 @@ const DashboardModule = (() => {
       data: { datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
-        animation: ANIM_TRAZO_PROGRESIVO,
         interaction: { mode: 'porFecha', intersect: false },
         plugins: {
           legend: {
@@ -2051,8 +2067,26 @@ const DashboardModule = (() => {
     State.set('config',config); render();
   }
   function applyPreset(preset) { PeriodBar.applyPreset(preset); }
-  function setChartMode(m) { chartMode=m; render(); }
-  function setTagGroupsMode(m) { tagGroupsMode=m; render(); }
+  function setChartMode(m) {
+    chartMode = m;
+    if (_repintarGraficas(['saldo'])) {
+      _marcarActivo('chartMode', m);
+      const banda = document.getElementById('banda-confianza');
+      if (banda) banda.innerHTML = _bandaConfianzaHtml(_ultimoExpensesFiltrados, chartMode);
+      return;
+    }
+    render();
+  }
+  function setTagGroupsMode(m) {
+    tagGroupsMode = m;
+    if (_repintarGraficas(['tags'])) {
+      _marcarActivo('tagGroupsMode', m);
+      const modo = document.getElementById('media-mensual-modo');
+      if (modo) modo.textContent = tagGroupsMode==='porgrupos' ? '(por grupos)' : '(desglosado)';
+      return;
+    }
+    render();
+  }
   function toggleTagGrupo(tag) {
     const cfg = State.get('config');
     const grupos = [...(cfg.tagGrupos || [])];
