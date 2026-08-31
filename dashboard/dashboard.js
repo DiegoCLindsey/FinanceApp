@@ -548,8 +548,14 @@ const DashboardModule = (() => {
     const cuotasMesActual        = evsMesActual.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto'&&_loanIdsIniciados.has(e.sourceId)).reduce((s,e)=>s+Math.abs(e.cuantia),0);
     // clasificacion: 'necesidad'|undefined = necesidad (default); 'deseo' = deseo; null = excluido
     const _clas = ex => ex?.clasificacion;
-    const gastosBasicosMesActual = evsMesActual.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c!=='deseo'&&c!==null;}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
-    const gastosOtrosMesActual   = evsMesActual.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c==='deseo';}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
+    // El IRPF y la SS de una nómina en modo "detallado" son gasto real, pero
+    // llegan como `sourceType:'nomina'` (no 'expense': no hay ficha de gasto
+    // que consultar) — sin esto, todo lo que filtraba por sourceType==='expense'
+    // los perdía del todo y el ahorro salía inflado por exactamente esa cantidad.
+    const _esFiscalNomina = e => e.sourceType === 'nomina' && (e.tags||[]).includes('fiscal');
+    const _esGastoClasificable = e => e.sourceType === 'expense' || _esFiscalNomina(e);
+    const gastosBasicosMesActual = evsMesActual.filter(e=>e.tipo==='gasto'&&_esGastoClasificable(e)).filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c!=='deseo'&&c!==null;}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
+    const gastosOtrosMesActual   = evsMesActual.filter(e=>e.tipo==='gasto'&&_esGastoClasificable(e)).filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c==='deseo';}).reduce((s,e)=>s+Math.abs(e.cuantia),0);
     const gastosTosMesActual     = cuotasMesActual + gastosBasicosMesActual + gastosOtrosMesActual;
 
     const dS = new Date(config.dashboardStart+'T00:00:00');
@@ -562,8 +568,8 @@ const DashboardModule = (() => {
     const cuotasMediaMes          = evSinTransf.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto').reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
     const amortizacionesMediaMes  = evSinTransf.filter(e=>e.sourceType==='loan-amort').reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
     const gastosMediaMes          = evSinTransf.filter(e=>e.tipo==='gasto'&&e.sourceType!=='loan'&&e.sourceType!=='loan-amort').reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
-    const gastosBasicosMediaMes = evSinTransf.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c!=='deseo'&&c!==null;}).reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
-    const gastosDeseoMediaMes   = evSinTransf.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c==='deseo';}).reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
+    const gastosBasicosMediaMes = evSinTransf.filter(e=>e.tipo==='gasto'&&_esGastoClasificable(e)).filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c!=='deseo'&&c!==null;}).reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
+    const gastosDeseoMediaMes   = evSinTransf.filter(e=>e.tipo==='gasto'&&_esGastoClasificable(e)).filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c==='deseo';}).reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
 
     // ── Consumo y gasto por persona ─────────────────────────────────────────────
     // Mismo extracto (evSinTransf) del que salen el resto de medias mensuales de
@@ -724,6 +730,7 @@ const DashboardModule = (() => {
         let concepto = null;
         if (e.sourceType === 'expense') concepto = expenses.find(x=>x._id===e.sourceId)?.concepto;
         else if (e.sourceType === 'loan') concepto = loans.find(x=>x._id===e.sourceId)?.nombre;
+        else if (_esFiscalNomina(e)) concepto = e.concepto; // "IRPF <nómina>" / "SS <nómina>" ya viene en el evento
         if (!concepto) continue;
         const cur = porConcepto.get(concepto) || { count: 0, total: 0 };
         cur.count++; cur.total += Math.abs(e.cuantia);
@@ -748,7 +755,7 @@ const DashboardModule = (() => {
       let basico = 0, deseo = 0;
       for (const e of evs) {
         if (e.tipo !== 'gasto') continue;
-        if (e.sourceType === 'loan') { basico += Math.abs(e.cuantia); continue; }
+        if (e.sourceType === 'loan' || _esFiscalNomina(e)) { basico += Math.abs(e.cuantia); continue; }
         if (e.sourceType !== 'expense') continue;
         const ex = expenses.find(x => x._id === e.sourceId);
         if (ex?.clasificacion === null) continue;

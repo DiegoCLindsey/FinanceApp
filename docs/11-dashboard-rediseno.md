@@ -382,3 +382,46 @@ No verificado visualmente por la misma limitación de red de la sandbox
 (§10). Verificado: sintaxis, `comprobar-estaticos.mjs`, revisión manual
 confirmando que cada nombre de `_CHARTS_POR_NOMBRE` coincide exactamente
 con las claves reales que usa cada `charts[...] = new Chart(...)`.
+
+## 12. IRPF/SS de una nómina en modo detallado, ausentes del ahorro
+
+El usuario reportó que las gráficas no contaban los impuestos de una nómina
+en modo "detallado". Causa, en `engine/providers/salaries.ts`: en modo
+detallado el ingreso que se registra es el bruto (`brutoCashPorPaga`, sin
+restar SS/IRPF) y la SS/el IRPF se registran como dos eventos de gasto
+aparte, con `sourceType: 'nomina'` (etiquetas `seguridad-social`/`irpf` +
+`fiscal`) — no `sourceType: 'expense'`, porque no hay ficha de gasto que
+consultar. (En modo "simplificado" el ingreso ya sale neto y no hace falta
+ningún gasto aparte — por eso el bug solo se veía en detallado.)
+
+Varios cálculos de `dashboard.js` filtraban gasto por `sourceType==='expense'`
+a secas, así que estos dos eventos caían en un agujero: no contaban ni como
+cuota de préstamo ni como gasto de una ficha de `expenses`. Efecto medible:
+el "ahorro" (ingresos − gastos) salía inflado exactamente en SS + IRPF,
+porque el ingreso bruto sí se contaba pero el gasto que lo compensa no.
+Afectaba a "Distribución media mensual", "Disfrute vs básico vs ahorro" y
+al ahorro de "Este mes"; y "Gastos con repetidos" nunca mostraba IRPF/SS
+aunque se repitan en cada nómina.
+
+Arreglo: un helper nuevo, `_esFiscalNomina(e)` (evento de nómina con tag
+`fiscal`), y `_esGastoClasificable(e)` (`sourceType==='expense'` O
+`_esFiscalNomina(e)`), sustituyendo al filtro estrecho en
+`gastosBasicosMesActual`/`gastosOtrosMesActual`/`gastosBasicosMediaMes`/
+`gastosDeseoMediaMes`. Como estos eventos no tienen ficha de `expenses`,
+`_clas(expenses.find(...))` da `undefined` — que, por la convención ya
+existente del dashboard (`undefined` = básico), los clasifica como básico
+automáticamente, sin código de clasificación nuevo. `_splitDisfruteBasico`
+(el bloque "Disfrute vs básico vs ahorro") y `_gastosRepetidos` (que usa
+directamente `e.concepto` — `"IRPF <nómina>"`/`"SS <nómina>"` — porque no
+hay `ex.concepto` al que recurrir) reciben el mismo tratamiento.
+
+`renderChartBreakdown` (el desglose "Ingresos vs Gastos por categoría") no
+se ha tocado: su propio `esFiscal` ya filtraba por la etiqueta `fiscal`
+directamente, sin mirar `sourceType`, así que nunca tuvo este bug.
+
+Verificado numéricamente en aislado (sin poder levantar el dashboard real
+en esta sandbox): con una nómina de 2000€ brutos, 127€ de SS y 300€ de
+IRPF, el ahorro de "este mes" pasaba de 1900€ (antes, sin contar
+SS+IRPF) a 1473€ (ahora) — la diferencia son exactamente los 427€ de
+SS+IRPF; y "IRPF Nómina" con dos pagas se agrupa como gasto repetido
+(antes no aparecía). Sintaxis y `comprobar-estaticos.mjs` limpios.
