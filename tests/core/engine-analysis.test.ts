@@ -179,7 +179,12 @@ describe('paridad colchón y gasto básico', () => {
     const cortoPlazo: BasicoLoan = { capital: 1200, tin: 0, meses: 12, fechaInicio: '2026-01-01', basico: true, activo: true };
     // Waypoint 'meses' anterior a la fecha de prueba: sin él, calcColchonEnFecha
     // cae a calcColchon (que usa la fecha real de HOY, no el `fecha` de prueba).
-    const cfg = { colchonTipo: 'meses' as const, colchonMeses: 6, colchonFijo: 0, colchonPuntos: [{ fecha: '2020-01-01', tipo: 'meses' as const, meses: 6 }] };
+    const cfg = {
+      colchonTipo: 'meses' as const,
+      colchonMeses: 6,
+      colchonFijo: 0,
+      colchonPuntos: [{ fecha: '2020-01-01', tipo: 'meses' as const, meses: 6 }],
+    };
     // A 2026-11-01 quedan las cuotas de nov y dic: Y=2 (verificado contra resumenPrestamo).
     const colchon = calcColchonEnFecha([], cfg, [cortoPlazo], '2026-11-01');
     const colchonLegacy = FM.calcColchonEnFecha([], cfg, [cortoPlazo], '2026-11-01');
@@ -190,7 +195,12 @@ describe('paridad colchón y gasto básico', () => {
 
   it('tope min(X,Y): una cuota que dura más que los X meses del colchón cubre los X meses enteros', () => {
     const largoPlazo: BasicoLoan = { capital: 24000, tin: 0, meses: 240, fechaInicio: '2020-01-01', basico: true, activo: true };
-    const cfg = { colchonTipo: 'meses' as const, colchonMeses: 6, colchonFijo: 0, colchonPuntos: [{ fecha: '2020-01-01', tipo: 'meses' as const, meses: 6 }] };
+    const cfg = {
+      colchonTipo: 'meses' as const,
+      colchonMeses: 6,
+      colchonFijo: 0,
+      colchonPuntos: [{ fecha: '2020-01-01', tipo: 'meses' as const, meses: 6 }],
+    };
     // A 2026-11-01 quedan 158 meses — de sobra por encima de los 6 del colchón.
     const colchon = calcColchonEnFecha([], cfg, [largoPlazo], '2026-11-01');
     // cuota = 24000/240 = 100€/mes; min(6,158)=6 → 600€.
