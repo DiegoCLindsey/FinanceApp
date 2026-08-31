@@ -164,7 +164,33 @@ export function crearServicioProyectos(storage: Storage = localStorage) {
     escribirLista(lista.filter((p) => p._id !== id));
   }
 
-  return { listar, activo, establecerActivo, crear, renombrar, duplicar, eliminar };
+  /**
+   * Añade a la lista local los proyectos remotos que faltan (por id), y
+   * actualiza el nombre del que ya existe si la copia remota es más
+   * reciente (`actualizadoEn` mayor). Nunca borra un proyecto local que no
+   * esté en la lista remota: la remota puede ir por detrás (un dispositivo
+   * que creó un proyecto y aún no ha podido subir su registro), así que
+   * fusionar es más seguro que sustituir.
+   *
+   * La usa la sincronización con la nube (`auth.js`) para que un proyecto
+   * creado en OTRO dispositivo aparezca aquí sin más que volver a entrar —
+   * antes de esto, la lista de proyectos era puramente local a cada
+   * dispositivo y nunca viajaba, aunque los DATOS de cada proyecto sí se
+   * subieran.
+   */
+  function fusionarRemotos(remotos: Proyecto[]): Proyecto[] {
+    const porId = new Map(listar().map((p) => [p._id, p]));
+    for (const r of remotos) {
+      if (!r || typeof r._id !== 'string') continue;
+      const existente = porId.get(r._id);
+      if (!existente || (r.actualizadoEn ?? 0) > existente.actualizadoEn) porId.set(r._id, r);
+    }
+    const fusionada = [...porId.values()];
+    escribirLista(fusionada);
+    return fusionada;
+  }
+
+  return { listar, activo, establecerActivo, crear, renombrar, duplicar, eliminar, fusionarRemotos };
 }
 
 export type ServicioProyectos = ReturnType<typeof crearServicioProyectos>;
