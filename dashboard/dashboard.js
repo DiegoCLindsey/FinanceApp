@@ -38,6 +38,10 @@ const DashboardModule = (() => {
   // cambian, sin tocar el resto del DOM ni de los charts.
   let _ultimasGraficas = null;
   let _ultimoExpensesFiltrados = [];
+  // Desglose (concepto a concepto) de la tarjeta «Distribución media
+  // mensual»: se rellena en cada render() y lo lee el modal que abre
+  // «🔍 Ver datos», para no repetir el mismo filtrado dos veces.
+  let _ultimoDesgloseDistribucion = null;
   const _CHARTS_POR_NOMBRE = {
     saldo: ['saldo'],
     tags: ['chart-gastos-tags', 'chart-media-mensual'],
@@ -194,6 +198,55 @@ const DashboardModule = (() => {
       </div>
       <span style="font-size:11px;color:var(--text3)">${dashScope==='mes'?subtituloMes:subtituloPeriodo}</span>
     </div>`;
+  }
+
+  /** Contenido del modal de «🔍 Ver datos» de la tarjeta Distribución media mensual. */
+  function _htmlDesgloseDistribucion(d) {
+    const seccion = (titulo, color, items, total) => {
+      if (!items.length) return '';
+      const filas = items.map(i => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:3px 0">
+        <span style="color:var(--text2)">${i.concepto}</span>
+        <span style="font-family:var(--font-mono);white-space:nowrap">${FinanceMath.eur(i.media)}/mes</span>
+      </div>`).join('');
+      return `<div style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <span style="width:8px;height:8px;border-radius:2px;background:${color};display:inline-block;flex-shrink:0"></span>
+          <span style="font-weight:600;font-size:13px">${titulo}</span>
+          <span style="margin-left:auto;font-family:var(--font-mono);font-weight:700;white-space:nowrap">${FinanceMath.eur(total)}/mes</span>
+        </div>
+        <div style="padding-left:14px;border-left:1px solid var(--border)">${filas}</div>
+      </div>`;
+    };
+    const sum = items => items.reduce((s, i) => s + i.media, 0);
+    const totalNecesidades = sum(d.necesidades);
+    const totalDeseos = sum(d.deseos);
+    const totalDeuda = sum(d.deuda);
+    const totalIngresos = sum(d.ingresos);
+    const totalTags = d.tags.reduce((s, g) => s + sum(g.items), 0);
+    const ahorro = totalIngresos - totalNecesidades - totalDeseos - totalTags - totalDeuda;
+    return `<div style="max-height:70vh;overflow-y:auto">
+      <p style="font-size:12px;color:var(--text3);margin:0 0 14px">Media mensual del periodo seleccionado, concepto a concepto — la suma de cada apartado es exactamente lo que pinta su porción del donut.</p>
+      ${seccion('Necesidades', '#4d9fff', d.necesidades, totalNecesidades)}
+      ${d.tags.map((g, i) => seccion(g.tag, _TAG_PROMO_PALETTE[i % _TAG_PROMO_PALETTE.length], g.items, sum(g.items))).join('')}
+      ${seccion('Deseos', '#ffb020', d.deseos, totalDeseos)}
+      ${seccion('Deuda', '#a855f7', d.deuda, totalDeuda)}
+      <div style="margin-bottom:14px;padding-top:10px;border-top:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <span style="width:8px;height:8px;border-radius:2px;background:#2ee6a8;display:inline-block;flex-shrink:0"></span>
+          <span style="font-weight:600;font-size:13px">Ahorro est.</span>
+          <span style="margin-left:auto;font-family:var(--font-mono);font-weight:700;white-space:nowrap">${FinanceMath.eur(Math.max(0, ahorro))}/mes</span>
+        </div>
+        <div style="padding-left:14px;border-left:1px solid var(--border);font-size:11.5px;color:var(--text3)">
+          Ingresos (${FinanceMath.eur(totalIngresos)}) − Necesidades − Deseos${d.tags.length ? ' − etiquetas' : ''} − Deuda
+        </div>
+      </div>
+      ${seccion('De dónde salen los ingresos', '#6b7b96', d.ingresos, totalIngresos)}
+    </div>`;
+  }
+
+  function verDetalleDistribucionMedia() {
+    if (!_ultimoDesgloseDistribucion) return;
+    UI.openModal(_htmlDesgloseDistribucion(_ultimoDesgloseDistribucion), 'Distribución media mensual — de dónde salen los números');
   }
 
   /** El contenido de «Este mes» o «Periodo seleccionado» (según el modo elegido en el selector): mismo esqueleto, datos distintos. */
@@ -701,6 +754,49 @@ const DashboardModule = (() => {
     });
     const totalTagPromoMediaMes = Object.values(_tagPromoMediaMes).reduce((s, v) => s + v, 0);
 
+    // Desglose concepto a concepto de «Distribución media mensual», para el
+    // modal que abre «🔍 Ver datos» en esa tarjeta. Mismos filtros que
+    // gastosBasicosMediaMes/gastosDeseoMediaMes/cuotasMediaMes/
+    // amortizacionesMediaMes/_tagPromoMediaMes de arriba — si esos cambian,
+    // esto tiene que cambiar con ellos para que el detalle siga sumando lo
+    // mismo que el donut.
+    {
+      const _conceptoDe = (e) => {
+        if (e.sourceType === 'expense') return expenses.find(x => x._id === e.sourceId)?.concepto || 'Gasto';
+        if (e.sourceType === 'loan' || e.sourceType === 'loan-amort') return loans.find(x => x._id === e.sourceId)?.nombre || 'Préstamo';
+        if (_esFiscalNomina(e)) return e.concepto;
+        return e.concepto || 'Otros';
+      };
+      const _agrupar = (evs) => {
+        const m = new Map();
+        for (const e of evs) {
+          const c = _conceptoDe(e);
+          m.set(c, (m.get(c) || 0) + Math.abs(e.cuantia) / numMeses);
+        }
+        return [...m.entries()].map(([concepto, media]) => ({ concepto, media })).sort((a, b) => b.media - a.media);
+      };
+      const _esBasicoClasificado = (e) => { const c = _clas(expenses.find(ex => ex._id === e.sourceId)); return c !== 'deseo' && c !== null; };
+      const _esDeseoClasificado = (e) => _clas(expenses.find(ex => ex._id === e.sourceId)) === 'deseo';
+      const _esTagPromocionadoNoBasico = (e) => {
+        if (e.sourceType !== 'expense') return false;
+        const ex = expenses.find(x => x._id === e.sourceId);
+        return !!ex && !ex.basico && !!_tagPromocionada(e.sourceId);
+      };
+      const _evsDeseoGasto = evSinTransf.filter(e => e.tipo === 'gasto' && _esGastoClasificable(e) && _esDeseoClasificado(e));
+      _ultimoDesgloseDistribucion = {
+        necesidades: _agrupar(evSinTransf.filter(e => e.tipo === 'gasto' && _esGastoClasificable(e) && _esBasicoClasificado(e))),
+        deseos: _agrupar(_evsDeseoGasto.filter(e => !_esTagPromocionadoNoBasico(e))),
+        tags: tagCategorias
+          .map(t => ({ tag: t, items: _agrupar(evSinTransf.filter(e => e.sourceType === 'expense' && e.tipo === 'gasto' && !expenses.find(x => x._id === e.sourceId)?.basico && _tagPromocionada(e.sourceId) === t)) }))
+          .filter(g => g.items.length > 0),
+        deuda: [
+          ..._agrupar(evSinTransf.filter(e => e.sourceType === 'loan' && e.tipo === 'gasto')),
+          ..._agrupar(evSinTransf.filter(e => e.sourceType === 'loan-amort')).map(i => ({ ...i, concepto: i.concepto + ' (amortización)' })),
+        ],
+        ingresos: _agrupar(evSinTransf.filter(e => e.tipo === 'ingreso')),
+      };
+    }
+
     // ── «Este mes» / «Periodo seleccionado»: apertura, cierre y ahorro ───────────
     // Saldo proyectado en una fecha cualquiera: mismo patrón que `saldoHoy` (el
     // último evento del extracto GLOBAL con fecha <= X, o el saldo real de hoy
@@ -925,7 +1021,10 @@ const DashboardModule = (() => {
 
         <!-- Donut distribución de ingresos (media mensual del periodo) -->
         <div class="card">
-          <div class="card-title mb-8">Distribución media mensual (periodo)</div>
+          <div class="flex justify-between items-center mb-8">
+            <div class="card-title" style="margin:0">Distribución media mensual (periodo)</div>
+            <button class="btn-secondary btn-sm" style="font-size:11px" onclick="DashboardModule.verDetalleDistribucionMedia()" title="Ver qué gastos e ingresos concretos componen cada apartado">🔍 Ver datos</button>
+          </div>
           ${(()=>{
             const deseosMed      = Math.max(0, gastosDeseoMediaMes - totalTagPromoMediaMes);
             const ahorroMed      = Math.max(0, ingresosMediaMes - cuotasMediaMes - gastosBasicosMediaMes - gastosDeseoMediaMes - amortizacionesMediaMes);
@@ -2120,5 +2219,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, abrir, actualizar, setVentanaVelas, setDashScope, setDashTab, limpiarSimulaciones, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleCriticos, toggleConfig, toggleAnalisis };
+  return { render, abrir, actualizar, setVentanaVelas, setDashScope, setDashTab, limpiarSimulaciones, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleCriticos, toggleConfig, toggleAnalisis, verDetalleDistribucionMedia };
 })();

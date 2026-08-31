@@ -99,9 +99,9 @@ const expenses: BasicoExpense[] = [
 ];
 
 const loans: BasicoLoan[] = [
-  { capital: 90000, tin: 2.2, meses: 240, basico: true, activo: true },
-  { capital: 8000, tin: 6, meses: 36, basico: false, activo: true },
-  { capital: 5000, tin: 4, meses: 24, basico: true, activo: true, simulacion: true },
+  { capital: 90000, tin: 2.2, meses: 240, fechaInicio: '2015-01-01', basico: true, activo: true },
+  { capital: 8000, tin: 6, meses: 36, fechaInicio: '2025-01-01', basico: false, activo: true },
+  { capital: 5000, tin: 4, meses: 24, fechaInicio: '2025-01-01', basico: true, activo: true, simulacion: true },
 ];
 
 const margenes: MargenSeguridad[] = [
@@ -172,6 +172,40 @@ describe('paridad colchón y gasto básico', () => {
     for (const fecha of ['2026-01-15', '2026-05-31', '2026-06-01', '2026-12-31']) {
       expect(calcColchonEnFecha(expenses, config, loans, fecha)).toBe(FM.calcColchonEnFecha(expenses, config, loans, fecha));
     }
+  });
+
+  it('tope min(X,Y): una cuota que acaba antes que los X meses del colchón cubre solo lo que le queda', () => {
+    // tin 0 → cuota = capital/meses = 1200/12 = 100€/mes exactos.
+    const cortoPlazo: BasicoLoan = { capital: 1200, tin: 0, meses: 12, fechaInicio: '2026-01-01', basico: true, activo: true };
+    // Waypoint 'meses' anterior a la fecha de prueba: sin él, calcColchonEnFecha
+    // cae a calcColchon (que usa la fecha real de HOY, no el `fecha` de prueba).
+    const cfg = {
+      colchonTipo: 'meses' as const,
+      colchonMeses: 6,
+      colchonFijo: 0,
+      colchonPuntos: [{ fecha: '2020-01-01', tipo: 'meses' as const, meses: 6 }],
+    };
+    // A 2026-11-01 quedan las cuotas de nov y dic: Y=2 (verificado contra resumenPrestamo).
+    const colchon = calcColchonEnFecha([], cfg, [cortoPlazo], '2026-11-01');
+    const colchonLegacy = FM.calcColchonEnFecha([], cfg, [cortoPlazo], '2026-11-01');
+    // min(6,2) meses de 100€ de cuota = 200€, NO 6*100€=600€: la cuota no dura 6 meses más.
+    expect(colchon).toBeCloseTo(200, 6);
+    expect(colchon).toBe(colchonLegacy);
+  });
+
+  it('tope min(X,Y): una cuota que dura más que los X meses del colchón cubre los X meses enteros', () => {
+    const largoPlazo: BasicoLoan = { capital: 24000, tin: 0, meses: 240, fechaInicio: '2020-01-01', basico: true, activo: true };
+    const cfg = {
+      colchonTipo: 'meses' as const,
+      colchonMeses: 6,
+      colchonFijo: 0,
+      colchonPuntos: [{ fecha: '2020-01-01', tipo: 'meses' as const, meses: 6 }],
+    };
+    // A 2026-11-01 quedan 158 meses — de sobra por encima de los 6 del colchón.
+    const colchon = calcColchonEnFecha([], cfg, [largoPlazo], '2026-11-01');
+    // cuota = 24000/240 = 100€/mes; min(6,158)=6 → 600€.
+    expect(colchon).toBeCloseTo(600, 6);
+    expect(colchon).toBe(FM.calcColchonEnFecha([], cfg, [largoPlazo], '2026-11-01'));
   });
 });
 
