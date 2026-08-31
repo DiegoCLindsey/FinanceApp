@@ -1186,6 +1186,46 @@ const DashboardModule = (() => {
     }, 60);
   }
 
+  // Cada punto se dibuja de izquierda a derecha en vez de aparecer todos a la
+  // vez: la x avanza desde NaN y la y arranca desde el pixel del punto
+  // anterior, con el `delay` de cada punto encadenado al del anterior — la
+  // receta oficial de Chart.js para «progressive line». Sin estado propio:
+  // todo sale de `ctx`, así que sirve para cualquier dataset de este chart.
+  function _valorPunto(d) {
+    if (d == null) return 0;
+    return typeof d === 'object' ? (d.y ?? 0) : d;
+  }
+  const ANIM_TRAZO_PROGRESIVO = {
+    x: {
+      type: 'number', easing: 'linear', from: NaN,
+      duration: ctx => 1400 / ((ctx.chart?.data?.datasets?.[ctx.datasetIndex]?.data?.length) || 1),
+      delay(ctx) {
+        if (ctx.type !== 'data' || ctx.xStarted) return 0;
+        ctx.xStarted = true;
+        const n = ctx.chart.data.datasets[ctx.datasetIndex].data.length || 1;
+        return ctx.index * (1400 / n);
+      }
+    },
+    y: {
+      type: 'number', easing: 'linear',
+      duration: ctx => 1400 / ((ctx.chart?.data?.datasets?.[ctx.datasetIndex]?.data?.length) || 1),
+      from(ctx) {
+        if (ctx.index === 0) {
+          return ctx.chart.scales.y.getPixelForValue(_valorPunto(ctx.chart.data.datasets[ctx.datasetIndex].data[0]));
+        }
+        const meta = ctx.chart.getDatasetMeta(ctx.datasetIndex);
+        const prev = meta.data[ctx.index - 1];
+        return prev ? prev.getProps(['y'], true).y : undefined;
+      },
+      delay(ctx) {
+        if (ctx.type !== 'data' || ctx.yStarted) return 0;
+        ctx.yStarted = true;
+        const n = ctx.chart.data.datasets[ctx.datasetIndex].data.length || 1;
+        return ctx.index * (1400 / n);
+      }
+    }
+  };
+
   function renderChartSaldo(extracto, extractoCanonico) {
     const ctx=document.getElementById('chart-saldo'); if(!ctx)return;
     const config = State.get('config');
@@ -1499,6 +1539,7 @@ const DashboardModule = (() => {
       data: { datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
+        animation: ANIM_TRAZO_PROGRESIVO,
         interaction: { mode: 'porFecha', intersect: false },
         plugins: {
           legend: {
@@ -1620,6 +1661,10 @@ const DashboardModule = (() => {
       },
       options: {
         responsive: true, maintainAspectRatio: false,
+        animation: {
+          duration: 500, easing: 'easeOutQuad',
+          delay: ctx => ctx.type === 'data' ? ctx.dataIndex * 90 : 0,
+        },
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
@@ -1718,6 +1763,7 @@ const DashboardModule = (() => {
       options:{
         indexAxis:'y',
         responsive:true, maintainAspectRatio:false,
+        animation:{ duration:550, easing:'easeOutQuad', delay: ctx => ctx.type==='data' ? ctx.dataIndex*100 : 0 },
         plugins:{
           legend:{display:false},
           tooltip:{ backgroundColor:'#111a28', borderColor:'rgba(255,255,255,0.12)', borderWidth:1, titleColor:'#a9b6cc', bodyColor:'#eef3fb',
@@ -1811,6 +1857,7 @@ const DashboardModule = (() => {
       },
       options: {
         responsive:true, maintainAspectRatio:false,
+        animation:{ duration:550, easing:'easeOutQuad', delay: ctx => ctx.type==='data' ? ctx.dataIndex*100 : 0 },
         interaction:{ mode:'index', intersect:false },
         plugins:{
           legend:{ labels:{ color:'#a9b6cc', font:{size:11}, boxWidth:12 } },

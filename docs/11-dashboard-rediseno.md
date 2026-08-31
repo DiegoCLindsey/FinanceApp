@@ -300,3 +300,37 @@ vistas" solo aplicaba a Resumen y Préstamos.
 Verificado en Chromium: el selector alterna sin duplicar contenido (una
 sola aparición de "Cuotas vivas"/"Apertura" a la vez), y el estado
 persiste al cambiar de pestaña Resumen → Préstamos.
+
+## 10. Animaciones de las gráficas
+
+El usuario preguntó por las animaciones de las gráficas; revisando el
+código no había ninguna tocada — las cuatro familias usaban la que trae
+Chart.js por defecto (`animation` sin configurar). Se montó una demo con
+4 variantes por familia (línea, velas, barras, dona) para elegir a ojo en
+vez de a ciegas. Elegidas:
+
+- **Línea** (`renderChartSaldo`, `chart-saldo`): trazo progresivo. La línea
+  se dibuja de izquierda a derecha en vez de aparecer entera. Nuevo helper
+  `ANIM_TRAZO_PROGRESIVO` justo antes de `renderChartSaldo`: la `x` de cada
+  punto arranca en `NaN` y la `y` arranca en el píxel del punto anterior,
+  con el `delay` de cada punto encadenado al anterior — la receta oficial
+  de Chart.js para «progressive line», generalizada para no depender de un
+  dataset concreto (todo sale de `ctx.chart`, sirve para cualquiera de los
+  datasets que se apilan en ese chart: histórico, margen, críticos…).
+- **Velas** (`renderChartVelas`, `chart-velas`) y **barras**
+  (`renderChartMediaMensual`/`chart-media-mensual` y
+  `renderChartBreakdown`/`chart-breakdown-mensual`): aparecen escalonadas,
+  de izquierda a derecha, con `delay: ctx => ctx.dataIndex * (90|100)`.
+- **Dona** (`chart-gastos-tags`, `chart-expense-donut`, `chart-otros-donut`,
+  `chart-saldos-donut`, `chart-personas-donut`): se queda la animación por
+  defecto de Chart.js, sin cambios.
+
+No verificado visualmente en este entorno: el Chromium sin cabecera de la
+sandbox no tiene salida a internet, así que Chart.js (que carga desde
+jsDelivr) nunca llega a cargar aquí — la misma trampa ya descrita en
+`04-sistema-visual.md` §4. Sí verificado: sintaxis (`node --check`),
+`tools/qa/comprobar-estaticos.mjs` limpio, y los 1228 tests del paquete
+nuevo sin romperse (el cambio es enteramente en `dashboard.js`, sin tests
+propios). Las variantes elegidas ya se vieron animando en un navegador de
+verdad en la demo previa a aplicarlas, con la misma configuración de
+Chart.js.
