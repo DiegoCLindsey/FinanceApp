@@ -138,6 +138,14 @@ describe('tarjeta de préstamo', () => {
     expect(html).toContain('Real con amortizar');
   });
 
+  it('la cabecera muestra la cuota mensual y la fecha fin, no el capital total ni la duración en meses', () => {
+    const html = renderLoanCard(prestamo(), ctxBase);
+    const cabecera = html.slice(html.indexOf('loan-card-header'), html.indexOf('loan-card-body'));
+    expect(cabecera).not.toMatch(/>240m</);
+    expect(cabecera).toContain('/mes');
+    expect(cabecera).toContain('2043-12'); // fecha fin, no "240 meses"
+  });
+
   it('marca las amortizaciones simuladas y su efecto', () => {
     const conAmort = prestamo({
       amortizaciones: [
@@ -220,6 +228,52 @@ describe('vista de préstamos', () => {
     (vista().querySelector('[data-editar-loan="l1"]') as HTMLElement).click();
     expect((vista().querySelector('[data-body-loan="l1"]') as HTMLElement).classList.contains('open')).toBe(false);
     expect(overlayOculto()).toBe(false); // abrió el formulario, eso sí
+  });
+});
+
+describe('préstamos que terminan este mes', () => {
+  beforeEach(() => montarShell());
+
+  // Con tin: 0 la cuota es exactamente capital/meses, así que los importes se
+  // pueden comprobar a mano sin duplicar la fórmula de amortización.
+  // fechaInicio 2024-01-01 + 31 cuotas termina en 2026-07 — el mismo mes que
+  // HOY_ISO ('2026-07-31').
+  const ikea1 = prestamo({ _id: 'ikea1', nombre: 'IKEA 1', capital: 3100, tin: 0, meses: 31 });
+  const ikea2 = prestamo({ _id: 'ikea2', nombre: 'IKEA 2', capital: 1550, tin: 0, meses: 31 });
+
+  it('sin ningún préstamo terminando este mes, no muestra el aviso', () => {
+    const { registry } = entorno(); // Hipoteca, termina en 2043
+    registry.mount('loans');
+    expect(vista().textContent).not.toContain('te liberará');
+  });
+
+  it('avisa de los préstamos que terminan este mes y de la cuota que libera', () => {
+    const { registry } = entorno({ loans: [ikea1, ikea2] });
+    registry.mount('loans');
+    const texto = vista().textContent || '';
+    expect(texto).toContain('Este mes se acaban');
+    expect(texto).toContain('IKEA 1 y IKEA 2');
+    expect(texto).toContain('te liberará');
+    expect(texto).toContain('150,00'); // 100 € + 50 € de cuota mensual
+  });
+
+  it('con un solo préstamo terminando este mes, usa el singular', () => {
+    const { registry } = entorno({ loans: [ikea1] });
+    registry.mount('loans');
+    const texto = vista().textContent || '';
+    expect(texto).toContain('Este mes se acaba IKEA 1');
+    expect(texto).not.toContain('se acaban');
+  });
+
+  it('un préstamo inactivo o simulado no cuenta aunque termine este mes', () => {
+    const { registry } = entorno({
+      loans: [
+        { ...ikea1, activo: false },
+        { ...ikea2, simulacion: true },
+      ],
+    });
+    registry.mount('loans');
+    expect(vista().textContent).not.toContain('te liberará');
   });
 });
 
