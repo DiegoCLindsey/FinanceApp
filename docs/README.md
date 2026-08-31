@@ -18,6 +18,7 @@ contexto previo.
 | [09-personas.md](09-personas.md) | Reparto de gastos, nóminas y préstamos entre personas (pago y consumo, tres modos), y reorganización del dashboard en pestañas |
 | [10-registro-proyectos-en-la-nube.md](10-registro-proyectos-en-la-nube.md) | Por qué un proyecto creado en un dispositivo no aparecía en otro: la lista de proyectos ahora se sincroniza con Firebase, no solo los datos de cada uno |
 | [11-dashboard-rediseno.md](11-dashboard-rediseno.md) | Rediseño del dashboard: apertura/cierre de saldo, gastos repetidos agrupados, disfrute/básico/ahorro, cashflow de préstamos, desglose sin promediar por persona, y fusión de la pestaña Gráficas en Resumen |
+| [12-colchon-cuotas-con-tope.md](12-colchon-cuotas-con-tope.md) | El colchón contaba cada cuota de préstamo básico X meses enteros aunque a la cuota le quedara menos: ahora es `min(X,Y)`, con Y los meses reales que le quedan |
 
 ## Cómo continuar el trabajo
 

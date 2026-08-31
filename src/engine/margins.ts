@@ -10,7 +10,7 @@
 // conservan ambos con su semántica actual para no romper paridad.
 
 import { formatLocalDate, type ISODate } from '@/core/dates';
-import { cuotaMensual } from '@/core/loan';
+import { cuotaMensual, resumenPrestamo, type LoanInput } from '@/core/loan';
 import { formatEUR } from '@/core/money';
 import { saldoRealCuenta, type AccountLike } from '@/core/accounts';
 import { proyectarGastos, type ExpenseLike } from './providers/expenses';
@@ -20,10 +20,7 @@ export interface BasicoExpense extends ExpenseLike {
   basico?: boolean;
 }
 
-export interface BasicoLoan {
-  capital: number;
-  tin: number;
-  meses: number;
+export interface BasicoLoan extends LoanInput {
   basico?: boolean;
   activo?: boolean;
   simulacion?: boolean;
@@ -72,11 +69,35 @@ function cuotasBasicasMensuales(loans: BasicoLoan[] | null | undefined): number 
     .reduce((s, l) => s + cuotaMensual(l.capital, l.tin, l.meses), 0);
 }
 
-/** Colchón económico: importe fijo o N meses de (gasto básico + cuotas básicas). */
-export function calcColchon(expenses: BasicoExpense[], config: ColchonConfig, loans: BasicoLoan[], hoy?: Date): number {
+/**
+ * Meses de cuota ordinaria (no amortizaciones) que le quedan a un préstamo
+ * desde `fecha`, según su tabla de amortización real (respeta amortizaciones
+ * parciales que hayan acortado el plazo).
+ */
+function mesesRestantesPrestamo(loan: BasicoLoan, fecha: ISODate): number {
+  return resumenPrestamo(loan).tabla.filter((f) => !f.esAmortizacion && f.fecha >= fecha).length;
+}
+
+/**
+ * Cuotas básicas con tope: cada préstamo básico cubre como mucho los meses
+ * que le quedan (Y), no los `meses` (X) del colchón entero — una cuota que
+ * acaba en 2 meses no necesita 6 meses de colchón reservados para ella.
+ */
+function cuotasBasicasConTope(loans: BasicoLoan[] | null | undefined, meses: number, fecha: ISODate): number {
+  return (loans || [])
+    .filter((l) => l.basico && l.activo && !l.simulacion)
+    .reduce((s, l) => s + cuotaMensual(l.capital, l.tin, l.meses) * Math.min(meses, mesesRestantesPrestamo(l, fecha)), 0);
+}
+
+/**
+ * Colchón económico: importe fijo, o X meses de gasto básico + min(X,Y)
+ * meses de cada cuota básica (Y = meses que le quedan a esa cuota).
+ */
+export function calcColchon(expenses: BasicoExpense[], config: ColchonConfig, loans: BasicoLoan[], hoy: Date = new Date()): number {
   if (config.colchonTipo === 'fijo' && (config.colchonFijo || 0) > 0) return config.colchonFijo as number;
   const totalMes = calcGastoBasicoMensual(expenses, hoy);
-  return (totalMes + cuotasBasicasMensuales(loans)) * (config.colchonMeses || 6);
+  const meses = config.colchonMeses || 6;
+  return totalMes * meses + cuotasBasicasConTope(loans, meses, formatLocalDate(hoy));
 }
 
 /** Colchón aplicable en una fecha, respetando la línea temporal de waypoints. */
@@ -92,7 +113,8 @@ export function calcColchonEnFecha(
   if (!p) return calcColchon(expenses, config, loans, hoy);
   if (p.tipo === 'fijo') return p.importe || 0;
   const totalMes = calcGastoBasicoMensual(expenses, hoy);
-  return (totalMes + cuotasBasicasMensuales(loans)) * (p.meses || 6);
+  const meses = p.meses || 6;
+  return totalMes * meses + cuotasBasicasConTope(loans, meses, fecha);
 }
 
 /**

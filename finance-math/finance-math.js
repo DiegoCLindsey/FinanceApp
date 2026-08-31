@@ -537,14 +537,30 @@ const FinanceMath = (() => {
     return expEvents.reduce((s,e)=>s+Math.abs(e.cuantia),0);
   }
 
-  // Calcular colchón económico: por meses de gastos básicos o cantidad fija
+  // Meses de cuota ordinaria (no amortizaciones) que le quedan a un préstamo
+  // desde `fecha`, según su tabla de amortización real (respeta amortizaciones
+  // parciales que hayan acortado el plazo).
+  function _mesesRestantesPrestamo(loan, fecha) {
+    return resumenPrestamo(loan).tabla.filter(f => !f.esAmortizacion && f.fecha >= fecha).length;
+  }
+
+  // Cuotas básicas con tope: cada préstamo básico cubre como mucho los meses
+  // que le quedan (Y), no los `meses` (X) del colchón entero — una cuota que
+  // acaba en 2 meses no necesita 6 meses de colchón reservados para ella.
+  function _cuotasBasicasConTope(loans, meses, fecha) {
+    return (loans||[])
+      .filter(l => l.basico && l.activo && !l.simulacion)
+      .reduce((s, l) => s + cuotaMensual(l.capital, l.tin, l.meses) * Math.min(meses, _mesesRestantesPrestamo(l, fecha)), 0);
+  }
+
+  // Calcular colchón económico: por meses de gastos básicos o cantidad fija.
+  // X meses (config.colchonMeses) de gasto básico + min(X,Y) meses de cada
+  // cuota básica, donde Y son los meses que le quedan a esa cuota concreta.
   function calcColchon(expenses, config, loans) {
     if (config.colchonTipo === 'fijo' && config.colchonFijo > 0) return config.colchonFijo;
     const totalMes = calcGastoBasicoMensual(expenses);
-    const cuotasBasicas = (loans||[])
-      .filter(l => l.basico && l.activo && !l.simulacion)
-      .reduce((s, l) => s + cuotaMensual(l.capital, l.tin, l.meses), 0);
-    return (totalMes + cuotasBasicas) * (config.colchonMeses||6);
+    const meses = config.colchonMeses||6;
+    return totalMes * meses + _cuotasBasicasConTope(loans, meses, _fechaLocal(new Date()));
   }
 
   // Colchón aplicable en una fecha concreta, respetando la línea temporal de waypoints
@@ -554,10 +570,8 @@ const FinanceMath = (() => {
     if (!p) return calcColchon(expenses, config, loans);
     if (p.tipo === 'fijo') return p.importe || 0;
     const totalMes = calcGastoBasicoMensual(expenses);
-    const cuotasBasicas = (loans||[])
-      .filter(l => l.basico && l.activo && !l.simulacion)
-      .reduce((s, l) => s + cuotaMensual(l.capital, l.tin, l.meses), 0);
-    return (totalMes + cuotasBasicas) * (p.meses || 6);
+    const meses = p.meses || 6;
+    return totalMes * meses + _cuotasBasicasConTope(loans, meses, fecha);
   }
 
   // Target value for a margen de seguridad at a given date (0 = no restriction).
