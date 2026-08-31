@@ -15,6 +15,7 @@ contexto previo.
 | [06-plan-prevision.md](06-plan-prevision.md) | Plan para que la aplicación ayude a prever los números, y su ejecución completa |
 | [07-datos-y-guardado.md](07-datos-y-guardado.md) | Por qué volvían datos antiguos al recargar; recálculo perezoso y aviso de cambios sin guardar |
 | [08-proyectos.md](08-proyectos.md) | Varios proyectos para un mismo usuario: espacio de nombres por proyecto, duplicar, importar colecciones sueltas |
+| [09-personas.md](09-personas.md) | Reparto de gastos, nóminas y préstamos entre personas (pago y consumo, tres modos), y reorganización del dashboard en pestañas |
 
 ## Cómo continuar el trabajo
 

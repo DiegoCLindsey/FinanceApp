@@ -1,6 +1,17 @@
 // Depends on: State, FinanceMath, UI
 const DashboardModule = (() => {
   let charts={}, activeTags=new Set(), filtroAccounts=[], chartMode='summed', tagGroupsMode='desglosado', ventanaVelas='mes';
+  // Pestaña activa del cuadro de mando. Vive fuera de render() para sobrevivir
+  // a los repintados (igual que chartMode/ventanaVelas): cambiar un filtro no
+  // debe devolver al usuario a la primera pestaña.
+  let dashTab = 'resumen';
+  const DASH_TABS = [
+    ['resumen', 'Resumen'],
+    ['prestamos', 'Préstamos'],
+    ['personas', 'Por persona'],
+    ['graficas', 'Gráficas'],
+    ['analisis', 'Análisis avanzado'],
+  ];
   // Stable color palette for promoted tags (index 0 reserved for base categories)
   const _TAG_PROMO_PALETTE = ['#f97316','#eab308','#22d3ee','#a78bfa','#34d399','#fb7185','#60a5fa','#c084fc','#4ade80','#f472b6'];
   // colchon + historial toggles driven from config, no local state needed
@@ -104,6 +115,29 @@ const DashboardModule = (() => {
   }
 
   function setVentanaVelas(v) { ventanaVelas = v; render(); }
+
+  /**
+   * Cambia de pestaña sin repintar todo el cuadro de mando: las gráficas ya
+   * están creadas (todas, en cada render, estén o no a la vista) pero las de
+   * una pestaña oculta se crearon contra un `<canvas>` de tamaño 0 —
+   * `display:none` en un antepasado hace que Chart.js no tenga donde medir—.
+   * `resize()` las obliga a recalcular su tamaño contra el contenedor ya
+   * visible, así que basta con pedírselo a todas al cambiar de pestaña en vez
+   * de rehacer el render entero.
+   */
+  function setDashTab(tab) {
+    dashTab = tab;
+    document.querySelectorAll('[data-dash-tab-panel]').forEach(p => {
+      p.style.display = p.getAttribute('data-dash-tab-panel') === tab ? '' : 'none';
+    });
+    document.querySelectorAll('[data-dash-tab-btn]').forEach(b => {
+      const activo = b.getAttribute('data-dash-tab-btn') === tab;
+      b.style.background = activo ? 'var(--accent)' : '';
+      b.style.color = activo ? '#04120c' : '';
+      b.style.borderColor = activo ? 'var(--accent)' : '';
+    });
+    requestAnimationFrame(() => Object.values(charts).forEach(c => { try { c.resize(); } catch {} }));
+  }
 
   /**
    * Borra todo lo marcado como simulación. Toca datos del usuario, así que
@@ -310,6 +344,20 @@ const DashboardModule = (() => {
     const gastosBasicosMediaMes = evSinTransf.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c!=='deseo'&&c!==null;}).reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
     const gastosDeseoMediaMes   = evSinTransf.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense').filter(e=>{const c=_clas(expenses.find(ex=>ex._id===e.sourceId));return c==='deseo';}).reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
 
+    // ── Consumo y gasto por persona ─────────────────────────────────────────────
+    // Mismo extracto (evSinTransf) del que salen el resto de medias mensuales de
+    // arriba, para que este desglose cuadre exactamente con las demás cifras del
+    // dashboard. `personas` no vive en el State legado a propósito (ver la nota
+    // en common/state.js: DEFAULT_STATE nunca la incluyó) — se lee del store
+    // nuevo directamente, igual que ya se hace con `core`/`accounting`/`engine`.
+    const personas = window.FinanceApp?.store?.get('personas') || [];
+    const personasActivas = personas.filter(p => p.activo);
+    const agregadoPersonas = (personasActivas.length >= 2 && window.FinanceApp?.core?.agregarPorPersona)
+      ? window.FinanceApp.core.agregarPorPersona(evSinTransf, { expenses, loans, nominas }, personas)
+          .filter(a => personasActivas.some(p => p._id === a.personaId))
+          .map(a => ({ ...personas.find(p => p._id === a.personaId), pagoMes: a.pago / numMeses, consumoMes: a.consumo / numMeses, ingresosMes: a.ingresos / numMeses }))
+      : [];
+
     // ── Salud financiera — métricas para mes actual y media ──────────────────────
     const _hipotecaIds = new Set(loans.filter(l => (l.tags||[]).includes(config.saludTagHipoteca||'hipoteca')).map(l => l._id));
     const amortizacionesMesActual = evsMesActual.filter(e=>e.sourceType==='loan-amort').reduce((s,e)=>s+Math.abs(e.cuantia),0);
@@ -441,6 +489,11 @@ const DashboardModule = (() => {
         </div>`;
       })() : ''}
 
+      <div class="flex gap-6 mb-14 flex-wrap" data-dash-tabs>
+        ${DASH_TABS.map(([id, label]) => `<button class="btn-secondary btn-sm" data-dash-tab-btn="${id}" onclick="DashboardModule.setDashTab('${id}')" style="${dashTab===id?'background:var(--accent);color:#04120c;border-color:var(--accent)':''}">${label}</button>`).join('')}
+      </div>
+
+      <div data-dash-tab-panel="resumen" style="${dashTab==='resumen'?'':'display:none'}">
       <!-- Hero KPIs -->
       <div class="dash-hero mb-14">
         <div class="dash-hero-item">
@@ -717,6 +770,9 @@ const DashboardModule = (() => {
           </div>`;
         })()}
       </div>
+      </div><!-- /panel resumen -->
+
+      <div data-dash-tab-panel="prestamos" style="${dashTab==='prestamos'?'':'display:none'}">
       <!-- ── Sección Préstamos ── -->
       ${loansActivos.length > 0 ? (()=>{
         const deudaDelta    = deudaFin - deudaInicio;
@@ -779,7 +835,33 @@ const DashboardModule = (() => {
           </div>` : ''}
         </div>`;
       })() : ''}
+      </div><!-- /panel prestamos -->
 
+      <div data-dash-tab-panel="personas" style="${dashTab==='personas'?'':'display:none'}">
+      <!-- Consumo y gasto por persona -->
+      ${personasActivas.length < 2 ? `<div class="card mb-14" style="padding:16px;color:var(--text3);font-size:13px">Añade una segunda persona activa (icono de personas en el menú lateral) para ver aquí el reparto de consumo y gasto.</div>` : (() => {
+        const maxRef = Math.max(1, ...agregadoPersonas.map(p => Math.max(p.pagoMes, p.consumoMes, p.ingresosMes)));
+        const barra = (val, color) => `<div style="flex:1;background:var(--bg3);border-radius:4px;height:8px;overflow:hidden"><div style="width:${Math.min(100, val/maxRef*100)}%;height:100%;background:${color}"></div></div>`;
+        return `<div class="card mb-14">
+        <div class="card-title mb-12">Consumo y gasto por persona <span style="font-size:11px;color:var(--text3);font-weight:400">(media mensual del periodo)</span></div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${agregadoPersonas.map(p => `<div style="padding:10px 12px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <span style="width:10px;height:10px;border-radius:50%;background:${p.color||'#6366f1'};flex-shrink:0"></span>
+              <span style="font-weight:600;font-size:13px">${p.nombre}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;font-size:11px">
+              <div style="display:flex;align-items:center;gap:8px"><span style="width:56px;color:var(--text3)">Paga</span>${barra(p.pagoMes,'var(--red)')}<span style="font-family:var(--font-mono);width:70px;text-align:right">${FinanceMath.eur(p.pagoMes)}</span></div>
+              <div style="display:flex;align-items:center;gap:8px"><span style="width:56px;color:var(--text3)">Consume</span>${barra(p.consumoMes,'var(--yellow)')}<span style="font-family:var(--font-mono);width:70px;text-align:right">${FinanceMath.eur(p.consumoMes)}</span></div>
+              <div style="display:flex;align-items:center;gap:8px"><span style="width:56px;color:var(--text3)">Ingresa</span>${barra(p.ingresosMes,'var(--accent)')}<span style="font-family:var(--font-mono);width:70px;text-align:right">${FinanceMath.eur(p.ingresosMes)}</span></div>
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>`;
+      })()}
+      </div><!-- /panel personas -->
+
+      <div data-dash-tab-panel="graficas" style="${dashTab==='graficas'?'':'display:none'}">
       <!-- KPI financieros: donut distribución + rendimiento + desglose otros -->
       <div class="grid-2 mb-14" style="gap:14px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
 
@@ -944,7 +1026,9 @@ const DashboardModule = (() => {
           Cada vela abre donde cerró la anterior. El cuerpo va de apertura a cierre —verde si el saldo sube, rojo si baja— y la mecha marca el máximo y el mínimo del periodo.
         </div>
       </div>
+      </div><!-- /panel graficas -->
 
+      <div data-dash-tab-panel="analisis" style="${dashTab==='analisis'?'':'display:none'}">
       <!-- ── Análisis avanzado (colapsable) ─────────────────────────────────── -->
       <div class="card mb-14" style="padding:12px 16px">
         <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="DashboardModule.toggleAnalisis()">
@@ -991,6 +1075,7 @@ const DashboardModule = (() => {
 
 
       `}
+      </div><!-- /panel analisis -->
 `;
 
     // Pass computed metrics to chart functions
@@ -1862,5 +1947,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, abrir, actualizar, setVentanaVelas, limpiarSimulaciones, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis };
+  return { render, abrir, actualizar, setVentanaVelas, setDashTab, limpiarSimulaciones, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleExecSummary, toggleCriticos, toggleConfig, toggleAnalisis };
 })();

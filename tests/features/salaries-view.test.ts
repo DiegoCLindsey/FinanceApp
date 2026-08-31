@@ -302,6 +302,73 @@ describe('formulario de nómina', () => {
     (vista().querySelector('[data-borrar-nom="n1"]') as HTMLElement).click();
     expect(store.get('nominas')).toHaveLength(0);
   });
+
+  it('sin una segunda persona, no aparece el widget de reparto', () => {
+    const { registry } = entorno({ nominas: [] });
+    abrirNueva(registry);
+    expect(modal().querySelector('[data-reparto="consumo"]')).toBeNull();
+  });
+
+  it('con dos personas, guarda el reparto de pago', () => {
+    const { registry, store } = entorno({ nominas: [] });
+    store.set('personas', [...store.get('personas'), { _id: 'p2', nombre: 'Pareja', esPorDefecto: false, activo: true }]);
+    abrirNueva(registry);
+    escribir('#nf-nombre', 'Con reparto');
+    escribir('#nf-bruto', '30000');
+
+    fijar('[data-reparto-modo="pago"]', 'porcentaje');
+    const chk = modal().querySelector<HTMLInputElement>('[data-reparto-persona="pago"][value="p2"]')!;
+    chk.checked = true;
+    (modal().querySelector('[data-reparto-valor="pago"][data-persona="p2"]') as HTMLInputElement).value = '50';
+    guardar();
+
+    expect(store.get('nominas')[0].repartoPago).toEqual({ modo: 'porcentaje', participantes: [{ personaId: 'p2', valor: 50 }] });
+  });
+});
+
+describe('pestañas por persona', () => {
+  beforeEach(() => montarShell());
+
+  it('sin una segunda persona activa, no aparecen pestañas', () => {
+    const { registry } = entorno();
+    registry.mount('nominas');
+    expect(vista().querySelector('[data-persona-tab]')).toBeNull();
+  });
+
+  it('con dos personas, filtra la lista al elegir una pestaña', () => {
+    const miNomina = nomina({ _id: 'n1', nombre: 'Mía' });
+    const nominaPareja = nomina({
+      _id: 'n2',
+      nombre: 'De mi pareja',
+      repartoPago: { modo: 'porcentaje', participantes: [{ personaId: 'p2', valor: 100 }] },
+    });
+    const { registry, store } = entorno({ nominas: [miNomina, nominaPareja] });
+    store.set('personas', [...store.get('personas'), { _id: 'p2', nombre: 'Pareja', esPorDefecto: false, activo: true }]);
+    registry.mount('nominas');
+
+    expect(filas()).toHaveLength(2); // "Todas", por defecto
+
+    (vista().querySelector('[data-persona-tab="p2"]') as HTMLElement).click();
+    expect(filas()).toHaveLength(1);
+    expect(vista().textContent).toContain('De mi pareja');
+    expect(vista().textContent).not.toContain('Mía');
+
+    (vista().querySelector('[data-persona-tab=""]') as HTMLElement).click(); // "Todas" de nuevo
+    expect(filas()).toHaveLength(2);
+  });
+
+  it('una nómina sin reparto solo aparece en la pestaña de la persona por defecto', () => {
+    const sinReparto = nomina({ _id: 'n1', nombre: 'Sin repartir' });
+    const { registry, store } = entorno({ nominas: [sinReparto] });
+    store.set('personas', [...store.get('personas'), { _id: 'p2', nombre: 'Pareja', esPorDefecto: false, activo: true }]);
+    registry.mount('nominas');
+
+    (vista().querySelector('[data-persona-tab="p2"]') as HTMLElement).click();
+    expect(filas()).toHaveLength(0);
+
+    (vista().querySelector('[data-persona-tab="default"]') as HTMLElement).click();
+    expect(filas()).toHaveLength(1);
+  });
 });
 
 describe('tramos IRPF por ejercicio', () => {

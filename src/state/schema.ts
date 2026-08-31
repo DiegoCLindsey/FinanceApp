@@ -23,7 +23,49 @@ import type { Plan } from '@/planner/tipos';
  * v7 (2026-07): retira `historialPrecios` de las estimaciones — cada entrada
  *   pasa a ser una transacción real enlazada a su estimación (tarea 4.8).
  */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
+
+/**
+ * Quién hay en el proyecto — no necesariamente personas físicas: la nota
+ * larga de convivencia en `docs/` usa el ejemplo de «los gatos» como
+ * consumidores sin ser quien paga. Cada proyecto tiene siempre al menos una
+ * persona (`esPorDefecto`), y es donde cae todo lo que no lleva reparto
+ * explícito — así que activar esta funcionalidad no exige tocar ni un gasto
+ * existente.
+ */
+export interface Persona {
+  _id: string;
+  nombre: string;
+  color?: string;
+  /** Exactamente una persona del proyecto lleva esto a `true`. */
+  esPorDefecto: boolean;
+  activo: boolean;
+}
+
+export type ModoReparto = 'partesIguales' | 'porcentaje' | 'importe';
+
+export interface ParticipacionPersona {
+  personaId: string;
+  /**
+   * Porcentaje (0-100) en modo `porcentaje`, importe absoluto en modo
+   * `importe`. No se usa en `partesIguales` — cada participante pesa lo
+   * mismo, así que no hay nada que teclear.
+   */
+  valor?: number;
+}
+
+/**
+ * Cómo se reparte un gasto, una nómina o un préstamo entre varias personas.
+ * CONSUMO y PAGO son repartos independientes a propósito: quien paga la luz
+ * no tiene por qué ser quien la consume (piso compartido, gastos de mascotas
+ * pagados por una persona y disfrutados por todos...). Sin reparto — el caso
+ * normal — el 100% es de la persona por defecto del proyecto; por eso este
+ * tipo nunca aparece como campo obligatorio.
+ */
+export interface Reparto {
+  modo: ModoReparto;
+  participantes: ParticipacionPersona[];
+}
 
 export interface Loan {
   _id: string;
@@ -44,6 +86,9 @@ export interface Loan {
   simulacion?: boolean;
   mostrarFechaFinEnDashboard?: boolean;
   escenarioIds: string[];
+  /** Quién consume/paga esta cuota. Sin reparto, el 100% es de la persona por defecto. */
+  repartoConsumo?: Reparto;
+  repartoPago?: Reparto;
 }
 
 export type TipoExpense = 'gasto' | 'ingreso' | 'transferencia';
@@ -71,6 +116,9 @@ export interface Expense {
   ajustadaDesdeId?: string;
   /** Fecha en la que se aplicó el ajuste que la creó. */
   ajustadaEn?: ISODate;
+  /** Quién consume/paga este gasto. Sin reparto, el 100% es de la persona por defecto. */
+  repartoConsumo?: Reparto;
+  repartoPago?: Reparto;
 }
 
 export interface Account {
@@ -114,6 +162,9 @@ export interface Nomina {
   mesActualizacionIPC?: number | null;
   retribucionFlexible?: ComponenteFlexible[];
   escenarioIds: string[];
+  /** Quién consume/percibe esta nómina. Sin reparto, el 100% es de la persona por defecto. */
+  repartoConsumo?: Reparto;
+  repartoPago?: Reparto;
 }
 
 export interface Goal {
@@ -247,6 +298,8 @@ export interface AppState {
   tramosIRPFHistorico: TablaFiscalAnual[];
   tramosGananciasCapitalHistorico: TablaFiscalAnual[];
   escenarios: Escenario[];
+  /** Quién hay en el proyecto (v9). Siempre al menos una, la de por defecto. */
+  personas: Persona[];
   config: AppConfig;
 }
 
@@ -288,6 +341,14 @@ export function defaultAccount(hoyISO: ISODate): Account {
     planAportaciones: [],
     escenarioIds: [],
   };
+}
+
+/** Id de la persona por defecto — estable, para no tener que ir a buscarla. */
+export const PERSONA_DEFECTO_ID = 'default';
+
+/** Persona que siempre debe existir; es donde cae todo lo sin reparto explícito. */
+export function defaultPersona(): Persona {
+  return { _id: PERSONA_DEFECTO_ID, nombre: 'Yo', esPorDefecto: true, activo: true };
 }
 
 export function defaultConfig(hoyISO: ISODate, finISO: ISODate): AppConfig {
@@ -343,6 +404,7 @@ export function defaultState(hoyISO: ISODate, finISO: ISODate): AppState {
     tramosIRPFHistorico: [],
     tramosGananciasCapitalHistorico: [],
     escenarios: [],
+    personas: [defaultPersona()],
     config: defaultConfig(hoyISO, finISO),
   };
 }

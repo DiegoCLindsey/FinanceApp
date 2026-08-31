@@ -105,9 +105,9 @@ export function esEstadoVacioOPorDefecto(snapshot: Record<string, unknown>): boo
     const v = snapshot[k];
     return Array.isArray(v) ? v : [];
   };
-  // config, accounts y planes se miran aparte; el resto basta con que estén
-  // vacías.
-  const colecciones = COLECCIONES.filter((k) => k !== 'config' && k !== 'accounts' && k !== 'planes');
+  // config, accounts, planes y personas se miran aparte; el resto basta con
+  // que estén vacías.
+  const colecciones = COLECCIONES.filter((k) => k !== 'config' && k !== 'accounts' && k !== 'planes' && k !== 'personas');
   if (!colecciones.every((k) => arr(k).length === 0)) return false;
 
   const planes = arr('planes') as Array<{ _id?: unknown; objetivos?: unknown }>;
@@ -115,6 +115,14 @@ export function esEstadoVacioOPorDefecto(snapshot: Record<string, unknown>): boo
     planes.length === 0 ||
     (planes.length === 1 && planes[0]?._id === 'plan_base' && !(Array.isArray(planes[0]?.objetivos) && planes[0].objetivos.length > 0));
   if (!esPlanDeFabrica) return false;
+
+  // La migración 009 siembra SIEMPRE una persona por defecto, tenga o no el
+  // usuario datos reales — igual que la cuenta `default` y el plan
+  // `plan_base`. Sin este caso especial, un dispositivo recién estrenado con
+  // la persona de fábrica nunca se detectaría como vacío.
+  const personas = arr('personas') as Array<{ _id?: unknown }>;
+  const esPersonasDeFabrica = personas.length === 0 || (personas.length === 1 && personas[0]?._id === 'default');
+  if (!esPersonasDeFabrica) return false;
 
   const cuentas = arr('accounts') as Array<{ _id?: unknown; saldoInicial?: unknown; historicoSaldos?: unknown }>;
   return cuentas.every(

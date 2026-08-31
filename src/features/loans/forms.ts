@@ -4,9 +4,10 @@
 // el cableado va por delegación desde index.ts.
 
 import { todayISO } from '@/core/dates';
-import type { Account, Escenario, Loan } from '@/state/schema';
+import type { Account, Escenario, Loan, Persona } from '@/state/schema';
 import { esc } from '../accounting/dom';
 import { diaPagoWidget } from '../shared/dia-pago';
+import { repartoWidget } from '../shared/reparto-widget';
 
 export const campo = (id: string, label: string, tipo: string, valor: string | number, placeholder = '') =>
   `<div class="form-group"><label class="form-label">${esc(label)}</label>
@@ -45,7 +46,13 @@ const opcionesCuenta = (accounts: Account[], sel: string) =>
     .map((a) => `<option value="${esc(a._id)}"${a._id === sel ? ' selected' : ''}>${esc(a.nombre)}</option>`)
     .join('');
 
-export function formularioPrestamo(loan: Loan | null, accounts: Account[], escenarios: Escenario[], hoy = todayISO()): string {
+export function formularioPrestamo(
+  loan: Loan | null,
+  accounts: Account[],
+  escenarios: Escenario[],
+  personas: Persona[],
+  hoy = todayISO(),
+): string {
   return `
     <div class="grid-2">
       ${campo('f-nombre', 'Nombre del préstamo', 'text', loan?.nombre ?? '', 'Ej: Hipoteca ING')}
@@ -88,6 +95,8 @@ export function formularioPrestamo(loan: Loan | null, accounts: Account[], escen
           ${interruptor('f-basico', 'Gasto básico', loan?.basico !== false, 'Incluir la cuota en el cálculo del colchón económico')}
         </div>
         ${checkboxesEscenarios(escenarios, loan?.escenarioIds ?? [], 'loan-escenario')}
+        ${repartoWidget('Reparto de consumo', loan?.repartoConsumo, personas, 'consumo')}
+        ${repartoWidget('Reparto de pago', loan?.repartoPago, personas, 'pago')}
         <div class="form-row mt-8" style="flex-wrap:wrap;row-gap:6px">
           ${interruptor('f-activo', 'Activo', loan?.activo !== false)}
           <span style="margin-left:12px"></span>
