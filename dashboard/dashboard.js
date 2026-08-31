@@ -1,6 +1,11 @@
 // Depends on: State, FinanceMath, UI
 const DashboardModule = (() => {
   let charts={}, activeTags=new Set(), filtroAccounts=[], chartMode='summed', tagGroupsMode='desglosado', ventanaVelas='mes';
+  // «Este mes» / «Periodo seleccionado»: un único selector para las dos
+  // secciones que lo usan (Resumen y Préstamos) — mismo patrón que
+  // `ventanaVelas` (mensual/anual) para las velas: un modo, no dos vistas
+  // apiladas una debajo de otra.
+  let dashScope = 'mes';
   // Pestaña activa del cuadro de mando. Vive fuera de render() para sobrevivir
   // a los repintados (igual que chartMode/ventanaVelas): cambiar un filtro no
   // debe devolver al usuario a la primera pestaña.
@@ -124,9 +129,20 @@ const DashboardModule = (() => {
     </div>`;
   }
 
-  /** Una de las dos secciones «Este mes» / «Periodo seleccionado»: mismo esqueleto, datos distintos. */
+  /** Selector «Este mes» / «Periodo seleccionado» — un solo modo activo, no dos vistas apiladas. */
+  function _selectorMesPeriodo(subtituloMes, subtituloPeriodo) {
+    return `<div class="flex gap-8 items-center mb-10 flex-wrap" style="margin-top:4px">
+      <div class="period-selector">
+        <button class="period-btn ${dashScope==='mes'?'active':''}" onclick="DashboardModule.setDashScope('mes')">Este mes</button>
+        <button class="period-btn ${dashScope==='periodo'?'active':''}" onclick="DashboardModule.setDashScope('periodo')">Periodo seleccionado</button>
+      </div>
+      <span style="font-size:11px;color:var(--text3)">${dashScope==='mes'?subtituloMes:subtituloPeriodo}</span>
+    </div>`;
+  }
+
+  /** El contenido de «Este mes» o «Periodo seleccionado» (según el modo elegido en el selector): mismo esqueleto, datos distintos. */
   function _seccionResumenPeriodo(d) {
-    return `<div class="card-title mb-10" style="margin-top:4px">${d.titulo} <span style="font-size:11px;color:var(--text3);font-weight:400">${d.subtitulo}</span></div>
+    return `
       <div class="grid-4 mb-14">
         ${_tarjetaEstimadoVsReal('Apertura (open)', d.openEstimado, d.openReal, d.aperturaFecha)}
         ${_tarjetaEstimadoVsReal('Saldo actual vs proyectado hoy', d.saldoProyectadoHoy, d.saldoActual, d.hoyFecha)}
@@ -151,7 +167,7 @@ const DashboardModule = (() => {
   function _seccionPrestamosPeriodo(d) {
     const totalPerdido  = d.empiezan.reduce((s, x) => s + x.cuota, 0);
     const totalLiberado = d.terminan.reduce((s, x) => s + x.cuota, 0);
-    return `<div class="card-title mb-10" style="margin-top:4px">${d.titulo} <span style="font-size:11px;color:var(--text3);font-weight:400">${d.subtitulo}</span></div>
+    return `
       <div class="grid-2 mb-14" style="gap:10px">
         <div class="stat-card">
           <div class="stat-label">Cuotas vivas</div>
@@ -270,6 +286,7 @@ const DashboardModule = (() => {
   }
 
   function setVentanaVelas(v) { ventanaVelas = v; render(); }
+  function setDashScope(v) { dashScope = v; render(); }
 
   /**
    * Cambia de pestaña sin repintar todo el cuadro de mando: las gráficas ya
@@ -683,24 +700,25 @@ const DashboardModule = (() => {
     const splitMes = _splitDisfruteBasico(evsMesActual);
     const splitPeriodo = _splitDisfruteBasico(evSinTransf);
 
-    const seccionEsteMesHtml = _seccionResumenPeriodo({
-      titulo: 'Este mes', subtitulo: `(${mesActualLabel})`,
-      openEstimado: _saldoProyectadoEn(mesAnteriorFin), openReal: _saldoRealEn(mesAnteriorFin), aperturaFecha: mesIni,
-      saldoActual: saldoBase, saldoProyectadoHoy: saldoHoy, hoyFecha: hoyStr,
-      closeEstimado: _saldoProyectadoEn(mesFin), cierreFecha: mesFin,
-      ahorro: ahorroEstMes,
-      gastos: gastosTosMesActual, repetidos: repetidosMes, gastosSub: mesActualLabel,
-      basico: splitMes.basico, deseo: splitMes.deseo, ingresos: ingresosMesActual,
-    });
-    const seccionPeriodoHtml = _seccionResumenPeriodo({
-      titulo: 'Durante el periodo seleccionado', subtitulo: `(${config.dashboardStart} → ${config.dashboardEnd})`,
-      openEstimado: _saldoProyectadoEn(periodoAnteriorFin), openReal: _saldoRealEn(periodoAnteriorFin), aperturaFecha: config.dashboardStart,
-      saldoActual: saldoBase, saldoProyectadoHoy: saldoHoy, hoyFecha: hoyStr,
-      closeEstimado: saldoFinal, cierreFecha: config.dashboardEnd,
-      ahorro: ahorroEstPeriodo,
-      gastos: gastosTotalPeriodo, repetidos: repetidosPeriodo, gastosSub: `${config.dashboardStart} → ${config.dashboardEnd}`,
-      basico: splitPeriodo.basico, deseo: splitPeriodo.deseo, ingresos: ingresosTotalPeriodo,
-    });
+    // Solo se construye la sección del modo activo — la otra no hace falta
+    // calcularla si no se va a pintar.
+    const seccionResumenHtml = dashScope === 'mes'
+      ? _seccionResumenPeriodo({
+          openEstimado: _saldoProyectadoEn(mesAnteriorFin), openReal: _saldoRealEn(mesAnteriorFin), aperturaFecha: mesIni,
+          saldoActual: saldoBase, saldoProyectadoHoy: saldoHoy, hoyFecha: hoyStr,
+          closeEstimado: _saldoProyectadoEn(mesFin), cierreFecha: mesFin,
+          ahorro: ahorroEstMes,
+          gastos: gastosTosMesActual, repetidos: repetidosMes, gastosSub: mesActualLabel,
+          basico: splitMes.basico, deseo: splitMes.deseo, ingresos: ingresosMesActual,
+        })
+      : _seccionResumenPeriodo({
+          openEstimado: _saldoProyectadoEn(periodoAnteriorFin), openReal: _saldoRealEn(periodoAnteriorFin), aperturaFecha: config.dashboardStart,
+          saldoActual: saldoBase, saldoProyectadoHoy: saldoHoy, hoyFecha: hoyStr,
+          closeEstimado: saldoFinal, cierreFecha: config.dashboardEnd,
+          ahorro: ahorroEstPeriodo,
+          gastos: gastosTotalPeriodo, repetidos: repetidosPeriodo, gastosSub: `${config.dashboardStart} → ${config.dashboardEnd}`,
+          basico: splitPeriodo.basico, deseo: splitPeriodo.deseo, ingresos: ingresosTotalPeriodo,
+        });
 
     view.innerHTML=`
       <div class="page-header">
@@ -942,8 +960,8 @@ const DashboardModule = (() => {
         </div>
       </div>
 
-      ${seccionEsteMesHtml}
-      ${seccionPeriodoHtml}
+      ${_selectorMesPeriodo(`(${mesActualLabel})`, `(${config.dashboardStart} → ${config.dashboardEnd})`)}
+      ${seccionResumenHtml}
       </div><!-- /panel resumen -->
 
       <div data-dash-tab-panel="prestamos" style="${dashTab==='prestamos'?'':'display:none'}">
@@ -1009,8 +1027,8 @@ const DashboardModule = (() => {
           </div>` : ''}
         </div>`;
       })() : ''}
-      ${_seccionPrestamosPeriodo({ titulo: 'Este mes', subtitulo: `(${mesActualLabel})`, ...prestamosEsteMes })}
-      ${_seccionPrestamosPeriodo({ titulo: 'Durante el periodo seleccionado', subtitulo: `(${config.dashboardStart} → ${config.dashboardEnd})`, ...prestamosPeriodo })}
+      ${_selectorMesPeriodo(`(${mesActualLabel})`, `(${config.dashboardStart} → ${config.dashboardEnd})`)}
+      ${_seccionPrestamosPeriodo(dashScope === 'mes' ? prestamosEsteMes : prestamosPeriodo)}
       </div><!-- /panel prestamos -->
 
       <div data-dash-tab-panel="personas" style="${dashTab==='personas'?'':'display:none'}">
@@ -2021,5 +2039,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, abrir, actualizar, setVentanaVelas, setDashTab, limpiarSimulaciones, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleCriticos, toggleConfig, toggleAnalisis };
+  return { render, abrir, actualizar, setVentanaVelas, setDashScope, setDashTab, limpiarSimulaciones, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleCriticos, toggleConfig, toggleAnalisis };
 })();
