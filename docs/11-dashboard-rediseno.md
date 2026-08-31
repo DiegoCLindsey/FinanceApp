@@ -269,3 +269,34 @@ paquete nuevo), así que nada los habría avisado en CI.
     apilan mediante las mismas reglas responsive que ya existían
     (`.grid-4:has(> .stat-card)` con `auto-fit`, documentada en
     `common/components.css`) — no ha hecho falta CSS nuevo.
+
+## 9. Ajuste posterior: selector en vez de vistas apiladas
+
+Nada más ver el resultado, el usuario pidió cambiar "Este mes" y "Periodo
+seleccionado" de dos bloques apilados (uno debajo del otro) a un selector
+que muestra uno u otro — citando como modelo el propio selector
+Mensual/Anual que ya tenían las velas del saldo (`ventanaVelas`,
+`setVentanaVelas`): un modo activo, no dos vistas a la vez.
+
+Un único estado nuevo, `dashScope` (`'mes' | 'periodo'`), se comparte entre
+Resumen y Préstamos — las dos secciones que tenían este patrón duplicado.
+Compartido a propósito: es el mismo eje conceptual en las dos pestañas, así
+que cambiarlo en una y navegar a la otra debe respetar la elección, no
+reiniciarla. `_selectorMesPeriodo(subtituloMes, subtituloPeriodo)` pinta los
+botones (mismas clases `period-selector`/`period-btn` que ya usaban
+`chartMode`/`ventanaVelas`) más el subtítulo con el rango de fechas del modo
+activo; `setDashScope(v)` cambia `dashScope` y repinta.
+
+`_seccionResumenPeriodo`/`_seccionPrestamosPeriodo` pierden su propia
+cabecera (`titulo`/`subtitulo`) — ahora la da el selector — y en el punto de
+llamada solo se construye la sección del modo ACTIVO, no las dos: la que no
+se ve no hace falta calcularla.
+
+La tabla "Este mes / Periodo / Media por mes" de Por persona no se ha
+tocado — ya mostraba las tres cifras en columnas, en una sola fila por
+persona, sin duplicar ninguna vista completa; el patrón de "apilar dos
+vistas" solo aplicaba a Resumen y Préstamos.
+
+Verificado en Chromium: el selector alterna sin duplicar contenido (una
+sola aparición de "Cuotas vivas"/"Apertura" a la vez), y el estado
+persiste al cambiar de pestaña Resumen → Préstamos.
