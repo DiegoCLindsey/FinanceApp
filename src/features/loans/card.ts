@@ -110,8 +110,8 @@ export function renderLoanCard(loan: Loan, ctx: ContextoTarjeta): string {
       </div>
       <div class="loan-card-meta">
         <span class="loan-tin">${esc(loan.tin)}%</span>
-        <span class="text-sm">${esc(formatEUR(loan.capital))}</span>
-        <span class="text-sm">${esc(loan.meses)}m</span>
+        <span class="text-sm">${esc(formatEUR(res.cuota))}/mes</span>
+        <span class="text-sm">${esc(res.fechaFin || '—')}</span>
         <button class="btn-icon" data-amort-loan="${esc(loan._id)}" title="Añadir amortización"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>
         <button class="btn-icon" data-editar-loan="${esc(loan._id)}" title="Editar"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button>
         <button class="btn-danger" data-borrar-loan="${esc(loan._id)}">✕</button>

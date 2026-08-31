@@ -104,6 +104,31 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
     return { porLoan, total, activos: [...porLoan.values()].filter((c) => c > 0).length };
   }
 
+  /**
+   * Préstamos cuya última cuota ordinaria cae este mes: lo que se deja de
+   * pagar el mes que viene porque el préstamo ya está liquidado. Se toma la
+   * cuota de esa última fila (no `cuotasDelMes`, que ya los excluiría por
+   * `estaFinalizado` en cuanto pasa la fecha) porque es justo el importe que
+   * "se libera" — el que se venía pagando hasta ahora.
+   */
+  function prestamosQueTerminanEsteMes(loans: Loan[]): { loan: Loan; cuota: number }[] {
+    const mes = hoy().slice(0, 7);
+    const salida: { loan: Loan; cuota: number }[] = [];
+    for (const loan of loans) {
+      if (!loan.activo || loan.simulacion) continue;
+      const ordinarias = resumenPrestamo(loan as LoanInput).tabla.filter((r) => !r.esAmortizacion);
+      const ultima = ordinarias[ordinarias.length - 1];
+      if (ultima && ultima.fecha.slice(0, 7) === mes) salida.push({ loan, cuota: ultima.cuota });
+    }
+    return salida;
+  }
+
+  /** «A, B y C» — sin Oxford comma, como se escribe en español. */
+  function listaConY(nombres: string[]): string {
+    if (nombres.length <= 1) return nombres[0] ?? '';
+    return `${nombres.slice(0, -1).join(', ')} y ${nombres[nombres.length - 1]}`;
+  }
+
   /** Cuota media mensual dentro del horizonte del dashboard. */
   function cuotaMediaPeriodo(loans: Loan[]): { media: number; desde: ISODate; hasta: ISODate } {
     const cfg = deps.store.get('config');
@@ -136,6 +161,9 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
     // por persona daría un total que no cuadra con lo que enseña el dashboard.
     const cuotas = cuotasDelMes(todosSinFiltrar, new Set(todosSinFiltrar.filter(estaFinalizado).map((l) => l._id)));
     const periodo = cuotaMediaPeriodo(todosSinFiltrar);
+    // Igual que las cuotas y la media: sobre todos los préstamos, no solo los
+    // de la pestaña activa.
+    const finalizanEsteMes = prestamosQueTerminanEsteMes(todosSinFiltrar);
     const config = deps.store.get('config');
     const periodos = deps.store.get('inflacion');
 
@@ -151,6 +179,19 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
         </div>
       </div>
       ${tabsPersonaHtml(personas)}
+      ${
+        finalizanEsteMes.length > 0
+          ? `<div class="card mb-14" style="padding:12px 16px;background:rgba(46,230,168,0.07);border:1px solid rgba(46,230,168,0.25)">
+               <div style="display:flex;gap:10px;align-items:flex-start">
+                 <span style="font-size:16px">🎉</span>
+                 <div style="font-size:13px;color:var(--text)">
+                   Este mes se ${finalizanEsteMes.length === 1 ? 'acaba' : 'acaban'} ${esc(listaConY(finalizanEsteMes.map((f) => f.loan.nombre)))}
+                   — te liberará <strong style="color:var(--accent)">${esc(formatEUR(finalizanEsteMes.reduce((s, f) => s + f.cuota, 0)))}</strong> de cuotas para el mes que viene.
+                 </div>
+               </div>
+             </div>`
+          : ''
+      }
       ${
         cuotas.total > 0 || periodo.media > 0.01
           ? `<div class="card mb-14" style="padding:14px 18px">
