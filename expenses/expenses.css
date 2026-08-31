@@ -2,7 +2,11 @@
 .tag-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 4px; }
 .tag-filter-bar .tag { cursor: pointer; }
 .tag-filter-bar .tag:hover { border-color: rgba(46,230,168,0.4); color: var(--accent); }
-.exp-table-head, .exp-table-row { display: grid; grid-template-columns: 2fr 80px 100px 130px 90px 100px 120px; gap: 8px; padding: 8px 10px; align-items: center; }
+.exp-table-head, .exp-table-row { display: grid; grid-template-columns: 2fr 80px 100px 130px 90px 150px 120px; gap: 8px; padding: 8px 10px; align-items: center; }
+/* Con varios badges a la vez (básico + reparto, por ejemplo) no siempre caben en
+   una sola línea aunque la columna se haya ensanchado: que se apilen en vez de
+   desbordar y quedar debajo de los botones de la columna siguiente. */
+.exp-table-row .exp-col-hide.flex { flex-wrap: wrap; row-gap: 4px; }
 @media (max-width: 900px) { .exp-table-head, .exp-table-row { grid-template-columns: 2fr 80px 100px 80px; } .exp-col-hide { display: none !important; } }
 @media (max-width: 480px)  { .exp-table-head, .exp-table-row { grid-template-columns: 1fr 80px 72px; } }
 .exp-table-head { border-bottom: 1px solid var(--hairline); }
