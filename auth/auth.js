@@ -456,6 +456,28 @@ const AuthModule = (() => {
   }
 
   /**
+   * Fusiona el registro de proyectos (ids y nombres, no sus datos) con el de
+   * la nube, en las dos direcciones: primero trae los que faltan aquí — así
+   * un proyecto creado en OTRO dispositivo aparece sin más que volver a
+   * entrar — y sube el resultado, para que un proyecto creado en ESTE
+   * dispositivo llegue también a los demás sin esperar al próximo
+   * autoguardado. Silencioso: es una sincronización de fondo, no una acción
+   * que el usuario haya pedido, y `service` puede no implementarlo (Dropbox,
+   * de momento) — en ese caso no hace nada.
+   */
+  async function _sincronizarRegistroProyectos(service) {
+    const proyectos = window.FinanceApp?.proyectos;
+    if (!service.downloadRegistroProyectos || !proyectos?.fusionarRemotos) return;
+    try {
+      const remotos = await service.downloadRegistroProyectos();
+      if (remotos) proyectos.fusionarRemotos(remotos);
+      await service.uploadRegistroProyectos?.();
+    } catch (e) {
+      console.warn('[auth] No se ha podido sincronizar la lista de proyectos:', e.message);
+    }
+  }
+
+  /**
    * Sincroniza desde la nube al arrancar.
    *
    * ANTES: se descargaba y se volcaba encima del local SIN comparar nada. Como
@@ -468,6 +490,11 @@ const AuthModule = (() => {
    * nada que perder: primera restauración, o local sin tocar desde la última vez.
    */
   async function _sincronizarDesdeNube(service, nombre) {
+    // Antes incluso del backup del proyecto activo: si el usuario tiene un
+    // proyecto nuevo esperando en la nube, tiene que verlo aparecer aquí
+    // aunque el proyecto que tenga abierto ahora mismo no tenga nada que
+    // sincronizar.
+    await _sincronizarRegistroProyectos(service);
     const backup = await service.downloadBackup();
     if (!backup) return;
 

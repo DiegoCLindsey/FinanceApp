@@ -368,6 +368,46 @@ const FirebaseService = (() => {
     }
   }
 
+  // ── Registro de proyectos (la lista, no los datos de cada uno) ──────────────
+  // `uploadBackup`/`downloadBackup` suben y bajan los DATOS de un proyecto,
+  // en un documento por proyecto (`_backupDocId()`). Pero para pedir esa copia
+  // hace falta conocer el id de antemano — y ese id solo vivía en el registro
+  // LOCAL de cada dispositivo (`window.FinanceApp.proyectos`, ver
+  // `state/proyectos.ts`), que nunca viajaba a ningún sitio. Resultado: un
+  // proyecto creado en un dispositivo era invisible en cualquier otro, por
+  // mucho que sus datos sí se hubieran subido.
+  //
+  // Este documento, FIJO (no depende del proyecto activo), guarda esa lista
+  // — igual de cifrada que un backup normal, por la misma razón: los nombres
+  // de los proyectos son datos del usuario como cualquier otro.
+  function _registroDocId() { return 'proyectos'; }
+
+  async function uploadRegistroProyectos() {
+    if (!isConnected() || !_passphrase) return;
+    const lista = window.FinanceApp?.proyectos?.listar?.();
+    if (!lista) return;
+    const cipher = await CryptoService.encryptPortable(_passphrase, lista);
+    await _db
+      .collection('users').doc(_user.uid)
+      .collection('data').doc(_registroDocId())
+      .set({ cipher, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), version: 1 });
+  }
+
+  async function downloadRegistroProyectos() {
+    if (!isConnected() || !_passphrase) return null;
+    const doc = await _db
+      .collection('users').doc(_user.uid)
+      .collection('data').doc(_registroDocId())
+      .get();
+    if (!doc.exists) return null;
+    try {
+      const lista = await CryptoService.decryptPortable(_passphrase, doc.data().cipher);
+      return Array.isArray(lista) ? lista : null;
+    } catch {
+      return null;   // clave incorrecta: se ignora aquí, downloadBackup ya lo habrá avisado
+    }
+  }
+
   // ── Gestión de lista blanca ───────────────────────────────────────────────────
 
   async function listWhitelist() {
@@ -423,6 +463,7 @@ const FirebaseService = (() => {
     isConnected, currentUserEmail, isAdmin,
     login, register, loginWithGoogle, restoreSession, logout, forget,
     uploadBackup, downloadBackup, ultimaFechaBackup, setPassphrase, esClaveActual,
+    uploadRegistroProyectos, downloadRegistroProyectos,
     listWhitelist, addToWhitelist, removeFromWhitelist, setUserAdmin,
   };
 })();

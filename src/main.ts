@@ -185,6 +185,15 @@ export interface FinanceAppNamespace {
      */
     cambiarA: (id: string) => void;
     /**
+     * Fusiona en el registro local los proyectos que llegan de la nube (por
+     * id, quedándose con el más reciente de cada uno si hay conflicto) — no
+     * sustituye la lista entera, para no borrar un proyecto local que la
+     * copia remota todavía no conoce. La llama el puente legacy con Firebase
+     * al reanudar sesión o iniciar sesión, para que un proyecto creado en
+     * OTRO dispositivo aparezca aquí. Devuelve la lista ya fusionada.
+     */
+    fusionarRemotos: (remotos: Proyecto[]) => Proyecto[];
+    /**
      * Trae colecciones de OTRO proyecto al activo, con ids nuevos y las
      * referencias cruzadas entre ellas ya corregidas (ver `remapearIds`). Se
      * añaden a lo que ya hay — no sustituye nada.
@@ -239,17 +248,48 @@ function bootstrap(): FinanceAppNamespace {
   // ninguna pantalla futura puede olvidarse de avisar.
   store.subscribe((clave) => cambios.marcar(clave));
 
+  /**
+   * Sube la lista de proyectos (ids y nombres, no sus datos) a la nube
+   * conectada, si hay alguna — en segundo plano y sin bloquear ni avisar de
+   * un fallo puntual, igual que el resto de escrituras "best-effort" de este
+   * arranque (ver el aviso de guardado, más abajo). Sin esto, un proyecto
+   * creado aquí solo lo conoce este dispositivo hasta el siguiente
+   * autoguardado — o nunca, si el usuario no vuelve a tocar ningún dato.
+   */
+  function subirRegistroProyectos(): void {
+    const g = globalThis as { FirebaseService?: { isConnected?: () => boolean; uploadRegistroProyectos?: () => Promise<void> } };
+    if (!g.FirebaseService?.isConnected?.()) return;
+    g.FirebaseService.uploadRegistroProyectos?.()?.catch((e: unknown) =>
+      console.warn('[FinanceApp] No se ha podido subir la lista de proyectos:', e instanceof Error ? e.message : e),
+    );
+  }
+
   // Se construye aquí (no en el objeto de retorno) porque también lo necesita
   // `proyectosModal`, más abajo, para poder abrirse desde el sidebar.
   const proyectosAPI: FinanceAppNamespace['proyectos'] = {
     listar: () => proyectosSvc.listar(),
     activo: () => proyectosSvc.listar().find((p) => p._id === idProyectoActivo) ?? proyectosSvc.listar()[0],
     colecciones: COLECCIONES.filter((k): k is CollectionKey => k !== 'config'),
-    crear: (nombre) => proyectosSvc.crear(nombre),
-    renombrar: (id, nombre) => proyectosSvc.renombrar(id, nombre),
-    duplicar: (id, nombreNuevo) => proyectosSvc.duplicar(id, nombreNuevo),
-    eliminar: (id) => proyectosSvc.eliminar(id),
+    crear: (nombre) => {
+      const p = proyectosSvc.crear(nombre);
+      subirRegistroProyectos();
+      return p;
+    },
+    renombrar: (id, nombre) => {
+      proyectosSvc.renombrar(id, nombre);
+      subirRegistroProyectos();
+    },
+    duplicar: (id, nombreNuevo) => {
+      const p = proyectosSvc.duplicar(id, nombreNuevo);
+      subirRegistroProyectos();
+      return p;
+    },
+    eliminar: (id) => {
+      proyectosSvc.eliminar(id);
+      subirRegistroProyectos();
+    },
     cambiarA: (id) => proyectosSvc.establecerActivo(id),
+    fusionarRemotos: (remotos) => proyectosSvc.fusionarRemotos(remotos),
     importarDesde: (idOrigen, colecciones) => {
       const leidas = leerColeccionesDeProyecto(localStorage, idOrigen, colecciones);
       const remapeadas = remapearIds(leidas);

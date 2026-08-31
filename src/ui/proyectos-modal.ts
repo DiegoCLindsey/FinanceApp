@@ -59,6 +59,7 @@ const ETIQUETAS_COLECCION: Record<string, string> = {
   tramosIRPFHistorico: 'Tramos IRPF históricos',
   tramosGananciasCapitalHistorico: 'Tramos de ganancias históricos',
   escenarios: 'Supuestos',
+  personas: 'Personas',
 };
 
 function etiquetaColeccion(col: string): string {

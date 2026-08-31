@@ -182,6 +182,45 @@ describe('eliminar', () => {
   });
 });
 
+describe('fusionarRemotos', () => {
+  it('añade un proyecto remoto que no existe localmente', () => {
+    const svc = crearServicioProyectos(storageDeMemoria());
+    const remoto = { _id: 'r1', nombre: 'Del móvil', creadoEn: 1, actualizadoEn: 1 };
+    const fusionada = svc.fusionarRemotos([remoto]);
+    expect(fusionada.map((p) => p._id).sort()).toEqual(['default', 'r1']);
+    expect(svc.listar().find((p) => p._id === 'r1')?.nombre).toBe('Del móvil');
+  });
+
+  it('no borra un proyecto local que no está en la lista remota', () => {
+    const svc = crearServicioProyectos(storageDeMemoria());
+    const local = svc.crear('Solo en este dispositivo');
+    svc.fusionarRemotos([]);
+    expect(svc.listar().some((p) => p._id === local._id)).toBe(true);
+  });
+
+  it('un conflicto de nombre lo gana el más reciente por actualizadoEn', () => {
+    const storage = storageDeMemoria();
+    const svc = crearServicioProyectos(storage);
+    const p = svc.crear('Nombre viejo');
+    const actual = storage.getItem('financeapp_meta_proyectos');
+    const antiguo = JSON.parse(actual!).find((x: { _id: string }) => x._id === p._id);
+
+    // La copia remota es más reciente: gana su nombre.
+    svc.fusionarRemotos([{ ...antiguo, nombre: 'Nombre nuevo desde otro dispositivo', actualizadoEn: antiguo.actualizadoEn + 1000 }]);
+    expect(svc.listar().find((x) => x._id === p._id)?.nombre).toBe('Nombre nuevo desde otro dispositivo');
+
+    // Una copia remota más VIEJA no pisa el nombre local.
+    svc.fusionarRemotos([{ ...antiguo, nombre: 'Nombre desfasado', actualizadoEn: antiguo.actualizadoEn - 1000 }]);
+    expect(svc.listar().find((x) => x._id === p._id)?.nombre).toBe('Nombre nuevo desde otro dispositivo');
+  });
+
+  it('ignora entradas remotas sin id válido, sin reventar', () => {
+    const svc = crearServicioProyectos(storageDeMemoria());
+    expect(() => svc.fusionarRemotos([null as never, {} as never, { _id: 123 } as never])).not.toThrow();
+    expect(svc.listar()).toHaveLength(1); // solo el default
+  });
+});
+
 describe('leerColeccionesDeProyecto', () => {
   it('lee colecciones de otro proyecto sin activarlo', () => {
     const storage = storageDeMemoria();
