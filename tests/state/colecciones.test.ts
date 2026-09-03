@@ -16,9 +16,7 @@ describe('COLECCIONES', () => {
       [
         'accounts',
         'config',
-        'escenarios',
         'expenses',
-        'goals',
         'inflacion',
         'loans',
         'nominas',

@@ -23,7 +23,7 @@
 
 import type { AppState } from '@/state/schema';
 
-export type TipoResultado = 'gasto' | 'ingreso' | 'cuenta' | 'prestamo' | 'nomina' | 'supuesto' | 'objetivo' | 'movimiento';
+export type TipoResultado = 'gasto' | 'ingreso' | 'cuenta' | 'prestamo' | 'nomina' | 'movimiento';
 
 export interface Resultado {
   tipo: TipoResultado;
@@ -115,12 +115,6 @@ export function catalogar(state: Partial<AppState>): Candidato[] {
   }
   for (const n of state.nominas ?? []) {
     out.push({ tipo: 'nomina', etiqueta: 'Nómina', id: n._id, titulo: n.nombre, detalle: `${eur(n.bruto)} brutos`, ruta: 'nominas' });
-  }
-  for (const s of state.escenarios ?? []) {
-    out.push({ tipo: 'supuesto', etiqueta: 'Supuesto', id: s._id, titulo: s.nombre, detalle: s.descripcion ?? '', ruta: 'escenarios' });
-  }
-  for (const g of state.goals ?? []) {
-    out.push({ tipo: 'objetivo', etiqueta: 'Objetivo', id: g._id, titulo: g.nombre, detalle: eur(g.targetAmount), ruta: 'accounts' });
   }
   for (const t of state.transacciones ?? []) {
     out.push({

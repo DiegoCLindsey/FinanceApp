@@ -139,7 +139,7 @@ describe('v7 dentro de la cadena completa', () => {
       4,
       CTX,
     );
-    expect(applied).toEqual([5, 6, 7, 8, 9]);
+    expect(applied).toEqual([5, 6, 7, 8, 9, 10]);
     expect(state.transacciones).toHaveLength(2);
     expect('historialPrecios' in state.expenses[0]).toBe(false);
   });
@@ -153,7 +153,7 @@ describe('v7 dentro de la cadena completa', () => {
     const store = createStore({ adapter, hoy: new Date(2026, 6, 31) });
     const { applied } = store.load();
 
-    expect(applied).toEqual([7, 8, 9]);
+    expect(applied).toEqual([7, 8, 9, 10]);
     expect(store.get('transacciones')).toHaveLength(2);
     expect(store.schemaVersion).toBe(SCHEMA_VERSION);
     expect(adapter.get(VERSION_KEY)).toBe(SCHEMA_VERSION);

@@ -8,7 +8,6 @@ import { describe, it, expect } from 'vitest';
 import { calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension } from '@/core/tax/pension';
 import { agruparNominas, desgloseNomina, flexAnual, irpfNomina, tipoMarginal, tipoMarginalGrupo } from '@/core/tax/nomina-grupo';
 import { TRAMOS_IRPF_DEFAULT } from '@/core/tax/irpf';
-import { filtrarPorEscenario, serieMensual } from '@/core/scenarios';
 import { calcGananciasCapital } from '@/core/tax/ahorro';
 
 const TRAMOS = TRAMOS_IRPF_DEFAULT;
@@ -140,28 +139,5 @@ describe('ganancias de capital en los extremos', () => {
     // El tipo efectivo queda entre el primer tramo y el último
     expect(impuesto / 400000).toBeGreaterThan(0.19);
     expect(impuesto / 400000).toBeLessThan(0.28);
-  });
-});
-
-describe('escenarios con datos a medias', () => {
-  it('un préstamo sin amortizaciones sale con la lista vacía, no con undefined', () => {
-    const r = filtrarPorEscenario(
-      { loans: [{ _id: 'l1' } as { _id: string; amortizaciones?: never[] }], expenses: [], nominas: [], accounts: [] },
-      null,
-    );
-    expect(r.loans[0].amortizaciones).toEqual([]);
-  });
-
-  it('la serie mensual sin rango explícito abarca del primer al último apunte', () => {
-    const serie = serieMensual([
-      { fecha: '2026-02-10', saldoAcum: 100, delta: 100 },
-      { fecha: '2026-04-10', saldoAcum: 300, delta: 200 },
-    ]);
-    expect(serie.map((p) => p.mes)).toEqual(['2026-02', '2026-03', '2026-04']);
-  });
-
-  it('los apuntes sin saldoAcum no rompen la serie', () => {
-    const serie = serieMensual([{ fecha: '2026-01-10' }, { fecha: '2026-02-10', saldoAcum: 500 }], '2026-01-01', '2026-02-28');
-    expect(serie.map((p) => p.y)).toEqual([0, 500]);
   });
 });

@@ -28,7 +28,7 @@ import type { CashEvent } from '@/engine/types';
 import type { PlanAportacion } from '@/engine/providers/contributions';
 import type { PeriodoInflacion } from '@/core/inflation';
 import type { FeatureManifest } from '@/app/feature-registry';
-import type { Account, AppConfig, Escenario, Expense, Loan, Nomina, TablaFiscalAnual } from '@/state/schema';
+import type { Account, AppConfig, Expense, Loan, Nomina, TablaFiscalAnual } from '@/state/schema';
 import type { Ledger } from '@/accounting/ledger';
 import { confirmar, esc, onClick, toast } from '../accounting/dom';
 import { carteraFiscalHtml, renderAccountCard, FLUJOS_VACIOS, type CardCtx, type FlujosCuenta, type LineaFlujo } from './card';
@@ -41,7 +41,6 @@ export interface AccountsStoreLike {
   get(key: 'expenses'): Expense[];
   get(key: 'loans'): Loan[];
   get(key: 'nominas'): Nomina[];
-  get(key: 'escenarios'): Escenario[];
   get(key: 'inflacion'): PeriodoInflacion[];
   get(key: 'tramosIRPFHistorico'): TablaFiscalAnual[];
   get(key: 'tramosGananciasCapitalHistorico'): TablaFiscalAnual[];
@@ -74,8 +73,6 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
   const invModo = new Map<string, 'real' | 'proyeccion'>();
 
   const config = () => deps.store.get('config');
-  const escenarios = () => deps.store.get('escenarios');
-  const nombreEscenario = (id: string) => escenarios().find((e) => e._id === id)?.nombre ?? id;
   const nombreCuenta = (id: string) => deps.store.get('accounts').find((a) => a._id === id)?.nombre ?? id;
 
   const tramosIRPF = (): Tramos =>
@@ -169,7 +166,6 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
       nominas: deps.store.get('nominas'),
       tramosIRPF: tramosIRPF(),
       tramosGanancias: tramosGanancias(),
-      nombreEscenario,
       flujos: (id) => flujos.get(id) ?? FLUJOS_VACIOS,
       invModo: (id) => invModo.get(id) ?? 'proyeccion',
     };
@@ -211,7 +207,6 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
     const el = abrirModal(
       id ? 'Editar cuenta / fondo' : 'Nueva cuenta / fondo',
       formularioCuenta(acc, {
-        escenarios: escenarios(),
         nominas: deps.store.get('nominas'),
         hoy: hoy(),
         saldoActual: saldoAnterior ?? 0,

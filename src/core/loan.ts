@@ -15,8 +15,6 @@ export interface Amortizacion {
   cantidad: number;
   tipo?: 'plazo' | 'cuota' | string;
   simulacion?: boolean;
-  /** Escenarios a los que pertenece; en F5 lo sustituyen los supuestos (diffs). */
-  escenarioIds?: string[];
 }
 
 export interface LoanInput {

@@ -80,13 +80,6 @@ export const FEATURES: FeatureDefinition[] = [
 
   // ── Planificación ───────────────────────────────────────────────────────────
   {
-    id: 'supuestos',
-    nombre: 'Supuestos',
-    descripcion: 'Puntos de guardado sobre los que probar cambios, con biblioteca revisitable.',
-    grupo: GRUPOS.planificacion,
-    porDefecto: true,
-  },
-  {
     id: 'margenes',
     nombre: 'Márgenes de seguridad',
     descripcion: 'Umbrales mínimos de saldo por cuenta, con avisos al cruzarlos.',

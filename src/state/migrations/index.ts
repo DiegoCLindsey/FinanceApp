@@ -10,6 +10,7 @@ import { migrateTo6 } from './006-accounting';
 import { migrateTo7 } from './007-price-history';
 import { migrateTo8 } from './008-planner';
 import { migrateTo9 } from './009-personas';
+import { migrateTo10 } from './010-simplificacion';
 import type { Migration, MigrationContext, RawState } from './types';
 
 const MIGRATIONS: Migration[] = [
@@ -33,6 +34,11 @@ const MIGRATIONS: Migration[] = [
     version: 9,
     describe: 'Personas: siembra la persona por defecto («Yo») donde ya caía todo implícitamente',
     migrate: migrateTo9,
+  },
+  {
+    version: 10,
+    describe: 'Simplificación: retira escenarios/supuestos, objetivos de ahorro antiguos y el planificador financiero',
+    migrate: migrateTo10,
   },
 ];
 

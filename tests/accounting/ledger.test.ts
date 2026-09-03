@@ -24,7 +24,6 @@ function entorno() {
       historicoSaldos: [],
       interes: 0,
       modeloFondo: 'cuenta',
-      escenarioIds: [],
     },
   ]);
   return { store, ledger: createLedger(store) };
@@ -252,7 +251,7 @@ describe('migración v6', () => {
       config: {},
     };
     const { state, applied } = runMigrations(raw, 4, ctx);
-    expect(applied).toEqual([5, 6, 7, 8, 9]);
+    expect(applied).toEqual([5, 6, 7, 8, 9, 10]);
 
     const puntos = state.puntosControl;
     expect(puntos).toHaveLength(5);
@@ -339,7 +338,7 @@ describe('migración v6', () => {
     };
     const store = createStore({ adapter: createMemoryAdapter(seed), hoy: HOY });
     const { applied } = store.load();
-    expect(applied).toEqual([6, 7, 8, 9]);
+    expect(applied).toEqual([6, 7, 8, 9, 10]);
     expect(store.get('puntosControl')).toHaveLength(1);
     expect(store.get('puntosControl')[0].saldoCts).toBe(77700);
     expect(store.schemaVersion).toBe(SCHEMA_VERSION);

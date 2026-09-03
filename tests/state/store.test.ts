@@ -78,12 +78,12 @@ describe('migración a v5', () => {
 
   it('normaliza un backup v4 completo', () => {
     const { state, applied } = runMigrations(structuredClone(backupV4), 4, ctx);
-    expect(applied).toEqual([5, 6, 7, 8, 9]); // la cadena completa desde v4
+    expect(applied).toEqual([5, 6, 7, 8, 9, 10]); // la cadena completa desde v4
 
-    // escenarioId → escenarioIds (también en amortizaciones anidadas)
-    expect(state.loans[0].escenarioIds).toEqual(['esc1']);
-    expect(state.loans[0].amortizaciones[0].escenarioIds).toEqual(['esc1']);
-    expect(state.expenses[0].escenarioIds).toEqual([]);
+    // Supuestos/escenarios se retiraron en la v10: ni rastro de escenarioIds
+    expect(state.loans[0]).not.toHaveProperty('escenarioIds');
+    expect(state.loans[0].amortizaciones[0]).not.toHaveProperty('escenarioIds');
+    expect(state.expenses[0]).not.toHaveProperty('escenarioIds');
 
     // diaPago legado → formato nuevo
     expect(state.loans[0].diaPago).toBe('dia:ultimo');
@@ -110,12 +110,10 @@ describe('migración a v5', () => {
     expect(state.accounts[1].historicoSaldos).toEqual([]);
     expect(state.expenses[1].tags).toEqual([]);
 
-    // goals: cuentaId → cuentaIds
-    expect(state.goals[0].cuentaIds).toEqual(['default']);
-    expect(state.goals[0]).not.toHaveProperty('cuentaId');
-
-    // escenarios sin inversiones
-    expect(state.escenarios[0]).not.toHaveProperty('inversiones');
+    // goals y escenarios (Supuestos) se retiraron enteros en la v10
+    expect(state).not.toHaveProperty('goals');
+    expect(state).not.toHaveProperty('escenarios');
+    expect(state.config).not.toHaveProperty('escenarioActivo');
 
     // config: conserva lo del usuario, rellena defaults, repara tablas vacías
     expect(state.config.colchonMeses).toBe(8);
@@ -170,7 +168,7 @@ describe('store', () => {
     const store = createStore({ adapter, hoy: HOY });
     const { applied } = store.load();
 
-    expect(applied).toEqual([5, 6, 7, 8, 9]);
+    expect(applied).toEqual([5, 6, 7, 8, 9, 10]);
     expect(adapter.get(VERSION_KEY)).toBe(SCHEMA_VERSION);
     expect(store.get('loans')[0].diaPago).toBe('dia:ultimo');
     expect(store.get('config').colchonMeses).toBe(8);
@@ -268,7 +266,7 @@ describe('store', () => {
     expect(store.get('config').colchonMeses).not.toBe(999);
 
     const { applied } = store.replaceAll(structuredClone(backupV4), 4);
-    expect(applied).toEqual([5, 6, 7, 8, 9]);
+    expect(applied).toEqual([5, 6, 7, 8, 9, 10]);
     expect(store.get('loans')).toHaveLength(1);
     expect(store.get('loans')[0].diaPago).toBe('dia:ultimo');
   });

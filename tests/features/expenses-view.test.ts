@@ -18,7 +18,6 @@ function montarShell() {
     <nav class="sidebar"><ul class="nav-list">
       <li class="nav-section"><button class="nav-btn active" data-view="dashboard"></button></li>
       <li class="nav-section"><button class="nav-btn" data-view="expenses"></button></li>
-      <li class="nav-section"><button class="nav-btn" data-view="escenarios"></button></li>
     </ul></nav>
     <div class="main-area"><main class="view-container"><div id="view-dashboard" class="view active"></div></main></div>
     <div id="modal-overlay" class="modal-overlay hidden"><div id="modal-content"></div></div>`;
@@ -36,11 +35,10 @@ const gasto = (extra: Partial<Expense> = {}): Expense => ({
   cuenta: 'acc1',
   tags: ['vivienda'],
   activo: true,
-  escenarioIds: [],
   ...extra,
 });
 
-function entorno({ expenses = [gasto()], escenarios = [] }: { expenses?: Expense[]; escenarios?: { _id: string; nombre: string }[] } = {}) {
+function entorno({ expenses = [gasto()] }: { expenses?: Expense[] } = {}) {
   const store = createStore({ adapter: createMemoryAdapter(), hoy: HOY });
   store.load();
   store.set('accounts', [
@@ -48,7 +46,6 @@ function entorno({ expenses = [gasto()], escenarios = [] }: { expenses?: Expense
     { ...store.get('accounts')[0], _id: 'acc2', nombre: 'Ahorro', esCuentaPrincipal: false },
   ]);
   store.set('expenses', expenses);
-  store.set('escenarios', escenarios as never);
   const flags = createFlags(store);
   flags.setEnabled('expenses', true);
   const onDatosCambiados = vi.fn();
@@ -433,22 +430,6 @@ describe('formulario de gastos', () => {
     registry.mount('expenses');
 
     expect(vista().textContent).toContain('reparto');
-  });
-
-  it('muestra el selector de escenarios solo si los hay, y guarda la selección', () => {
-    const sinEsc = entorno({ expenses: [] });
-    abrirNuevo(sinEsc.registry);
-    expect(modal().querySelector('.ef-escenario')).toBeNull();
-
-    montarShell();
-    const conEsc = entorno({ expenses: [], escenarios: [{ _id: 's1', nombre: 'Paro' }] });
-    abrirNuevo(conEsc.registry);
-    escribir('#ef-concepto', 'Extra');
-    escribir('#ef-cuantia', '10');
-    (modal().querySelector('.ef-escenario') as HTMLInputElement).checked = true;
-    guardar();
-
-    expect(conEsc.store.get('expenses')[0].escenarioIds).toEqual(['s1']);
   });
 
   it('cancelar cierra sin guardar', () => {

@@ -28,7 +28,6 @@ function montarShell() {
         <button class="nav-btn" data-view="accounts"></button>
       </li>
       <li class="nav-section">
-        <button class="nav-btn" data-view="escenarios"></button>
         <button class="nav-btn" data-view="margenes"></button>
       </li>
     </ul></nav>
@@ -154,7 +153,7 @@ describe('gating del shell', () => {
 
   it('oculta la sección entera del sidebar si ninguna de sus vistas está activa', () => {
     const { flags } = nuevoEntorno();
-    for (const id of ['supuestos', 'margenes']) flags.setEnabled(id, false);
+    flags.setEnabled('margenes', false);
     createGating({ flags }).apply();
 
     const secciones = document.querySelectorAll<HTMLElement>('.nav-section');

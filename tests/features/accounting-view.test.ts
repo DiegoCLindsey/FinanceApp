@@ -37,7 +37,6 @@ const estimacionLuz: Omit<Expense, '_id'> = {
   fechaFin: null,
   tags: ['casa'],
   activo: true,
-  escenarioIds: [],
 };
 
 function entorno({ conDatos = false }: { conDatos?: boolean } = {}) {

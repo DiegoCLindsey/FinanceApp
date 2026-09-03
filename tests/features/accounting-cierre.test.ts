@@ -25,7 +25,6 @@ const gasto = (extra: Partial<Expense> = {}): Omit<Expense, '_id'> => ({
   fechaFin: null,
   tags: ['casa'],
   activo: true,
-  escenarioIds: [],
   ...extra,
 });
 

@@ -48,7 +48,6 @@ function entorno(margenes: MargenSeguridad[] = []) {
       tags: [],
       activo: true,
       basico: true,
-      escenarioIds: [],
     },
   ]);
   const flags = createFlags(store);
@@ -209,7 +208,6 @@ describe('vista de márgenes', () => {
         historicoSaldos: [],
         interes: 0,
         modeloFondo: 'cuenta',
-        escenarioIds: [],
       },
     ]);
     registry.mount('margenes');

@@ -14,10 +14,10 @@
 import { formatEUR } from '@/core/money';
 import type { ISODate } from '@/core/dates';
 import { modeloFondoDe } from '@/core/accounts';
-import type { Account, Escenario, Nomina } from '@/state/schema';
+import type { Account, Nomina } from '@/state/schema';
 import type { PlanAportacion } from '@/engine/providers/contributions';
 import { esc, onChange, onClick, toast } from '../accounting/dom';
-import { campo, checkboxesEscenarios, selector } from '../loans/forms';
+import { campo, selector } from '../loans/forms';
 
 /** Modelos que esta vista sabe crear y editar (pensión se gestiona en Nóminas). */
 export const MODELOS_CUENTA: [string, string][] = [
@@ -27,7 +27,6 @@ export const MODELOS_CUENTA: [string, string][] = [
 ];
 
 export interface FormularioCuentaDeps {
-  escenarios: Escenario[];
   nominas: Nomina[];
   hoy: ISODate;
   /** Último saldo real conocido (punto de control más reciente del ledger). */
@@ -148,7 +147,6 @@ export function formularioCuenta(acc: Account | null, deps: FormularioCuentaDeps
           <label class="form-label">Simulación</label>
           <label class="toggle"><input type="checkbox" id="ac-sim"${acc?.simulacion ? ' checked' : ''}/><span class="toggle-slider"></span></label>
         </div>
-        ${checkboxesEscenarios(deps.escenarios, acc?.escenarioIds ?? [], 'ac-escenario')}
       </div>
     </details>
 
@@ -247,7 +245,6 @@ export function construirCuenta(
     descripcion: val('#ac-desc').trim(),
     activo: marcado('#ac-activo'),
     simulacion: marcado('#ac-sim'),
-    escenarioIds: [...el.querySelectorAll<HTMLInputElement>('.ac-escenario:checked')].map((i) => i.value),
     modeloFondo: modelo,
     planAportaciones: plan,
     tipoBeneficio: esBeneficio ? val('#ac-tipo-beneficio') || 'transporte' : undefined,

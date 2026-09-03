@@ -18,7 +18,7 @@ import { formatEUR } from '@/core/money';
 import { parseLocalDate, todayISO, type ISODate } from '@/core/dates';
 import { resumenPrestamo, type LoanInput } from '@/core/loan';
 import type { FeatureManifest } from '@/app/feature-registry';
-import type { Account, AppConfig, Escenario, Expense, Loan, Nomina, Persona } from '@/state/schema';
+import type { Account, AppConfig, Expense, Loan, Nomina, Persona } from '@/state/schema';
 import type { PeriodoInflacion } from '@/core/inflation';
 import { idPersonaPorDefecto, personasImplicadas } from '@/core/reparto';
 import { confirmar, esc, onClick, toast } from '../accounting/dom';
@@ -32,7 +32,6 @@ export interface LoansStoreLike {
   get(key: 'expenses'): Expense[];
   get(key: 'accounts'): Account[];
   get(key: 'nominas'): Nomina[];
-  get(key: 'escenarios'): Escenario[];
   get(key: 'inflacion'): PeriodoInflacion[];
   get(key: 'personas'): Persona[];
   get(key: 'config'): AppConfig;
@@ -60,8 +59,6 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
   let personaTabId: string | null = null;
 
   const notificar = () => deps.onDatosCambiados?.();
-  const escenarios = () => deps.store.get('escenarios');
-  const nombreEscenario = (id: string) => escenarios().find((e) => e._id === id)?.nombre ?? id;
 
   /** Pestañas por persona, solo con dos o más activas — igual que el widget de reparto. */
   function tabsPersonaHtml(personas: Persona[]): string {
@@ -227,7 +224,6 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
                     hoy: hoy(),
                     cuotaMes: cuotas.porLoan.get(l._id) ?? 0,
                     completado: finalizados.has(l._id),
-                    nombreEscenario,
                     personas,
                   }),
                 )
@@ -261,7 +257,7 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
     const loan = id ? (deps.store.get('loans').find((l) => l._id === id) ?? null) : null;
     const el = abrirModal(
       id ? 'Editar préstamo' : 'Nuevo préstamo',
-      formularioPrestamo(loan, deps.store.get('accounts'), escenarios(), deps.store.get('personas'), hoy()),
+      formularioPrestamo(loan, deps.store.get('accounts'), deps.store.get('personas'), hoy()),
     );
     if (!el) return;
     el.addEventListener('change', (ev) => {
@@ -310,7 +306,6 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
         .split(',')
         .map((t) => t.trim())
         .filter(Boolean),
-      escenarioIds: [...el.querySelectorAll<HTMLInputElement>('.loan-escenario:checked')].map((i) => i.value),
       repartoConsumo: leerRepartoWidget(el, 'consumo'),
       repartoPago: leerRepartoWidget(el, 'pago'),
     };
@@ -330,7 +325,7 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
     const loan = deps.store.get('loans').find((l) => l._id === loanId);
     if (!loan) return;
     const am = amortId ? ((loan.amortizaciones || []).find((a) => a._id === amortId) ?? null) : null;
-    const el = abrirModal(amortId ? 'Editar amortización' : 'Añadir amortización', formularioAmortizacion(loanId, am, escenarios(), hoy()));
+    const el = abrirModal(amortId ? 'Editar amortización' : 'Añadir amortización', formularioAmortizacion(loanId, am, hoy()));
     if (!el) return;
     onClick(el, '[data-guardar-amort]', (btn) => {
       const [lid, aid] = (btn.getAttribute('data-guardar-amort') || '').split('|');
@@ -357,7 +352,6 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
       cantidad,
       tipo: val('#am-tipo'),
       simulacion: !!(el.querySelector('#am-sim') as HTMLInputElement | null)?.checked,
-      escenarioIds: [...el.querySelectorAll<HTMLInputElement>('.amort-escenario:checked')].map((i) => i.value),
     };
     const actuales = loan.amortizaciones || [];
     const amortizaciones = amortId

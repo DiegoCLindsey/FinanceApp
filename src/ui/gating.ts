@@ -30,7 +30,6 @@ export const VISTA_POR_FEATURE: Record<string, string> = {
   loans: 'loans',
   nominas: 'nominas',
   accounts: 'accounts',
-  supuestos: 'escenarios',
   margenes: 'margenes',
 };
 

@@ -10,9 +10,8 @@ import { formatEUR } from '@/core/money';
 import { todayISO, type ISODate } from '@/core/dates';
 import { calcBaseImponibleTrabajo, calcIRPF, type Tramos } from '@/core/tax/irpf';
 import { SS_PCT_DEFECTO } from '@/core/tax/nomina-grupo';
-import type { Account, Escenario, Nomina, Persona } from '@/state/schema';
+import type { Account, Nomina, Persona } from '@/state/schema';
 import { esc, onChange, onClick, toast } from '../accounting/dom';
-import { checkboxesEscenarios } from '../loans/forms';
 import { leerRepartoWidget, repartoWidget, sincronizarRepartoWidget } from '../shared/reparto-widget';
 
 /** Componente de retribución flexible en edición. */
@@ -85,7 +84,6 @@ export function flexHtml(plan: ComponenteFlex[], accounts: Account[]): string {
 
 export interface FormularioNominaDeps {
   accounts: Account[];
-  escenarios: Escenario[];
   nominas: Nomina[];
   personas: Persona[];
   cuentaPrincipal: string;
@@ -167,7 +165,6 @@ export function formularioNomina(n: Nomina | null, deps: FormularioNominaDeps): 
           </div>
           <div id="flex-comp-container"></div>
         </div>
-        ${checkboxesEscenarios(deps.escenarios, n?.escenarioIds ?? [], 'nom-escenario')}
         ${repartoWidget('Reparto de consumo', n?.repartoConsumo, deps.personas, 'consumo')}
         ${repartoWidget('Reparto de pago', n?.repartoPago, deps.personas, 'pago')}
       </div>
@@ -202,7 +199,6 @@ export function leerFormulario(el: HTMLElement, flex: ComponenteFlex[]) {
     cuenta: val('#nf-cuenta'),
     grupoNomina: val('#nf-grupo').trim(),
     mesActualizacionIPC: parseInt(val('#nf-mes-ipc'), 10) || null,
-    escenarioIds: [...el.querySelectorAll<HTMLInputElement>('.nom-escenario:checked')].map((i) => i.value),
     retribucionFlexible: flex,
     repartoConsumo: leerRepartoWidget(el, 'consumo'),
     repartoPago: leerRepartoWidget(el, 'pago'),

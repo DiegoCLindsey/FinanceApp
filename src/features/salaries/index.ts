@@ -15,7 +15,7 @@ import { crearResolverTramos } from '@/core/tax/tables';
 import { TRAMOS_IRPF_DEFAULT, type Tramos } from '@/core/tax/irpf';
 import { agruparNominas, desgloseNomina, irpfGrupo } from '@/core/tax/nomina-grupo';
 import type { FeatureManifest } from '@/app/feature-registry';
-import type { Account, AppConfig, Escenario, Nomina, PeriodoInflacion, Persona, TablaFiscalAnual } from './store-tipos';
+import type { Account, AppConfig, Nomina, PeriodoInflacion, Persona, TablaFiscalAnual } from './store-tipos';
 import { confirmar, esc, onChange, onClick, toast } from '../accounting/dom';
 import { formularioNomina, leerFormulario, wireFormulario, type ComponenteFlex } from './form';
 import { createTramosModal } from './tramos';
@@ -33,7 +33,6 @@ import {
 export interface SalariesStoreLike {
   get(key: 'nominas'): Nomina[];
   get(key: 'accounts'): Account[];
-  get(key: 'escenarios'): Escenario[];
   get(key: 'inflacion'): PeriodoInflacion[];
   get(key: 'tramosIRPFHistorico'): TablaFiscalAnual[];
   get(key: 'personas'): Persona[];
@@ -231,7 +230,6 @@ export function createSalariesFeature(deps: SalariesViewDeps): FeatureManifest {
     const flex: ComponenteFlex[] = [...((n?.retribucionFlexible as ComponenteFlex[]) ?? [])].map((c) => ({ ...c }));
     const depsForm = {
       accounts: deps.store.get('accounts'),
-      escenarios: deps.store.get('escenarios'),
       nominas: deps.store.get('nominas'),
       personas: deps.store.get('personas'),
       cuentaPrincipal: deps.store.getPrincipalAccountId(),
@@ -265,7 +263,7 @@ export function createSalariesFeature(deps: SalariesViewDeps): FeatureManifest {
     const plan: AportacionPlan[] = [...((acc?.planAportaciones as AportacionPlan[]) ?? [])].map((p) => ({ ...p }));
     const el = abrirModal(
       id ? 'Editar plan de pensiones' : 'Nuevo plan de pensiones',
-      formularioPension(acc, { nominas: deps.store.get('nominas'), escenarios: deps.store.get('escenarios'), hoy: hoy() }),
+      formularioPension(acc, { nominas: deps.store.get('nominas'), hoy: hoy() }),
     );
     if (!el) return;
 

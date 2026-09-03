@@ -23,7 +23,6 @@ const estimacion = (over: Partial<Expense> = {}): Expense => ({
   fechaFin: null,
   tags: ['casa'],
   activo: true,
-  escenarioIds: [],
   ...over,
 });
 
@@ -377,7 +376,6 @@ describe('servicio de etiquetas compartido', () => {
         amortizaciones: [],
         tags: ['casa'],
         activo: true,
-        escenarioIds: [],
       },
     ]);
     env2.store.set('nominas', [
@@ -393,7 +391,6 @@ describe('servicio de etiquetas compartido', () => {
         activo: true,
         tags: ['casa'],
         grupoNomina: '',
-        escenarioIds: [],
       },
     ]);
     env2.store.patchConfig({ tagCategorias: ['casa'], tagGrupos: ['casa'], activeTagsFilter: ['casa'] });

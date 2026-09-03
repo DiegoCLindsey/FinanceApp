@@ -17,8 +17,6 @@ const estado = {
   ],
   loans: [{ _id: 'l1', nombre: 'Hipoteca', capital: 120000, cuenta: 'cc', tags: ['vivienda'] }],
   nominas: [{ _id: 'n1', nombre: 'Nómina actual', bruto: 42000 }],
-  escenarios: [{ _id: 's1', nombre: 'Cambio de coche', descripcion: 'Compra en 2 años' }],
-  goals: [{ _id: 'g1', nombre: 'Viaje a Japón', targetAmount: 5000 }],
   transacciones: [{ _id: 't1', fecha: '2026-07-05', cuentaId: 'cc', importeCts: -51100, concepto: 'SUPERMERCADO', tags: ['comida'] }],
 } as any;
 
@@ -56,7 +54,7 @@ describe('calidadCoincidencia', () => {
 describe('catalogar', () => {
   it('recoge todas las colecciones buscables', () => {
     const tipos = new Set(catalogar(estado).map((c) => c.tipo));
-    expect(tipos).toEqual(new Set(['gasto', 'ingreso', 'cuenta', 'prestamo', 'nomina', 'supuesto', 'objetivo', 'movimiento']));
+    expect(tipos).toEqual(new Set(['gasto', 'ingreso', 'cuenta', 'prestamo', 'nomina', 'movimiento']));
   });
 
   it('un estado vacío no revienta', () => {
@@ -87,13 +85,11 @@ describe('buscar', () => {
 
   it('encuentra sin tildes', () => {
     expect(buscar(estado, 'nomina').map((x) => x.titulo)).toContain('Nómina actual');
-    expect(buscar(estado, 'japon').map((x) => x.titulo)).toContain('Viaje a Japón');
   });
 
   it('busca en todas las vistas a la vez, que es el motivo de existir', () => {
     expect(buscar(estado, 'hipoteca')[0]).toMatchObject({ etiqueta: 'Préstamo', ruta: 'loans' });
     expect(buscar(estado, 'supermercado')[0]).toMatchObject({ etiqueta: 'Movimiento', ruta: 'contabilidad' });
-    expect(buscar(estado, 'cambio de coche')[0]).toMatchObject({ etiqueta: 'Supuesto', ruta: 'escenarios' });
   });
 
   it('distingue gasto de ingreso en la etiqueta', () => {

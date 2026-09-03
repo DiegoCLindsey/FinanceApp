@@ -1,6 +1,6 @@
 // ── features/dashboard/hero ───────────────────────────────────────────────────
-// Cabecera del cuadro de mando: aviso de escenario activo, los cuatro KPI
-// grandes y la lista de cargos de los próximos siete días.
+// Cabecera del cuadro de mando: los cuatro KPI grandes y la lista de cargos de
+// los próximos siete días.
 //
 // Todo lo que se pinta aquí viene ya calculado de `engine/dashboard.ts`; este
 // módulo solo da formato. Correcciones respecto al legacy, todas comentadas en
@@ -11,32 +11,6 @@ import { formatEUR } from '@/core/money';
 import { formatLocalDate, parseLocalDate, todayISO, type ISODate } from '@/core/dates';
 import type { CashEvent } from '@/engine/types';
 import { esc } from '../accounting/dom';
-
-export interface EscenarioActivo {
-  _id: string;
-  nombre?: string;
-  descripcion?: string;
-  color?: string;
-}
-
-/**
- * Banda que recuerda que el dashboard está mirando un escenario y no la
- * realidad. `nombre` y `descripcion` los escribe el usuario: van escapados
- * (el legacy los interpolaba crudos y un apóstrofo rompía la vista).
- */
-export function avisoEscenario(escenario: EscenarioActivo | null): string {
-  if (!escenario) return '';
-  const color = escenario.color || '#6366f1';
-  const desc = escenario.descripcion ? `<span style="color:var(--text3);margin-left:8px">${esc(escenario.descripcion)}</span>` : '';
-
-  return `<div class="card mb-14" style="padding:10px 16px;background:rgba(99,102,241,0.07);border:1px solid ${esc(color)}44;display:flex;align-items:center;gap:12px">
-    <span style="font-size:16px">🔭</span>
-    <div style="flex:1;font-size:13px">
-      <span style="font-weight:600;color:${esc(color)}">Escenario: ${esc(escenario.nombre || escenario._id)}</span>${desc}
-    </div>
-    <button class="btn-secondary btn-sm" data-dash-salir-escenario>✕ Salir</button>
-  </div>`;
-}
 
 export interface KpisHero {
   /** Saldo real a día de hoy, ya con el histórico aplicado. */

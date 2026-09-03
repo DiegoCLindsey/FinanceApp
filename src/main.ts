@@ -48,7 +48,6 @@ import { createExpensesFeature } from './features/expenses';
 import { createLoansFeature } from './features/loans';
 import { createSalariesFeature } from './features/salaries';
 import { createAccountsFeature } from './features/accounts';
-import { createScenariosFeature } from './features/scenarios';
 import { createLedger, type Ledger } from './accounting/ledger';
 import { createTagService, type TagService } from './accounting/tags';
 import { createPrecisionAnalyzer, type PrecisionAnalyzer } from './accounting/precision';
@@ -392,7 +391,6 @@ function bootstrap(): FinanceAppNamespace {
     }),
   );
   // Planificación:
-  app.register(createScenariosFeature({ store, onDatosCambiados: refrescarLegacy }));
   app.register(createMarginsFeature({ store, onDatosCambiados: refrescarLegacy }));
 
   return {
@@ -453,8 +451,6 @@ function bootstrap(): FinanceAppNamespace {
             expenses: store.get('expenses'),
             loans: store.get('loans'),
             nominas: store.get('nominas'),
-            escenarios: store.get('escenarios'),
-            goals: store.get('goals'),
             transacciones: store.get('transacciones'),
           }),
           // Lo que vive en una vista apagada por un flag no se ofrece: llevaría

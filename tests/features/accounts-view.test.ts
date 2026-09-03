@@ -44,7 +44,6 @@ const cuenta = (extra: Partial<Account> = {}): Account => ({
   modeloFondo: 'cuenta',
   aportaciones: [],
   planAportaciones: [],
-  escenarioIds: [],
   ...extra,
 });
 
@@ -97,7 +96,6 @@ const ctxBase: CardCtx = {
   nominas: [],
   tramosIRPF: TRAMOS_IRPF_FALLBACK,
   tramosGanancias: TRAMOS_AHORRO_FALLBACK,
-  nombreEscenario: (id) => id,
   flujos: () => FLUJOS_VACIOS,
   invModo: () => 'proyeccion',
 };
@@ -174,7 +172,6 @@ describe('tarjeta beneficio', () => {
     activo: true,
     tags: ['nomina'],
     grupoNomina: '',
-    escenarioIds: [],
     ...extra,
   });
 
@@ -404,7 +401,6 @@ describe('formulario de cuenta', () => {
           activo: true,
           tags: [],
           grupoNomina: 'Familia',
-          escenarioIds: [],
         },
       ],
     });

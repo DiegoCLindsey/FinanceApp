@@ -22,7 +22,6 @@ function montarShell() {
     <nav class="sidebar"><ul class="nav-list">
       <li class="nav-section"><button class="nav-btn active" data-view="dashboard"></button></li>
       <li class="nav-section"><button class="nav-btn" data-view="loans"></button></li>
-      <li class="nav-section"><button class="nav-btn" data-view="escenarios"></button></li>
     </ul></nav>
     <div class="main-area"><main class="view-container"><div id="view-dashboard" class="view active"></div></main></div>
     <div id="modal-overlay" class="modal-overlay hidden"><div id="modal-content"></div></div>`;
@@ -41,18 +40,15 @@ const prestamo = (extra: Partial<Loan> = {}): Loan => ({
   cuenta: 'acc1',
   tags: ['vivienda'],
   activo: true,
-  escenarioIds: [],
   ...extra,
 });
 
 function entorno({
   loans = [prestamo()],
-  escenarios = [],
   inflacion = [],
   usarInflacion = false,
 }: {
   loans?: Loan[];
-  escenarios?: { _id: string; nombre: string }[];
   inflacion?: { _id: string; year: number; tasa: number }[];
   usarInflacion?: boolean;
 } = {}) {
@@ -64,7 +60,6 @@ function entorno({
     { ...base, _id: 'acc2', nombre: 'Ahorro', esCuentaPrincipal: false, saldo: 5000, saldoInicial: 5000, fechaInicialSaldo: '2024-01-01' },
   ] as Account[]);
   store.set('loans', loans);
-  store.set('escenarios', escenarios as never);
   store.set('inflacion', inflacion);
   store.patchConfig({ usarInflacion, dashboardStart: '2026-01-01', dashboardEnd: '2026-12-31' });
   const flags = createFlags(store);
@@ -88,7 +83,6 @@ const ctxBase = {
   hoy: HOY_ISO,
   cuotaMes: 0,
   completado: false,
-  nombreEscenario: (id: string) => id,
   personas: [],
 };
 
@@ -356,20 +350,6 @@ describe('formulario de préstamo', () => {
     confirmar.mockReturnValue(true);
     (vista().querySelector('[data-borrar-loan="l1"]') as HTMLElement).click();
     expect(store.get('loans')).toHaveLength(0);
-  });
-
-  it('el selector de escenarios guarda la selección', () => {
-    const { registry, store } = entorno({ loans: [], escenarios: [{ _id: 's1', nombre: 'Paro' }] });
-    registry.mount('loans');
-    (vista().querySelector('[data-nuevo-loan]') as HTMLElement).click();
-    escribir('#f-nombre', 'Con escenario');
-    escribir('#f-capital', '1000');
-    escribir('#f-tin', '1');
-    escribir('#f-meses', '12');
-    (modal().querySelector('.loan-escenario') as HTMLInputElement).checked = true;
-    (modal().querySelector('[data-guardar-loan]') as HTMLElement).click();
-
-    expect(store.get('loans')[0].escenarioIds).toEqual(['s1']);
   });
 
   it('sin una segunda persona, no aparece el widget de reparto', () => {
