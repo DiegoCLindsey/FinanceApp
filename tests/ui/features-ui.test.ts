@@ -211,8 +211,8 @@ describe('gating de sub-funcionalidades (data-feature)', () => {
 
   it('oculta y deshabilita lo marcado cuando el flag está apagado', () => {
     const { flags, gating } = gate();
-    flags.setEnabled('optimizador', false);
-    const zona = pon('<button data-feature="optimizador">Optimizar</button>');
+    flags.setEnabled('margenes', false);
+    const zona = pon('<button data-feature="margenes">Optimizar</button>');
     gating.apply();
 
     const btn = zona.querySelector('button') as HTMLButtonElement;
@@ -225,9 +225,8 @@ describe('gating de sub-funcionalidades (data-feature)', () => {
 
   it('lo deja visible y utilizable cuando el flag está encendido', () => {
     const { flags, gating } = gate();
-    flags.setEnabled('loans', true);
-    flags.setEnabled('optimizador', true);
-    const zona = pon('<button data-feature="optimizador">Optimizar</button>');
+    flags.setEnabled('margenes', true);
+    const zona = pon('<button data-feature="margenes">Optimizar</button>');
     gating.apply();
 
     const btn = zona.querySelector('button') as HTMLButtonElement;
@@ -238,14 +237,13 @@ describe('gating de sub-funcionalidades (data-feature)', () => {
 
   it('vuelve a mostrarlo al reactivar sin necesidad de recargar', () => {
     const { flags, gating } = gate();
-    flags.setEnabled('optimizador', false);
-    const zona = pon('<button data-feature="optimizador">Optimizar</button>');
+    flags.setEnabled('margenes', false);
+    const zona = pon('<button data-feature="margenes">Optimizar</button>');
     gating.apply();
     const btn = zona.querySelector('button') as HTMLButtonElement;
     expect(btn.style.display).toBe('none');
 
-    flags.setEnabled('loans', true);
-    flags.setEnabled('optimizador', true);
+    flags.setEnabled('margenes', true);
     gating.apply();
     expect(btn.style.display).not.toBe('none');
     expect(btn.disabled).toBe(false);
@@ -253,15 +251,15 @@ describe('gating de sub-funcionalidades (data-feature)', () => {
 
   it('cubre varios elementos del mismo flag a la vez', () => {
     const { flags, gating } = gate();
-    flags.setEnabled('optimizador', false);
-    const zona = pon('<button data-feature="optimizador">A</button><div data-feature="optimizador">B</div>');
+    flags.setEnabled('margenes', false);
+    const zona = pon('<button data-feature="margenes">A</button><div data-feature="margenes">B</div>');
     gating.apply();
     expect([...zona.querySelectorAll<HTMLElement>('[data-feature]')].every((el) => el.style.display === 'none')).toBe(true);
   });
 
   it('no toca lo que no está marcado', () => {
     const { flags, gating } = gate();
-    flags.setEnabled('optimizador', false);
+    flags.setEnabled('margenes', false);
     const zona = pon('<button id="otro">Nuevo préstamo</button>');
     gating.apply();
     expect((zona.querySelector('#otro') as HTMLElement).style.display).toBe('');

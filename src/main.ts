@@ -15,7 +15,6 @@ import * as engine from './engine/statement';
 import * as analysis from './engine/analysis';
 import * as margins from './engine/margins';
 import * as avisos from './engine/avisos';
-import * as optimizer from './engine/optimizer';
 import * as dashboard from './engine/dashboard';
 import { proyectarGastos } from './engine/providers/expenses';
 import { proyectarPrestamos } from './engine/providers/loans';
@@ -81,7 +80,6 @@ export interface FinanceAppNamespace {
     margins: typeof margins;
     /** Avisos con antelación sobre los cruces ya detectados. */
     avisos: typeof avisos;
-    optimizer: typeof optimizer;
     dashboard: typeof dashboard;
   };
   /** Store tipado ya cargado (migraciones aplicadas). */
@@ -419,7 +417,6 @@ function bootstrap(): FinanceAppNamespace {
       analysis,
       margins,
       avisos,
-      optimizer,
       dashboard,
     },
     store,

@@ -26,7 +26,6 @@ import { leerDiaPago, sincronizarDiaPago } from '../shared/dia-pago';
 import { leerRepartoWidget, sincronizarRepartoWidget } from '../shared/reparto-widget';
 import { renderLoanCard } from './card';
 import { formularioAmortizacion, formularioPrestamo } from './forms';
-import { createOptimizerModal } from './optimizer-modal';
 
 export interface LoansStoreLike {
   get(key: 'loans'): Loan[];
@@ -57,7 +56,6 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
   let mostrarFinalizados = false;
   /** Tarjetas desplegadas, para restaurarlas tras cada re-render. */
   const abiertas = new Set<string>();
-  let optimizador: ReturnType<typeof createOptimizerModal> | null = null;
   /** `null` = "Todas". Vive fuera de `render` para sobrevivir a los repintados. */
   let personaTabId: string | null = null;
 
@@ -174,7 +172,6 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
         <h1 class="page-title">Mis <span>Préstamos</span></h1>
         <div class="page-actions">
           ${finalizados.size > 0 ? `<button class="btn-secondary btn-sm" data-toggle-finalizados>${mostrarFinalizados ? 'Ocultar' : 'Mostrar'} finalizados (${finalizados.size})</button>` : ''}
-          <button class="btn-secondary" data-optimizar data-feature="optimizador">✨ Optimizar amortizaciones</button>
           <button class="btn-primary" data-nuevo-loan>+ Nuevo préstamo</button>
         </div>
       </div>
@@ -375,7 +372,7 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
 
   // ── Cableado ────────────────────────────────────────────────────────────────
 
-  function wire(container: HTMLElement, refrescar: (abrir?: string[]) => void, optimizador: ReturnType<typeof createOptimizerModal>): void {
+  function wire(container: HTMLElement, refrescar: (abrir?: string[]) => void): void {
     onClick(container, '[data-toggle-finalizados]', () => {
       mostrarFinalizados = !mostrarFinalizados;
       refrescar();
@@ -385,7 +382,6 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
       refrescar();
     });
     onClick(container, '[data-nuevo-loan]', () => abrirFormularioPrestamo(null, refrescar));
-    onClick(container, '[data-optimizar]', () => optimizador.abrir());
 
     // La cabecera pliega/despliega, salvo cuando el clic viene de un botón suyo
     onClick(container, '[data-toggle-loan]', (el, ev) => {
@@ -440,24 +436,9 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
         for (const id of abrir) abiertas.add(id);
         render(container);
       };
-      // El optimizador guarda el último plan calculado: se crea una vez por
-      // montaje del contenedor, no en cada navegación.
-      optimizador ??= createOptimizerModal({
-        loans: () => deps.store.get('loans'),
-        expenses: () => deps.store.get('expenses'),
-        accounts: () => deps.store.get('accounts'),
-        nominas: () => deps.store.get('nominas'),
-        config: () => deps.store.get('config'),
-        guardarAmortizaciones: (loanId, amortizaciones) => {
-          deps.store.updateItem('loans', loanId, { amortizaciones });
-          notificar();
-        },
-        hoy,
-        refrescar,
-      });
       render(container);
       if (container.dataset.wired !== '1') {
-        wire(container, refrescar, optimizador);
+        wire(container, refrescar);
         container.dataset.wired = '1';
       }
     },

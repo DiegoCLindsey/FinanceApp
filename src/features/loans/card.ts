@@ -173,7 +173,6 @@ export function renderLoanCard(loan: Loan, ctx: ContextoTarjeta): string {
                  Simula amortizaciones anticipadas y descubre cuánto puedes ahorrar.
                </div>
                <button class="btn-primary btn-sm" data-amort-loan="${esc(loan._id)}">+ Amortizar</button>
-               <button class="btn-secondary btn-sm" data-optimizar data-feature="optimizador">✨ Optimizar</button>
              </div>`
           : ''
       }

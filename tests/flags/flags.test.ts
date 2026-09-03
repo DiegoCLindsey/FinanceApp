@@ -43,7 +43,7 @@ describe('registro de features', () => {
   });
   it('dependientesDe encuentra la relación inversa', () => {
     expect(dependientesDe('accounts').map((f) => f.id)).toContain('contabilidad');
-    expect(dependientesDe('optimizador').map((f) => f.id)).toContain('comparador-frecuencias');
+    expect(dependientesDe('contabilidad').map((f) => f.id)).toContain('precision-estimaciones');
   });
 });
 
@@ -74,27 +74,26 @@ describe('servicio de flags', () => {
 
   it('activar arrastra las dependencias (transitivas)', () => {
     flags.setEnabled('accounts', false);
-    flags.setEnabled('loans', false);
-    expect(flags.isEnabled('optimizador')).toBe(false);
+    expect(flags.isEnabled('contabilidad')).toBe(false);
 
-    const res = flags.setEnabled('comparador-frecuencias', true);
+    const res = flags.setEnabled('precision-estimaciones', true);
     expect(res.motivo).toBe('dependencias-activadas');
-    expect(flags.isEnabled('loans')).toBe(true);
-    expect(flags.isEnabled('optimizador')).toBe(true);
-    expect(flags.isEnabled('comparador-frecuencias')).toBe(true);
-    expect(res.cambiadas).toContain('comparador-frecuencias');
+    expect(flags.isEnabled('accounts')).toBe(true);
+    expect(flags.isEnabled('contabilidad')).toBe(true);
+    expect(flags.isEnabled('precision-estimaciones')).toBe(true);
+    expect(res.cambiadas).toContain('precision-estimaciones');
   });
 
   it('desactivar apaga en cascada a quien depende (transitivo)', () => {
-    flags.setEnabled('optimizador', true);
-    flags.setEnabled('comparador-frecuencias', true);
-    expect(flags.isEnabled('comparador-frecuencias')).toBe(true);
+    flags.setEnabled('contabilidad', true);
+    flags.setEnabled('precision-estimaciones', true);
+    expect(flags.isEnabled('precision-estimaciones')).toBe(true);
 
-    const res = flags.setEnabled('loans', false);
+    const res = flags.setEnabled('accounts', false);
     expect(res.motivo).toBe('cascada-apagado');
-    expect(flags.isEnabled('optimizador')).toBe(false);
-    expect(flags.isEnabled('comparador-frecuencias')).toBe(false);
-    expect(res.cambiadas).toEqual(expect.arrayContaining(['loans', 'optimizador', 'comparador-frecuencias']));
+    expect(flags.isEnabled('contabilidad')).toBe(false);
+    expect(flags.isEnabled('precision-estimaciones')).toBe(false);
+    expect(res.cambiadas).toEqual(expect.arrayContaining(['accounts', 'contabilidad', 'precision-estimaciones']));
   });
 
   it('isEnabled respeta las dependencias aunque la configuración diga lo contrario', () => {

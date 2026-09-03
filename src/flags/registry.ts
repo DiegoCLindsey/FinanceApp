@@ -93,23 +93,6 @@ export const FEATURES: FeatureDefinition[] = [
     grupo: GRUPOS.planificacion,
     porDefecto: false,
   },
-  {
-    id: 'optimizador',
-    nombre: 'Optimizador de amortizaciones',
-    descripcion: 'Planifica amortizaciones anticipadas con el excedente disponible cada mes.',
-    grupo: GRUPOS.planificacion,
-    porDefecto: false,
-    dependencias: ['loans'],
-  },
-  {
-    id: 'comparador-frecuencias',
-    nombre: 'Comparador de frecuencias',
-    descripcion: 'Compara amortizar cada mes, cada trimestre, etc. por ahorro de intereses.',
-    grupo: GRUPOS.planificacion,
-    porDefecto: false,
-    dependencias: ['optimizador'],
-  },
-
   // ── Análisis del dashboard ──────────────────────────────────────────────────
   {
     id: 'resumen-ejecutivo',

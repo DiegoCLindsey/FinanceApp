@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // Vista de Préstamos portada al paquete nuevo (F1, tarea 1.7 — 4/9), incluidos
-// los formularios de préstamo y amortización y el optimizador.
+// los formularios de préstamo y amortización.
 //
 // Recordatorio del entorno: happy-dom ignora el atributo `selected` al parsear
 // innerHTML (ver docs/02-plan-refactor.md), así que los `<select>` se manejan
@@ -108,7 +108,7 @@ describe('tarjeta de préstamo', () => {
     expect(html).toContain('&lt;img src=x');
   });
 
-  it('sin amortizaciones invita a optimizar; con ellas muestra el ahorro', () => {
+  it('sin amortizaciones invita a amortizar; con ellas muestra el ahorro', () => {
     expect(renderLoanCard(prestamo(), ctxBase)).toContain('¿Quieres pagar menos intereses?');
 
     const conAmort = prestamo({ amortizaciones: [{ _id: 'a1', fecha: '2026-01-01', cantidad: 10000, tipo: 'plazo', simulacion: false }] });
@@ -496,123 +496,8 @@ describe('amortizaciones', () => {
   });
 });
 
-describe('optimizador', () => {
+describe('flags', () => {
   beforeEach(() => montarShell());
-
-  it('avisa si no hay préstamos activos', () => {
-    const { registry } = entorno({ loans: [prestamo({ activo: false })] });
-    registry.mount('loans');
-    (vista().querySelector('[data-optimizar]') as HTMLElement).click();
-    expect(overlayOculto()).toBe(true); // no abre modal, solo avisa
-  });
-
-  it('abre el formulario con cuentas, préstamos y márgenes', () => {
-    const { registry } = entorno({ loans: [prestamo({ tin: 8 })] });
-    registry.mount('loans');
-    (vista().querySelector('[data-optimizar]') as HTMLElement).click();
-
-    expect(modal().querySelectorAll('.opt-acc-radio')).toHaveLength(2);
-    expect(modal().querySelectorAll('.opt-loan-check')).toHaveLength(1);
-    // TIN >= 5 viene marcado por defecto
-    expect((modal().querySelector('.opt-loan-check') as HTMLInputElement).checked).toBe(true);
-    expect(modal().textContent).toContain('Sin márgenes configurados');
-  });
-
-  it('"Seleccionar todo" alterna las casillas', () => {
-    const { registry } = entorno({ loans: [prestamo({ tin: 2 }), prestamo({ _id: 'l2', nombre: 'Otro', tin: 8 })] });
-    registry.mount('loans');
-    (vista().querySelector('[data-optimizar]') as HTMLElement).click();
-
-    (modal().querySelector('[data-opt-todos]') as HTMLElement).click();
-    let checks = [...modal().querySelectorAll<HTMLInputElement>('.opt-loan-check')];
-    expect(checks.every((c) => c.checked)).toBe(true);
-
-    (modal().querySelector('[data-opt-todos]') as HTMLElement).click();
-    checks = [...modal().querySelectorAll<HTMLInputElement>('.opt-loan-check')];
-    expect(checks.every((c) => !c.checked)).toBe(true);
-  });
-
-  it('sin excedente ofrece volver a los parámetros', () => {
-    // Sin ingresos ni saldo suficiente el optimizador no encuentra plan
-    const { registry } = entorno({ loans: [prestamo({ tin: 8 })] });
-    registry.mount('loans');
-    (vista().querySelector('[data-optimizar]') as HTMLElement).click();
-    escribir('#opt-min', '999999');
-    (modal().querySelector('[data-opt-calcular]') as HTMLElement).click();
-
-    expect(modal().textContent).toContain('Sin excedente disponible');
-    (modal().querySelector('[data-opt-volver]') as HTMLElement).click();
-    expect(modal().textContent).toContain('Optimizar amortizaciones');
-  });
-
-  it('el plan calculado se puede aplicar como simulación', () => {
-    const { registry, store } = entorno({ loans: [prestamo({ tin: 9, capital: 20000, meses: 60 })] });
-    registry.mount('loans');
-    (vista().querySelector('[data-optimizar]') as HTMLElement).click();
-    escribir('#opt-min', '100');
-    escribir('#opt-horizonte', '24');
-    (modal().querySelector('[data-opt-calcular]') as HTMLElement).click();
-
-    // Con 20.000 € de saldo y sin márgenes definidos, debe salir plan
-    expect(modal().textContent).toContain('Plan mes a mes');
-    (modal().querySelector('[data-opt-aplicar]') as HTMLElement).click();
-
-    const amorts = store.get('loans')[0].amortizaciones ?? [];
-    expect(amorts.length).toBeGreaterThan(0);
-    expect(amorts.every((a) => a.simulacion)).toBe(true);
-    expect(amorts.every((a) => String(a._id).startsWith('opt_'))).toBe(true);
-  });
-
-  it('recalcular sustituye el plan anterior en vez de acumularlo', () => {
-    const { registry, store } = entorno({ loans: [prestamo({ tin: 9, capital: 20000, meses: 60 })] });
-    registry.mount('loans');
-    const calcularYAplicar = (horizonte: string) => {
-      (vista().querySelector('[data-optimizar]') as HTMLElement).click();
-      escribir('#opt-min', '100');
-      escribir('#opt-horizonte', horizonte);
-      (modal().querySelector('[data-opt-calcular]') as HTMLElement).click();
-      (modal().querySelector('[data-opt-aplicar]') as HTMLElement).click();
-    };
-    calcularYAplicar('24');
-    const primeras = (store.get('loans')[0].amortizaciones ?? []).length;
-    calcularYAplicar('12');
-    const segundas = store.get('loans')[0].amortizaciones ?? [];
-
-    expect(primeras).toBeGreaterThan(0);
-    expect(segundas.length).toBeLessThanOrEqual(primeras);
-    // Ninguna duplicada
-    expect(new Set(segundas.map((a) => a._id)).size).toBe(segundas.length);
-  });
-
-  it('una amortización manual sobrevive al plan del optimizador', () => {
-    const manual = { _id: 'mia', fecha: '2026-09-01', cantidad: 1000, tipo: 'plazo', simulacion: false };
-    const { registry, store } = entorno({ loans: [prestamo({ tin: 9, capital: 20000, meses: 60, amortizaciones: [manual] })] });
-    registry.mount('loans');
-    (vista().querySelector('[data-optimizar]') as HTMLElement).click();
-    escribir('#opt-min', '100');
-    escribir('#opt-horizonte', '24');
-    (modal().querySelector('[data-opt-calcular]') as HTMLElement).click();
-    (modal().querySelector('[data-opt-aplicar]') as HTMLElement).click();
-
-    expect(store.get('loans')[0].amortizaciones?.some((a) => a._id === 'mia')).toBe(true);
-  });
-
-  it('la comparativa lista frecuencias y permite usar una', () => {
-    const { registry, store } = entorno({ loans: [prestamo({ tin: 9, capital: 20000, meses: 60 })] });
-    registry.mount('loans');
-    (vista().querySelector('[data-optimizar]') as HTMLElement).click();
-    escribir('#opt-min', '100');
-    escribir('#opt-horizonte', '24');
-    (modal().querySelector('[data-opt-comparar]') as HTMLElement).click();
-
-    expect(modal().textContent).toContain('Comparativa de frecuencias');
-    const usar = modal().querySelector('[data-opt-usar]') as HTMLElement;
-    expect(usar).not.toBeNull();
-    usar.click();
-
-    expect(modal().textContent).toContain('aplicado');
-    expect((store.get('loans')[0].amortizaciones ?? []).length).toBeGreaterThan(0);
-  });
 
   it('desactivar su flag la retira de las rutas', () => {
     const { registry, flags } = entorno();
