@@ -11,7 +11,6 @@ import type { PlanAportacion } from '@/engine/providers/contributions';
 import type { ComponenteFlexible } from '@/engine/providers/salaries';
 import type { Amortizacion } from '@/core/loan';
 import type { MargenSeguridad, PuntoReserva } from '@/engine/margins';
-import type { Plan } from '@/planner/tipos';
 
 /**
  * v5 (2026-07): formaliza el esquema y limpia los restos de las features
@@ -290,8 +289,6 @@ export interface AppState {
   accounts: Account[];
   nominas: Nomina[];
   goals: Goal[];
-  /** Planes del gestor de objetivos financieros (v8). */
-  planes: Plan[];
   transacciones: Transaccion[];
   puntosControl: PuntoControl[];
   inflacion: PeriodoInflacion[];
@@ -397,7 +394,6 @@ export function defaultState(hoyISO: ISODate, finISO: ISODate): AppState {
     accounts: [defaultAccount(hoyISO)],
     nominas: [],
     goals: [],
-    planes: [],
     transacciones: [],
     puntosControl: [],
     inflacion: [],

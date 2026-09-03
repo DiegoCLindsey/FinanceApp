@@ -3,7 +3,37 @@
 // comprueba sobre todo es que NO se pierde nada.
 import { describe, it, expect } from 'vitest';
 import { migrateTo8 } from '@/state/migrations/008-planner';
-import type { Plan } from '@/planner/tipos';
+
+// El tipo `Plan` vivía en `@/planner/tipos`, retirado junto con el
+// planificador (v10). La migración 008 sigue siendo necesaria para
+// backups antiguos que la migración 010 limpia justo después, así que este
+// test se queda pero con un tipo mínimo propio en vez de importarlo.
+interface PlanMigrado {
+  nombre: string;
+  activo: boolean;
+  fechaInicio: string;
+  notas: string;
+  objetivos: Array<{
+    _id: string;
+    nombre: string;
+    importeObjetivo: number;
+    fechaLimite: string | null;
+    modoAsignacion: string;
+    estado: string;
+    prioridad: number;
+    vehiculoId: string;
+    saldoActual: number;
+  }>;
+  vehiculos: Array<{
+    _id: string;
+    nombre: string;
+    rentabilidadRealAnual: number;
+    fiscalidadRetirada: number;
+    cuentaId: string;
+    liquidez: string;
+    topeAportacionAnual: number | null;
+  }>;
+}
 
 const CTX = { hoyISO: '2026-08-21', finISO: '2027-08-21' };
 
@@ -21,7 +51,7 @@ const estado = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-const migrar = (e: Record<string, unknown> = estado()): Plan => (migrateTo8(e, CTX).planes as Plan[])[0];
+const migrar = (e: Record<string, unknown> = estado()): PlanMigrado => (migrateTo8(e, CTX).planes as PlanMigrado[])[0];
 
 describe('migración a v8', () => {
   it('crea un plan base con los tres objetivos', () => {
@@ -122,7 +152,7 @@ describe('seguridad de la migración', () => {
   it('es idempotente: correr dos veces no duplica planes', () => {
     const una = migrateTo8(estado(), CTX);
     const dos = migrateTo8(una, CTX);
-    expect((dos.planes as Plan[]).length).toBe(1);
+    expect((dos.planes as PlanMigrado[]).length).toBe(1);
     expect(JSON.stringify(dos.planes)).toBe(JSON.stringify(una.planes));
   });
 

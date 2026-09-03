@@ -70,15 +70,6 @@ export const FEATURES: FeatureDefinition[] = [
     porDefecto: true,
   },
   {
-    id: 'goals',
-    nombre: 'Objetivos de ahorro (antiguos)',
-    descripcion:
-      'Solo lectura: la copia previa al planificador. Los objetivos se gestionan en «Objetivos financieros». Apagada de fábrica; enciéndela si quieres revisar los antiguos antes de descartarlos.',
-    grupo: GRUPOS.dinero,
-    porDefecto: false,
-    dependencias: ['accounts'],
-  },
-  {
     id: 'contabilidad',
     nombre: 'Contabilidad real',
     descripcion: 'Registro de gastos e ingresos reales y análisis de precisión de las estimaciones.',
@@ -96,32 +87,11 @@ export const FEATURES: FeatureDefinition[] = [
     porDefecto: true,
   },
   {
-    id: 'inflacion',
-    nombre: 'Inflación',
-    descripcion: 'Tasas anuales de IPC que encarecen los gastos y erosionan el ahorro.',
-    grupo: GRUPOS.planificacion,
-    porDefecto: false,
-  },
-  {
-    id: 'fiscalidad',
-    nombre: 'Fiscalidad',
-    descripcion: 'Simulador de la declaración de la renta y tablas de tramos por ejercicio.',
-    grupo: GRUPOS.planificacion,
-    porDefecto: false,
-  },
-  {
     id: 'margenes',
     nombre: 'Márgenes de seguridad',
     descripcion: 'Umbrales mínimos de saldo por cuenta, con avisos al cruzarlos.',
     grupo: GRUPOS.planificacion,
     porDefecto: false,
-  },
-  {
-    id: 'planner',
-    nombre: 'Objetivos financieros',
-    descripcion: 'Plan a largo plazo: objetivos que compiten por el flujo mensual y se encadenan al completarse.',
-    grupo: GRUPOS.planificacion,
-    porDefecto: true,
   },
   {
     id: 'optimizador',

@@ -42,7 +42,7 @@ describe('registro de features', () => {
     expect(total).toBe(FEATURES.length);
   });
   it('dependientesDe encuentra la relación inversa', () => {
-    expect(dependientesDe('accounts').map((f) => f.id)).toContain('goals');
+    expect(dependientesDe('accounts').map((f) => f.id)).toContain('contabilidad');
     expect(dependientesDe('optimizador').map((f) => f.id)).toContain('comparador-frecuencias');
   });
 });
@@ -99,16 +99,16 @@ describe('servicio de flags', () => {
 
   it('isEnabled respeta las dependencias aunque la configuración diga lo contrario', () => {
     // Estado inconsistente escrito a mano (p.ej. perfil de una versión antigua)
-    store.patchConfig({ features: { ...defaultFlags(), accounts: false, goals: true } });
-    expect(flags.isEnabled('goals')).toBe(false);
-    expect(flags.bloqueadaPor('goals')).toEqual(['accounts']);
+    store.patchConfig({ features: { ...defaultFlags(), accounts: false, contabilidad: true } });
+    expect(flags.isEnabled('contabilidad')).toBe(false);
+    expect(flags.bloqueadaPor('contabilidad')).toEqual(['accounts']);
   });
 
   it('estado y estadoPorGrupo marcan lo bloqueado', () => {
-    store.patchConfig({ features: { ...defaultFlags(), accounts: false, goals: true } });
-    const goals = flags.estado().find((f) => f.id === 'goals');
-    expect(goals?.activa).toBe(false);
-    expect(goals?.bloqueadaPor).toEqual(['accounts']);
+    store.patchConfig({ features: { ...defaultFlags(), accounts: false, contabilidad: true } });
+    const contabilidad = flags.estado().find((f) => f.id === 'contabilidad');
+    expect(contabilidad?.activa).toBe(false);
+    expect(contabilidad?.bloqueadaPor).toEqual(['accounts']);
 
     const grupos = flags.estadoPorGrupo();
     expect(grupos.length).toBeGreaterThan(1);
@@ -116,17 +116,17 @@ describe('servicio de flags', () => {
   });
 
   it('la configuración se persiste en config.features del usuario', () => {
-    flags.setEnabled('inflacion', true);
-    expect(store.get('config').features.inflacion).toBe(true);
+    flags.setEnabled('autoguardado', true);
+    expect(store.get('config').features.autoguardado).toBe(true);
     // Otro servicio sobre el mismo store ve el cambio (viaja con los datos)
-    expect(createFlags(store).isEnabled('inflacion')).toBe(true);
+    expect(createFlags(store).isEnabled('autoguardado')).toBe(true);
   });
 
   it('reset vuelve a los valores por defecto', () => {
-    flags.setEnabled('inflacion', true);
+    flags.setEnabled('autoguardado', true);
     flags.setEnabled('expenses', false);
     flags.reset();
-    expect(flags.isEnabled('inflacion')).toBe(false);
+    expect(flags.isEnabled('autoguardado')).toBe(false);
     expect(flags.isEnabled('expenses')).toBe(true);
   });
 });
@@ -135,7 +135,7 @@ describe('perfiles exportables', () => {
   it('roundtrip export → import conserva los flags', () => {
     const storeA = nuevoStore();
     const flagsA = createFlags(storeA);
-    flagsA.setEnabled('inflacion', true);
+    flagsA.setEnabled('autoguardado', true);
     flagsA.setEnabled('margenes', true);
     flagsA.setEnabled('nominas', false);
     const perfil = flagsA.exportProfile('mi perfil');
@@ -158,11 +158,11 @@ describe('perfiles exportables', () => {
     const store = nuevoStore();
     const flags = createFlags(store);
     const { aplicadas, ignoradas } = flags.importProfile({
-      features: { inflacion: true, 'feature-de-otra-version': true, margenes: 'sí' },
+      features: { autoguardado: true, 'feature-de-otra-version': true, margenes: 'sí' },
     });
-    expect(aplicadas).toEqual(['inflacion']);
+    expect(aplicadas).toEqual(['autoguardado']);
     expect(ignoradas).toEqual(expect.arrayContaining(['feature-de-otra-version', 'margenes']));
-    expect(flags.isEnabled('inflacion')).toBe(true);
+    expect(flags.isEnabled('autoguardado')).toBe(true);
     // Ausentes → valor por defecto
     expect(flags.isEnabled('expenses')).toBe(true);
     expect(flags.isEnabled('margenes')).toBe(false);
@@ -176,7 +176,7 @@ describe('perfiles exportables', () => {
 
   it('los flags viajan en el snapshot del estado (backups y export JSON)', () => {
     const store = nuevoStore();
-    createFlags(store).setEnabled('inflacion', true);
-    expect(store.snapshot().config.features.inflacion).toBe(true);
+    createFlags(store).setEnabled('autoguardado', true);
+    expect(store.snapshot().config.features.autoguardado).toBe(true);
   });
 });

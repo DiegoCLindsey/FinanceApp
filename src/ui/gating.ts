@@ -31,8 +31,6 @@ export const VISTA_POR_FEATURE: Record<string, string> = {
   nominas: 'nominas',
   accounts: 'accounts',
   supuestos: 'escenarios',
-  inflacion: 'inflacion',
-  fiscalidad: 'rentas',
   margenes: 'margenes',
 };
 

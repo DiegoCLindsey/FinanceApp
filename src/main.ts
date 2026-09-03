@@ -45,14 +45,11 @@ import { instalarConsultaFlags } from './flags/guard';
 import { createFeatureRegistry, type FeatureRegistry } from './app/feature-registry';
 import { createAccountingFeature } from './features/accounting';
 import { createMarginsFeature } from './features/margins';
-import { createInflationFeature } from './features/inflation';
 import { createExpensesFeature } from './features/expenses';
 import { createLoansFeature } from './features/loans';
 import { createSalariesFeature } from './features/salaries';
 import { createAccountsFeature } from './features/accounts';
-import { createTaxesFeature } from './features/taxes';
 import { createScenariosFeature } from './features/scenarios';
-import { createPlannerFeature } from './features/planner';
 import { createLedger, type Ledger } from './accounting/ledger';
 import { createTagService, type TagService } from './accounting/tags';
 import { createPrecisionAnalyzer, type PrecisionAnalyzer } from './accounting/precision';
@@ -382,7 +379,6 @@ function bootstrap(): FinanceAppNamespace {
     createAccountsFeature({
       store,
       ledger,
-      mostrarObjetivos: () => flags.isEnabled('goals'),
       onDatosCambiados: refrescarLegacy,
     }),
   );
@@ -398,10 +394,7 @@ function bootstrap(): FinanceAppNamespace {
     }),
   );
   // Planificación:
-  app.register(createPlannerFeature({ store, onDatosCambiados: refrescarLegacy }));
   app.register(createScenariosFeature({ store, onDatosCambiados: refrescarLegacy }));
-  app.register(createInflationFeature({ store, onDatosCambiados: refrescarLegacy }));
-  app.register(createTaxesFeature({ store }));
   app.register(createMarginsFeature({ store, onDatosCambiados: refrescarLegacy }));
 
   return {
@@ -464,7 +457,6 @@ function bootstrap(): FinanceAppNamespace {
             loans: store.get('loans'),
             nominas: store.get('nominas'),
             escenarios: store.get('escenarios'),
-            planes: store.get('planes'),
             goals: store.get('goals'),
             transacciones: store.get('transacciones'),
           }),

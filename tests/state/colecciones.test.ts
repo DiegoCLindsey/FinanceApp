@@ -4,10 +4,9 @@ import { createMemoryAdapter, KEY_PREFIX } from '@/state/storage/local';
 
 describe('COLECCIONES', () => {
   it('incluye lo que las cuatro listas escritas a mano se dejaban', () => {
-    // El planificador entero, la contabilidad real y los puntos de control no
-    // estaban en NINGUNA copia de seguridad. Este test es el que impide que
-    // vuelva a pasar.
-    for (const k of ['planes', 'transacciones', 'puntosControl']) {
+    // La contabilidad real y los puntos de control no estaban en NINGUNA
+    // copia de seguridad. Este test es el que impide que vuelva a pasar.
+    for (const k of ['transacciones', 'puntosControl']) {
       expect(COLECCIONES).toContain(k);
     }
   });
@@ -24,7 +23,6 @@ describe('COLECCIONES', () => {
         'loans',
         'nominas',
         'personas',
-        'planes',
         'puntosControl',
         'tramosGananciasCapitalHistorico',
         'tramosIRPFHistorico',
@@ -53,7 +51,7 @@ describe('snapshotParaCopia', () => {
     a.set(`${KEY_PREFIX}expenses`, []);
     const s = snapshotParaCopia(a) as Record<string, unknown>;
     expect('expenses' in s).toBe(true);
-    expect('planes' in s).toBe(false);
+    expect('loans' in s).toBe(false);
   });
 
   it('con el almacén vacío devuelve un objeto vacío, no basura', () => {
@@ -64,10 +62,10 @@ describe('snapshotParaCopia', () => {
 describe('aplicarCopia', () => {
   it('escribe cada colección con la clave lógica correcta', () => {
     const escrito: Record<string, unknown> = {};
-    const escritas = aplicarCopia((k, v) => (escrito[k] = v), { expenses: [1], planes: [2] });
+    const escritas = aplicarCopia((k, v) => (escrito[k] = v), { expenses: [1], loans: [2] });
     expect(escrito[`${KEY_PREFIX}expenses`]).toEqual([1]);
-    expect(escrito[`${KEY_PREFIX}planes`]).toEqual([2]);
-    expect(escritas.sort()).toEqual(['expenses', 'planes']);
+    expect(escrito[`${KEY_PREFIX}loans`]).toEqual([2]);
+    expect(escritas.sort()).toEqual(['expenses', 'loans']);
   });
 
   it('una copia ANTIGUA no borra lo que no trae', () => {
@@ -117,33 +115,6 @@ describe('esEstadoVacioOPorDefecto', () => {
 
   it('un movimiento o un punto de control real ya no son de fábrica', () => {
     expect(esEstadoVacioOPorDefecto({ puntosControl: [{ _id: 'c1' }] })).toBe(false);
-  });
-
-  it('el plan_base que crea la migración 008 en TODA instalación nueva sigue siendo de fábrica', () => {
-    // Migración 008: cada instalación nueva arranca con un plan `plan_base`
-    // (un vehículo por cuenta, cero objetivos), tenga o no el usuario datos
-    // reales. Sin este caso especial, `planes` nunca estaría vacía y esta
-    // función no detectaría NUNCA un dispositivo recién estrenado — que es
-    // justo el caso que existe para cubrir. Encontrado probando en un
-    // navegador real con localStorage limpio de verdad, no solo con datos de
-    // prueba fabricados a mano.
-    const planBase = { _id: 'plan_base', nombre: 'Plan base', objetivos: [], vehiculos: [{ _id: 'veh_default' }] };
-    expect(esEstadoVacioOPorDefecto({ accounts: [CUENTA_DEFAULT], planes: [planBase] })).toBe(true);
-  });
-
-  it('un objetivo real dentro del plan sí es un dato real', () => {
-    const planConObjetivo = { _id: 'plan_base', objetivos: [{ _id: 'o1', nombre: 'Entrada del piso' }] };
-    expect(esEstadoVacioOPorDefecto({ accounts: [CUENTA_DEFAULT], planes: [planConObjetivo] })).toBe(false);
-  });
-
-  it('un segundo plan (aunque esté vacío) ya no es de fábrica: solo se crea uno solo', () => {
-    const planBase = { _id: 'plan_base', objetivos: [] };
-    const otroPlan = { _id: 'otro', objetivos: [] };
-    expect(esEstadoVacioOPorDefecto({ accounts: [CUENTA_DEFAULT], planes: [planBase, otroPlan] })).toBe(false);
-  });
-
-  it('un plan con OTRO id (el usuario borró plan_base y creó uno nuevo) ya no es de fábrica', () => {
-    expect(esEstadoVacioOPorDefecto({ accounts: [CUENTA_DEFAULT], planes: [{ _id: 'propio', objetivos: [] }] })).toBe(false);
   });
 
   it('una cuenta con OTRO id ya no es de fábrica, aunque esté vacía', () => {

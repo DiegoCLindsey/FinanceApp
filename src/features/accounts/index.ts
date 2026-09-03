@@ -23,32 +23,24 @@ import { modeloFondoDe } from '@/core/accounts';
 import { crearResolverTramos } from '@/core/tax/tables';
 import { TRAMOS_IRPF_DEFAULT, type Tramos } from '@/core/tax/irpf';
 import { TRAMOS_AHORRO_DEFAULT } from '@/core/tax/ahorro';
-import { calcColchonEnFecha } from '@/engine/margins';
 import { generarExtracto, type StatementAccount } from '@/engine/statement';
 import type { CashEvent } from '@/engine/types';
 import type { PlanAportacion } from '@/engine/providers/contributions';
 import type { PeriodoInflacion } from '@/core/inflation';
-import type { EventoSaldo } from '@/core/goals';
 import type { FeatureManifest } from '@/app/feature-registry';
-import type { Account, AppConfig, Escenario, Expense, Goal, Loan, Nomina, TablaFiscalAnual } from '@/state/schema';
+import type { Account, AppConfig, Escenario, Expense, Loan, Nomina, TablaFiscalAnual } from '@/state/schema';
 import type { Ledger } from '@/accounting/ledger';
 import { confirmar, esc, onClick, toast } from '../accounting/dom';
 import { carteraFiscalHtml, renderAccountCard, FLUJOS_VACIOS, type CardCtx, type FlujosCuenta, type LineaFlujo } from './card';
 import { construirCuenta, formularioCuenta, wireFormularioCuenta } from './form';
 import { historicoDeCuenta, historicoHtml } from './historico';
 import { createTramosGananciasModal } from './tramos-ganancias';
-import { createGoalsSection } from './goals';
 
-/**
- * Las sobrecargas van todas declaradas aquí: extender `GoalsStoreLike` no
- * funciona porque TypeScript no fusiona sobrecargas entre interfaces heredadas.
- */
 export interface AccountsStoreLike {
   get(key: 'accounts'): Account[];
   get(key: 'expenses'): Expense[];
   get(key: 'loans'): Loan[];
   get(key: 'nominas'): Nomina[];
-  get(key: 'goals'): Goal[];
   get(key: 'escenarios'): Escenario[];
   get(key: 'inflacion'): PeriodoInflacion[];
   get(key: 'tramosIRPFHistorico'): TablaFiscalAnual[];
@@ -58,19 +50,14 @@ export interface AccountsStoreLike {
   set(key: 'tramosGananciasCapitalHistorico', value: TablaFiscalAnual[]): void;
   patchConfig(patch: Partial<AppConfig>): void;
   addItem(col: 'accounts', item: Omit<Account, '_id'> & { _id?: string }): Account;
-  addItem(col: 'goals', item: Omit<Goal, '_id'> & { _id?: string }): Goal;
   updateItem(col: 'accounts', id: string, patch: Partial<Account>): void;
-  updateItem(col: 'goals', id: string, patch: Partial<Goal>): void;
   removeItem(col: 'accounts', id: string): void;
-  removeItem(col: 'goals', id: string): void;
 }
 
 export interface AccountsViewDeps {
   store: AccountsStoreLike;
   /** Puntos de control: el ledger manda sobre el pasado desde F4. */
   ledger: Ledger;
-  /** Si los objetivos de ahorro están activos (flag `goals`). */
-  mostrarObjetivos?: () => boolean;
   onDatosCambiados?: () => void;
   /** Inyectable para que los tests no dependan del día en que se ejecutan. */
   hoy?: () => ISODate;
@@ -79,13 +66,9 @@ export interface AccountsViewDeps {
 const ICONO =
   'M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z';
 
-/** Meses que explora la proyección de los objetivos de ahorro. */
-const HORIZONTE_OBJETIVOS_MESES = 120;
-
 export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
   const hoy = deps.hoy ?? todayISO;
   const notificar = () => deps.onDatosCambiados?.();
-  const mostrarObjetivos = deps.mostrarObjetivos ?? (() => true);
 
   /** Modo de la tarjeta de fondo de inversión, por cuenta. */
   const invModo = new Map<string, 'real' | 'proyeccion'>();
@@ -100,8 +83,6 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
   const resolverGanancias = () =>
     crearResolverTramos(deps.store.get('tramosGananciasCapitalHistorico'), config().tramosGananciasCapital ?? TRAMOS_AHORRO_DEFAULT);
   const tramosGanancias = (): Tramos => resolverGanancias()(Number(hoy().slice(0, 4)));
-
-  const colchonEnFecha = (fecha: ISODate) => calcColchonEnFecha(deps.store.get('expenses'), config(), deps.store.get('loans'), fecha);
 
   // ── Flujos proyectados sobre los fondos ─────────────────────────────────────
 
@@ -173,54 +154,9 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
     return mapa;
   }
 
-  // ── Proyección de objetivos ─────────────────────────────────────────────────
-
-  /**
-   * Extracto de una cuenta desde hoy hasta el horizonte de los objetivos.
-   * Se memoiza por render: el bucle de meses de `proyectarFechaCumplimiento`
-   * consulta el mismo extracto una y otra vez, y varios objetivos comparten
-   * cuenta.
-   */
-  function crearExtractoCuenta(): (acc: Account) => EventoSaldo[] {
-    const cache = new Map<string, EventoSaldo[]>();
-    const cfg = config();
-    const desde = hoy();
-    const fin = new Date(Number(desde.slice(0, 4)), Number(desde.slice(5, 7)) - 1 + HORIZONTE_OBJETIVOS_MESES + 1, 0);
-    const hasta = `${fin.getFullYear()}-${String(fin.getMonth() + 1).padStart(2, '0')}-${String(fin.getDate()).padStart(2, '0')}`;
-
-    return (acc: Account) => {
-      const guardado = cache.get(acc._id);
-      if (guardado) return guardado;
-      const eventos = generarExtracto({
-        loans: deps.store.get('loans'),
-        expenses: deps.store.get('expenses'),
-        accounts: deps.store.get('accounts') as StatementAccount[],
-        config: { ...cfg, dashboardStart: desde, dashboardEnd: hasta, fechaReferencia: desde },
-        filtroAccounts: [acc._id],
-        nominas: deps.store.get('nominas'),
-        inflacionPeriodos: deps.store.get('inflacion'),
-        resolverTramosIRPF: crearResolverTramos(deps.store.get('tramosIRPFHistorico'), cfg.tramos_irpf ?? TRAMOS_IRPF_DEFAULT),
-        resolverTramosGanancias: resolverGanancias(),
-      }).map((e) => ({ fecha: e.fecha, saldoAcum: e.saldoAcum }));
-      cache.set(acc._id, eventos);
-      return eventos;
-    };
-  }
-
-  const objetivos = createGoalsSection({
-    store: deps.store,
-    colchonEnFecha,
-    extractoCuenta: (acc) => extractoCuenta(acc),
-    hoy,
-    onDatosCambiados: notificar,
-  });
-  /** Se recrea en cada render para que la caché de extractos no se quede vieja. */
-  let extractoCuenta: (acc: Account) => EventoSaldo[] = crearExtractoCuenta();
-
   // ── Render ──────────────────────────────────────────────────────────────────
 
   function render(container: HTMLElement): void {
-    extractoCuenta = crearExtractoCuenta();
     const todas = deps.store.get('accounts');
     // Los planes de pensiones se gestionan en Nóminas: su fiscalidad es la del
     // trabajo (ver features/salaries/pensions.ts).
@@ -248,11 +184,7 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
         </div>
       </div>
       ${carteraFiscalHtml(cuentas, ctx.tramosGanancias)}
-      <div class="grid-3">${cuentas.map((a) => renderAccountCard(a, ctx)).join('')}</div>
-      ${mostrarObjetivos() ? '<div class="card mt-14" id="goals-section"></div>' : ''}`;
-
-    const seccion = container.querySelector<HTMLElement>('#goals-section');
-    if (seccion) objetivos.render(seccion);
+      <div class="grid-3">${cuentas.map((a) => renderAccountCard(a, ctx)).join('')}</div>`;
   }
 
   // ── Modales ─────────────────────────────────────────────────────────────────
@@ -420,8 +352,6 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
       invModo.set(id, modo === 'real' ? 'real' : 'proyeccion');
       refrescar();
     });
-
-    objetivos.wire(container, refrescar);
   }
 
   let tramosModal: ReturnType<typeof createTramosGananciasModal> | null = null;

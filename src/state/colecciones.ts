@@ -92,29 +92,16 @@ export function faltantesEnCopia(copia: Record<string, unknown>): StateKey[] {
  * Una cuenta cuenta como «de fábrica» solo si es exactamente la `default` sin
  * saldo inicial ni histórico: cualquier otra cosa —otro nombre, otro id, un
  * saldo, un punto de control— es una cuenta que el usuario ha tocado.
- *
- * `planes` se comprueba aparte y NO basta con que esté vacía: la migración 008
- * crea un plan `plan_base` (con un vehículo por cuenta y cero objetivos) en
- * TODA instalación nueva, tenga o no el usuario datos reales. Sin este caso
- * especial, `planes.length === 0` nunca sería cierto y esta función no
- * detectaría NUNCA un dispositivo recién estrenado — justo el caso que existe
- * para cubrir.
  */
 export function esEstadoVacioOPorDefecto(snapshot: Record<string, unknown>): boolean {
   const arr = (k: string): unknown[] => {
     const v = snapshot[k];
     return Array.isArray(v) ? v : [];
   };
-  // config, accounts, planes y personas se miran aparte; el resto basta con
-  // que estén vacías.
-  const colecciones = COLECCIONES.filter((k) => k !== 'config' && k !== 'accounts' && k !== 'planes' && k !== 'personas');
+  // config, accounts y personas se miran aparte; el resto basta con que estén
+  // vacías.
+  const colecciones = COLECCIONES.filter((k) => k !== 'config' && k !== 'accounts' && k !== 'personas');
   if (!colecciones.every((k) => arr(k).length === 0)) return false;
-
-  const planes = arr('planes') as Array<{ _id?: unknown; objetivos?: unknown }>;
-  const esPlanDeFabrica =
-    planes.length === 0 ||
-    (planes.length === 1 && planes[0]?._id === 'plan_base' && !(Array.isArray(planes[0]?.objetivos) && planes[0].objetivos.length > 0));
-  if (!esPlanDeFabrica) return false;
 
   // La migración 009 siembra SIEMPRE una persona por defecto, tenga o no el
   // usuario datos reales — igual que la cuenta `default` y el plan

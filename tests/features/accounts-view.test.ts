@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // Vista de Cuentas y Ahorro portada al paquete nuevo (1.7 — 6/9): tarjetas de
-// cuenta y fondo, formulario, histórico sobre el ledger, tramos de ganancias de
-// capital por ejercicio y sección de objetivos.
+// cuenta y fondo, formulario, histórico sobre el ledger y tramos de ganancias
+// de capital por ejercicio.
 //
 // Recordatorio del entorno: happy-dom ignora el atributo `selected` al parsear
 // innerHTML (ver docs/02-plan-refactor.md), así que los <select> se manejan
@@ -14,7 +14,7 @@ import { createStore } from '@/state/store';
 import { createMemoryAdapter } from '@/state/storage/local';
 import { createLedger } from '@/accounting/ledger';
 import { createFlags } from '@/flags/service';
-import { TRAMOS_AHORRO_FALLBACK, TRAMOS_IRPF_FALLBACK, type Account, type Expense, type Goal, type Nomina } from '@/state/schema';
+import { TRAMOS_AHORRO_FALLBACK, TRAMOS_IRPF_FALLBACK, type Account, type Expense, type Nomina } from '@/state/schema';
 
 const HOY = new Date(2026, 6, 31);
 const HOY_ISO = '2026-07-31';
@@ -52,21 +52,16 @@ function entorno({
   accounts = [cuenta()],
   expenses = [],
   nominas = [],
-  goals = [],
-  objetivosActivos = true,
 }: {
   accounts?: Account[];
   expenses?: Expense[];
   nominas?: Nomina[];
-  goals?: Goal[];
-  objetivosActivos?: boolean;
 } = {}) {
   const store = createStore({ adapter: createMemoryAdapter(), hoy: HOY });
   store.load();
   store.set('accounts', accounts);
   store.set('expenses', expenses);
   store.set('nominas', nominas);
-  store.set('goals', goals);
   store.patchConfig({ dashboardStart: '2026-01-01', dashboardEnd: '2026-12-31' });
   const flags = createFlags(store);
   flags.setEnabled('accounts', true);
@@ -78,7 +73,6 @@ function entorno({
       store,
       ledger,
       onDatosCambiados,
-      mostrarObjetivos: () => objetivosActivos,
       hoy: () => HOY_ISO,
     }),
   );
@@ -265,15 +259,6 @@ describe('vista completa', () => {
     registry.mount('accounts');
     expect(vista().innerHTML).toContain('Cuenta ING');
     expect(vista().innerHTML).not.toContain('Plan Pensiones');
-  });
-
-  it('los objetivos solo se pintan si su flag está activo', () => {
-    entorno().registry.mount('accounts');
-    expect(vista().querySelector('#goals-section')).not.toBeNull();
-
-    montarShell();
-    entorno({ objetivosActivos: false }).registry.mount('accounts');
-    expect(vista().querySelector('#goals-section')).toBeNull();
   });
 
   it('marca otra cuenta como principal y deja solo una', () => {
@@ -569,63 +554,5 @@ describe('tramos de ganancias de capital', () => {
     clic(vista(), '[data-tramos-ganancias]');
     clic(modal(), '[data-borrar-tg="2027"]');
     expect(store.get('tramosGananciasCapitalHistorico')).toHaveLength(0);
-  });
-});
-
-describe('objetivos de ahorro (puente al planificador)', () => {
-  // El editor de `goals` se retiró: había dos entidades llamadas «objetivo» y
-  // dos sitios para editarlas. Lo que queda es un aviso de solo lectura sobre
-  // la copia antigua, con un camino al planificador y la opción de descartarla.
-  const objetivo = (extra: Partial<Goal> = {}): Goal => ({
-    _id: 'g1',
-    nombre: 'Fondo de emergencia',
-    targetAmount: 20000,
-    targetDate: null,
-    cuentaIds: [],
-    color: '#2ee6a8',
-    prioridad: 1,
-    completado: false,
-    usarColchon: false,
-    ...extra,
-  });
-
-  it('sin objetivos antiguos no enseña nada', () => {
-    entorno().registry.mount('accounts');
-    expect(vista().innerHTML).not.toContain('Objetivos de ahorro');
-  });
-
-  it('con objetivos antiguos explica dónde se gestionan ahora', () => {
-    entorno({ goals: [objetivo()] }).registry.mount('accounts');
-    const html = vista().innerHTML;
-    expect(html).toContain('Objetivos de ahorro (antiguos)');
-    expect(html).toContain('Objetivos financieros');
-    expect(html).toContain('data-ir-planner');
-  });
-
-  it('enseña el progreso pero NO ofrece editar', () => {
-    entorno({ goals: [objetivo({ targetAmount: 5000 })] }).registry.mount('accounts');
-    const html = vista().innerHTML;
-    expect(html).toContain('goal-bar-fill');
-    expect(html).not.toContain('data-nuevo-goal');
-    expect(html).not.toContain('data-completar-goal');
-    expect(html).not.toContain('data-borrar-goal');
-  });
-
-  it('escapa el nombre del objetivo', () => {
-    entorno({ goals: [objetivo({ nombre: '<img src=x onerror=alert(1)>' })] }).registry.mount('accounts');
-    expect(vista().innerHTML).not.toContain('<img src=x');
-  });
-
-  it('descartar los antiguos exige confirmación', () => {
-    const { store, registry } = entorno({ goals: [objetivo()] });
-    registry.mount('accounts');
-
-    const confirmar = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    clic(vista(), '[data-descartar-goals]');
-    expect(store.get('goals')).toHaveLength(1);
-
-    confirmar.mockReturnValue(true);
-    clic(vista(), '[data-descartar-goals]');
-    expect(store.get('goals')).toHaveLength(0);
   });
 });

@@ -18,14 +18,6 @@ const estado = {
   loans: [{ _id: 'l1', nombre: 'Hipoteca', capital: 120000, cuenta: 'cc', tags: ['vivienda'] }],
   nominas: [{ _id: 'n1', nombre: 'Nómina actual', bruto: 42000 }],
   escenarios: [{ _id: 's1', nombre: 'Cambio de coche', descripcion: 'Compra en 2 años' }],
-  planes: [
-    {
-      _id: 'p1',
-      nombre: 'Plan base',
-      notas: '',
-      objetivos: [{ _id: 'o1', nombre: 'Entrada del piso', importeObjetivo: 4000000 }],
-    },
-  ],
   goals: [{ _id: 'g1', nombre: 'Viaje a Japón', targetAmount: 5000 }],
   transacciones: [{ _id: 't1', fecha: '2026-07-05', cuentaId: 'cc', importeCts: -51100, concepto: 'SUPERMERCADO', tags: ['comida'] }],
 } as any;
@@ -64,7 +56,7 @@ describe('calidadCoincidencia', () => {
 describe('catalogar', () => {
   it('recoge todas las colecciones buscables', () => {
     const tipos = new Set(catalogar(estado).map((c) => c.tipo));
-    expect(tipos).toEqual(new Set(['gasto', 'ingreso', 'cuenta', 'prestamo', 'nomina', 'supuesto', 'plan', 'objetivo', 'movimiento']));
+    expect(tipos).toEqual(new Set(['gasto', 'ingreso', 'cuenta', 'prestamo', 'nomina', 'supuesto', 'objetivo', 'movimiento']));
   });
 
   it('un estado vacío no revienta', () => {
@@ -74,12 +66,6 @@ describe('catalogar', () => {
   it('resuelve el nombre de la cuenta en el detalle', () => {
     const gasto = catalogar(estado).find((c) => c.id === 'e1');
     expect(gasto?.detalle).toContain('Cuenta corriente');
-  });
-
-  it('los objetivos de dentro de un plan también se catalogan', () => {
-    const o = catalogar(estado).find((c) => c.id === 'o1');
-    expect(o).toMatchObject({ tipo: 'objetivo', ruta: 'planner' });
-    expect(o?.detalle).toContain('Plan base');
   });
 });
 
@@ -108,7 +94,6 @@ describe('buscar', () => {
     expect(buscar(estado, 'hipoteca')[0]).toMatchObject({ etiqueta: 'Préstamo', ruta: 'loans' });
     expect(buscar(estado, 'supermercado')[0]).toMatchObject({ etiqueta: 'Movimiento', ruta: 'contabilidad' });
     expect(buscar(estado, 'cambio de coche')[0]).toMatchObject({ etiqueta: 'Supuesto', ruta: 'escenarios' });
-    expect(buscar(estado, 'entrada del piso')[0]).toMatchObject({ etiqueta: 'Objetivo', ruta: 'planner' });
   });
 
   it('distingue gasto de ingreso en la etiqueta', () => {

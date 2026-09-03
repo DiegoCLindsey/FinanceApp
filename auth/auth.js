@@ -5,26 +5,6 @@
 //             FirebaseService (firebase/firebase-service.js)
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GOOGLE DRIVE — DESACTIVADO
-// El servicio GDriveService se conserva en el código pero no se presenta
-// al usuario. No eliminar: puede reactivarse en el futuro.
-// ─────────────────────────────────────────────────────────────────────────────
-/* GDRIVE_DISABLED_START
-const GDRIVE_CLIENT_ID     = '%%GDRIVE_CLIENT_ID%%';
-const GDRIVE_CLIENT_SECRET = '%%GDRIVE_CLIENT_SECRET%%';
-const GDRIVE_SCOPE         = 'https://www.googleapis.com/auth/drive.appdata';
-const GDRIVE_FILE_NAME     = 'financeapp_backup.enc';
-
-const GDriveService = (() => {
-  // ... implementación completa preservada, ver historial de git ...
-  // Tipo: Desktop app + PKCE + client_secret (no confidencial para este tipo)
-  // Para reactivar: descomentar este bloque y restaurar los botones en index.html
-  return {};
-})();
-GDRIVE_DISABLED_END */
-
-
-// ─────────────────────────────────────────────────────────────────────────────
 // DROPBOX SERVICE
 //
 // Flujo de usuario:

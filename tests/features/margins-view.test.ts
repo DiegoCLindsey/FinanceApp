@@ -15,7 +15,7 @@ function montarShell() {
     <nav class="sidebar"><ul class="nav-list">
       <li class="nav-section"><button class="nav-btn active" data-view="dashboard"></button></li>
       <li class="nav-section"><button class="nav-btn" data-view="expenses"></button></li>
-      <li class="nav-section"><button class="nav-btn" data-view="inflacion"></button></li>
+      <li class="nav-section"><button class="nav-btn" data-view="otra-vista"></button></li>
     </ul></nav>
     <div class="main-area"><main class="view-container">
       <div id="view-dashboard" class="view active"></div>
