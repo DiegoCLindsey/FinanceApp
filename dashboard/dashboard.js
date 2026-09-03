@@ -355,9 +355,6 @@ const DashboardModule = (() => {
   let _ultimaActualizacion = null;
 
 
-  // Salir del escenario activo. Vivía en EscenariosModule, que ya está portado
-  // a src/features/scenarios; el dashboard es la última vista legacy y toca su
-  // propia config directamente hasta que también se porte (1.7).
   /**
    * Refresco manual del cuadro de mando.
    *
@@ -463,13 +460,6 @@ const DashboardModule = (() => {
     render();
   }
 
-  function salirEscenario() {
-    const cfg = State.get('config');
-    State.set('config', { ...cfg, escenarioActivo: null });
-    UI.toast('Volviendo a la realidad base');
-    render();
-  }
-
   function toggleAnalisis() {
     const cfg = State.get('config');
     State.set('config', {...cfg, analisisCollapsed: !cfg.analisisCollapsed});
@@ -522,16 +512,8 @@ const DashboardModule = (() => {
     destroyCharts();
     const view=document.getElementById('view-dashboard');
     const config=State.get('config');
-    const allLoans=State.get('loans'), allExpenses=State.get('expenses'), accounts=State.get('accounts'), allNominas=State.get('nominas')||[];
-
-    // Filter by active scenario
-    const escenarioActivo = config.escenarioActivo || null;
-    const filtered = FinanceMath.filtrarPorEscenario(allLoans, allExpenses, allNominas, accounts, escenarioActivo);
-    const loans    = filtered.loans;
-    const expenses = filtered.expenses;
-    const nominas  = filtered.nominas;
-    // Use filtered accounts for projection (scenario accounts only appear when active)
-    const accountsForExtracto = escenarioActivo ? filtered.accounts : accounts;
+    const loans=State.get('loans'), expenses=State.get('expenses'), accounts=State.get('accounts'), nominas=State.get('nominas')||[];
+    const accountsForExtracto = accounts;
 
     const usarInflacion = config.usarInflacion||false;
     const inflPeriodos  = State.get('inflacion') || [];
@@ -891,19 +873,6 @@ const DashboardModule = (() => {
           <button class="btn-secondary btn-sm" data-dash-actualizar onclick="DashboardModule.actualizar()" title="Volver a calcular con los datos actuales">&#8635; Actualizar</button>
         </div>
       </div>
-
-      ${escenarioActivo ? (() => {
-        const esc = (State.get('escenarios')||[]).find(e=>e._id===escenarioActivo);
-        const color = esc?.color || '#6366f1';
-        return `<div class="card mb-14" style="padding:10px 16px;background:rgba(99,102,241,0.07);border:1px solid ${color}44;display:flex;align-items:center;gap:12px">
-          <span style="font-size:16px">🔭</span>
-          <div style="flex:1;font-size:13px">
-            <span style="font-weight:600;color:${color}">Escenario: ${esc?.nombre||escenarioActivo}</span>
-            ${esc?.descripcion ? `<span style="color:var(--text3);margin-left:8px">${esc.descripcion}</span>` : ''}
-          </div>
-          <button class="btn-secondary btn-sm" onclick="DashboardModule.salirEscenario()">✕ Salir</button>
-        </div>`;
-      })() : ''}
 
       <!-- Config (colapsable) — arriba del todo: sus controles (fecha de
            referencia, filtrar cuentas, histórico, actualizar) afectan a TODAS
@@ -2219,5 +2188,5 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, abrir, actualizar, setVentanaVelas, setDashScope, setDashTab, limpiarSimulaciones, salirEscenario, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleCriticos, toggleConfig, toggleAnalisis, verDetalleDistribucionMedia };
+  return { render, abrir, actualizar, setVentanaVelas, setDashScope, setDashTab, limpiarSimulaciones, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleCriticos, toggleConfig, toggleAnalisis, verDetalleDistribucionMedia };
 })();
