@@ -288,7 +288,7 @@ export function createMarginsFeature(deps: MarginsViewDeps): FeatureManifest {
           <h1 class="page-title">Márgenes de <span>seguridad</span></h1>
           <p class="text-sm" style="color:var(--text3);margin:4px 0 0">
             Umbrales de saldo mínimo por cuenta o grupo de cuentas. El dashboard avisa cuando la
-            proyección los cruza, y el optimizador de amortizaciones los respeta.
+            proyección los cruza.
           </p>
         </div>
         <button class="btn-primary" data-nuevo-margen>+ Añadir margen</button>

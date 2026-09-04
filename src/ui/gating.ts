@@ -7,12 +7,12 @@
 //    desactivadas y, si la vista abierta se desactiva, se redirige al
 //    dashboard.
 //
-// 2. **Sub-funcionalidades dentro de una vista** — el optimizador de
-//    amortizaciones, el comparador de frecuencias, los paneles del dashboard…
-//    Estas no tienen entrada en el sidebar, así que el gating por vista no las
-//    tocaba y sus botones salían aunque la funcionalidad estuviera apagada.
-//    Ahora cualquier elemento marcado con `data-feature="<id>"` desaparece si su
-//    flag está desactivado, venga de una vista nueva o del shell legacy.
+// 2. **Sub-funcionalidades dentro de una vista** — la pestaña de precisión
+//    de estimaciones, los paneles del dashboard… Estas no tienen entrada en
+//    el sidebar, así que el gating por vista no las tocaba y sus botones
+//    salían aunque la funcionalidad estuviera apagada. Ahora cualquier
+//    elemento marcado con `data-feature="<id>"` desaparece si su flag está
+//    desactivado, venga de una vista nueva o del shell legacy.
 //
 // El barrido se repite ante cada cambio del DOM (`observar`), porque las vistas
 // se repintan enteras con `innerHTML` y un barrido único en el arranque se
