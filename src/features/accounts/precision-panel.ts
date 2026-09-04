@@ -8,7 +8,7 @@ import { sugerirAjuste } from '@/accounting/adjust';
 import type { PrecisionAnalyzer, PrecisionEstimacion } from '@/accounting/precision';
 import type { ISODate } from '@/core/dates';
 import type { Expense } from '@/state/schema';
-import { confirmar, esc, eurColor, nombreMes, onClick, precisionBadge, precisionBadge as badge, tagChips, toast } from './dom';
+import { confirmar, esc, eurColor, nombreMes, onClick, precisionBadge, precisionBadge as badge, tagChips, toast } from '../accounting/dom';
 
 export interface PrecisionPanelDeps {
   precision: PrecisionAnalyzer;

@@ -10,13 +10,10 @@
 //     reales viven ahora en Contabilidad como transacciones, que además
 //     alimentan el análisis de precisión y "sugerir ajuste".
 //
-// Los escenarios siguen siendo los legacy; se sustituyen por Supuestos en F5,
-// y por eso su selector se lee del store sin depender de EscenariosModule.
-
 import { formatEUR } from '@/core/money';
 import { labelDiaPago, todayISO, type ISODate } from '@/core/dates';
 import type { FeatureManifest } from '@/app/feature-registry';
-import type { Account, Escenario, Expense, Persona, TipoExpense } from '@/state/schema';
+import type { Account, Expense, Persona, TipoExpense } from '@/state/schema';
 import { confirmar, esc, onChange, onClick, toast } from '../accounting/dom';
 import { diaPagoWidget, leerDiaPago, sincronizarDiaPago } from '../shared/dia-pago';
 import { leerRepartoWidget, repartoWidget, resumenRepartoDoble, sincronizarRepartoWidget } from '../shared/reparto-widget';
@@ -24,7 +21,6 @@ import { leerRepartoWidget, repartoWidget, resumenRepartoDoble, sincronizarRepar
 export interface ExpensesStoreLike {
   get(key: 'expenses'): Expense[];
   get(key: 'accounts'): Account[];
-  get(key: 'escenarios'): Escenario[];
   get(key: 'personas'): Persona[];
   addItem(col: 'expenses', item: Omit<Expense, '_id'> & { _id?: string }): Expense;
   updateItem(col: 'expenses', id: string, patch: Partial<Expense>): void;
@@ -230,9 +226,7 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
 
   function formularioHtml(exp: Partial<Expense> | null): string {
     const esTransferencia = exp?.tipo === 'transferencia';
-    const escenarios = deps.store.get('escenarios');
     const personas = deps.store.get('personas');
-    const seleccionados = exp?.escenarioIds || [];
     const campo = (id: string, label: string, tipo: string, valor: string | number, placeholder = '') =>
       `<div class="form-group"><label class="form-label">${esc(label)}</label>
        <input class="form-input" type="${tipo}" id="${id}" value="${esc(valor)}" placeholder="${esc(placeholder)}"/></div>`;
@@ -299,22 +293,6 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
               <span class="text-sm" style="margin-left:6px">Calcula y proyecta la retención mensual</span>
             </div>
           </div>
-          ${
-            escenarios.length > 0
-              ? `<div class="form-group mt-8"><label class="form-label">Supuestos</label>
-                  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
-                    ${escenarios
-                      .map(
-                        (e) => `<label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:var(--bg2);
-                                border-radius:20px;cursor:pointer;font-size:12px;border:1px solid ${seleccionados.includes(e._id) ? esc(e.color || 'var(--accent)') : 'var(--border)'}">
-                          <input type="checkbox" class="ef-escenario" value="${esc(e._id)}"${seleccionados.includes(e._id) ? ' checked' : ''}/>
-                          ${esc(e.nombre)}
-                        </label>`,
-                      )
-                      .join('')}
-                  </div></div>`
-              : ''
-          }
           ${
             esTransferencia
               ? ''
@@ -400,7 +378,6 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
             .split(',')
             .map((t) => t.trim())
             .filter(Boolean),
-      escenarioIds: [...content.querySelectorAll<HTMLInputElement>('.ef-escenario:checked')].map((i) => i.value),
       repartoConsumo: esTransferencia ? undefined : leerRepartoWidget(content, 'consumo'),
       repartoPago: esTransferencia ? undefined : leerRepartoWidget(content, 'pago'),
     };

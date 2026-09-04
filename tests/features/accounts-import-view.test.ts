@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-// Panel de importación de extractos CSV: previsualización, corrección del
+// Panel de importación de extractos CSV, ahora pestaña "Importar CSV" de la
+// vista fusionada Cuentas y Contabilidad: previsualización, corrección del
 // mapeo, duplicados y escritura en el ledger.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFeatureRegistry } from '@/app/feature-registry';
-import { createAccountingFeature } from '@/features/accounting';
-import { leerFichero } from '@/features/accounting/import-panel';
+import { createAccountsFeature } from '@/features/accounts';
+import { leerFichero } from '@/features/accounts/import-panel';
 import { createLedger } from '@/accounting/ledger';
 import { createTagService } from '@/accounting/tags';
 import { createPrecisionAnalyzer } from '@/accounting/precision';
@@ -27,7 +28,8 @@ function montarShell() {
     </ul></nav>
     <div class="main-area"><main class="view-container">
       <div id="view-dashboard" class="view active"></div>
-    </main></div>`;
+    </main></div>
+    <div id="modal-overlay" class="modal-overlay hidden"><div id="modal-content"></div></div>`;
 }
 
 function entorno() {
@@ -39,22 +41,27 @@ function entorno() {
 
   const registry = createFeatureRegistry({ isEnabled: (id) => flags.isEnabled(id) });
   registry.register(
-    createAccountingFeature({
+    createAccountsFeature({
+      store,
       ledger,
       tags: createTagService(store),
       precision: createPrecisionAnalyzer(ledger),
       adjuster: createAdjuster(store),
-      accounts: () => store.get('accounts'),
       hoy: () => '2026-07-30',
-      estimaciones: () => store.get('expenses'),
       onDatosCambiados,
     }),
   );
   return { store, ledger, registry, onDatosCambiados };
 }
 
-const vista = () => document.getElementById('view-contabilidad') as HTMLElement;
+const vista = () => document.getElementById('view-accounts') as HTMLElement;
 const clic = (sel: string) => vista().querySelector<HTMLElement>(sel)?.click();
+
+/** Monta la vista fusionada y va directamente a la pestaña de importación. */
+function montarEnImportar(registry: ReturnType<typeof entorno>['registry']): void {
+  registry.mount('accounts');
+  (vista().querySelector('[data-cuentas-tab="importar"]') as HTMLElement).click();
+}
 
 /** Simula elegir un fichero: se inyecta el texto ya analizado por el panel. */
 async function cargar(texto: string, nombre = 'extracto.csv') {
@@ -70,13 +77,13 @@ describe('importación de extractos', () => {
   beforeEach(() => montarShell());
 
   it('ofrece importar sin desplegar nada hasta que se pide', () => {
-    entorno().registry.mount('contabilidad');
+    montarEnImportar(entorno().registry);
     expect(vista().innerHTML).toContain('data-imp-abrir');
     expect(vista().querySelector('#imp-fichero')).toBeNull();
   });
 
   it('al abrir con una sola cuenta la elige sola', () => {
-    entorno().registry.mount('contabilidad');
+    montarEnImportar(entorno().registry);
     clic('[data-imp-abrir]');
     const sel = vista().querySelector<HTMLSelectElement>('#imp-cuenta') as HTMLSelectElement;
     expect(sel.value).toBe('default');
@@ -84,7 +91,7 @@ describe('importación de extractos', () => {
 
   it('previsualiza el extracto sin escribir nada todavía', async () => {
     const { ledger, registry } = entorno();
-    registry.mount('contabilidad');
+    montarEnImportar(registry);
     clic('[data-imp-abrir]');
     await cargar(CSV);
 
@@ -97,7 +104,7 @@ describe('importación de extractos', () => {
   });
 
   it('no confunde la columna de saldo con la de importe', async () => {
-    entorno().registry.mount('contabilidad');
+    montarEnImportar(entorno().registry);
     clic('[data-imp-abrir]');
     await cargar(CSV);
     // Se comprueba el atributo, no `select.value`: happy-dom no refleja
@@ -109,7 +116,7 @@ describe('importación de extractos', () => {
 
   it('importa con el signo correcto y marca el origen', async () => {
     const { ledger, registry, onDatosCambiados } = entorno();
-    registry.mount('contabilidad');
+    montarEnImportar(registry);
     clic('[data-imp-abrir]');
     await cargar(CSV);
     clic('[data-imp-confirmar]');
@@ -122,7 +129,7 @@ describe('importación de extractos', () => {
   });
 
   it('el panel se cierra tras importar', async () => {
-    entorno().registry.mount('contabilidad');
+    montarEnImportar(entorno().registry);
     clic('[data-imp-abrir]');
     await cargar(CSV);
     clic('[data-imp-confirmar]');
@@ -132,7 +139,7 @@ describe('importación de extractos', () => {
 
   it('detecta lo ya importado y lo excluye por defecto', async () => {
     const { ledger, registry } = entorno();
-    registry.mount('contabilidad');
+    montarEnImportar(registry);
 
     clic('[data-imp-abrir]');
     await cargar(CSV);
@@ -150,7 +157,7 @@ describe('importación de extractos', () => {
 
   it('pero permite forzar los repetidos', async () => {
     const { ledger, registry } = entorno();
-    registry.mount('contabilidad');
+    montarEnImportar(registry);
     clic('[data-imp-abrir]');
     await cargar(CSV);
     clic('[data-imp-confirmar]');
@@ -167,7 +174,7 @@ describe('importación de extractos', () => {
 
   it('las líneas con error se avisan y no bloquean al resto', async () => {
     const { ledger, registry } = entorno();
-    registry.mount('contabilidad');
+    montarEnImportar(registry);
     clic('[data-imp-abrir]');
     await cargar(['Fecha;Concepto;Importe', '01/07/2026;BUENA;-45,20', 'TOTALES;;-45,20'].join('\n'));
 
@@ -180,7 +187,7 @@ describe('importación de extractos', () => {
   });
 
   it('corregir el mapeo a mano recalcula la previsualización', async () => {
-    entorno().registry.mount('contabilidad');
+    montarEnImportar(entorno().registry);
     clic('[data-imp-abrir]');
     await cargar(CSV);
     expect(vista().innerHTML).toContain('45,20');
@@ -201,7 +208,7 @@ describe('importación de extractos', () => {
     const { store, registry } = entorno();
     // Con dos cuentas no se elige sola, así que queda vacía.
     store.addItem('accounts', { ...store.get('accounts')[0], _id: 'otra', nombre: 'Ahorro', esCuentaPrincipal: false });
-    registry.mount('contabilidad');
+    montarEnImportar(registry);
     clic('[data-imp-abrir]');
     await cargar(CSV);
 
@@ -211,7 +218,7 @@ describe('importación de extractos', () => {
   });
 
   it('un CSV sin datos lo dice en vez de fallar en silencio', async () => {
-    entorno().registry.mount('contabilidad');
+    montarEnImportar(entorno().registry);
     clic('[data-imp-abrir]');
     await cargar('');
     expect(vista().innerHTML).toContain('ninguna línea de datos');

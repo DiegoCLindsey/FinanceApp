@@ -64,51 +64,14 @@ export const FEATURES: FeatureDefinition[] = [
   },
   {
     id: 'accounts',
-    nombre: 'Cuentas y ahorro',
-    descripcion: 'Cuentas, fondos de inversión, planes de pensiones y puntos de control de saldo.',
-    grupo: GRUPOS.dinero,
-    porDefecto: true,
-  },
-  {
-    id: 'goals',
-    nombre: 'Objetivos de ahorro (antiguos)',
+    nombre: 'Cuentas y contabilidad',
     descripcion:
-      'Solo lectura: la copia previa al planificador. Los objetivos se gestionan en «Objetivos financieros». Apagada de fábrica; enciéndela si quieres revisar los antiguos antes de descartarlos.',
-    grupo: GRUPOS.dinero,
-    porDefecto: false,
-    dependencias: ['accounts'],
-  },
-  {
-    id: 'contabilidad',
-    nombre: 'Contabilidad real',
-    descripcion: 'Registro de gastos e ingresos reales y análisis de precisión de las estimaciones.',
+      'Cuentas, fondos de inversión, planes de pensiones, puntos de control de saldo, registro de movimientos reales, importación de extractos y análisis de precisión de las estimaciones.',
     grupo: GRUPOS.dinero,
     porDefecto: true,
-    dependencias: ['accounts'],
   },
 
   // ── Planificación ───────────────────────────────────────────────────────────
-  {
-    id: 'supuestos',
-    nombre: 'Supuestos',
-    descripcion: 'Puntos de guardado sobre los que probar cambios, con biblioteca revisitable.',
-    grupo: GRUPOS.planificacion,
-    porDefecto: true,
-  },
-  {
-    id: 'inflacion',
-    nombre: 'Inflación',
-    descripcion: 'Tasas anuales de IPC que encarecen los gastos y erosionan el ahorro.',
-    grupo: GRUPOS.planificacion,
-    porDefecto: false,
-  },
-  {
-    id: 'fiscalidad',
-    nombre: 'Fiscalidad',
-    descripcion: 'Simulador de la declaración de la renta y tablas de tramos por ejercicio.',
-    grupo: GRUPOS.planificacion,
-    porDefecto: false,
-  },
   {
     id: 'margenes',
     nombre: 'Márgenes de seguridad',
@@ -116,30 +79,6 @@ export const FEATURES: FeatureDefinition[] = [
     grupo: GRUPOS.planificacion,
     porDefecto: false,
   },
-  {
-    id: 'planner',
-    nombre: 'Objetivos financieros',
-    descripcion: 'Plan a largo plazo: objetivos que compiten por el flujo mensual y se encadenan al completarse.',
-    grupo: GRUPOS.planificacion,
-    porDefecto: true,
-  },
-  {
-    id: 'optimizador',
-    nombre: 'Optimizador de amortizaciones',
-    descripcion: 'Planifica amortizaciones anticipadas con el excedente disponible cada mes.',
-    grupo: GRUPOS.planificacion,
-    porDefecto: false,
-    dependencias: ['loans'],
-  },
-  {
-    id: 'comparador-frecuencias',
-    nombre: 'Comparador de frecuencias',
-    descripcion: 'Compara amortizar cada mes, cada trimestre, etc. por ahorro de intereses.',
-    grupo: GRUPOS.planificacion,
-    porDefecto: false,
-    dependencias: ['optimizador'],
-  },
-
   // ── Análisis del dashboard ──────────────────────────────────────────────────
   {
     id: 'resumen-ejecutivo',
@@ -175,7 +114,7 @@ export const FEATURES: FeatureDefinition[] = [
     descripcion: 'Acierto de cada estimación frente al gasto real, con ajuste sugerido.',
     grupo: GRUPOS.analisis,
     porDefecto: true,
-    dependencias: ['contabilidad', 'expenses'],
+    dependencias: ['accounts', 'expenses'],
   },
 
   // ── Datos ───────────────────────────────────────────────────────────────────

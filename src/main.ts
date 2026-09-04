@@ -15,7 +15,6 @@ import * as engine from './engine/statement';
 import * as analysis from './engine/analysis';
 import * as margins from './engine/margins';
 import * as avisos from './engine/avisos';
-import * as optimizer from './engine/optimizer';
 import * as dashboard from './engine/dashboard';
 import { proyectarGastos } from './engine/providers/expenses';
 import { proyectarPrestamos } from './engine/providers/loans';
@@ -43,16 +42,11 @@ import { instalarBuscador } from './ui/buscador';
 import { instalarAvisoGuardado, type Guardado } from './ui/guardado';
 import { instalarConsultaFlags } from './flags/guard';
 import { createFeatureRegistry, type FeatureRegistry } from './app/feature-registry';
-import { createAccountingFeature } from './features/accounting';
 import { createMarginsFeature } from './features/margins';
-import { createInflationFeature } from './features/inflation';
 import { createExpensesFeature } from './features/expenses';
 import { createLoansFeature } from './features/loans';
 import { createSalariesFeature } from './features/salaries';
 import { createAccountsFeature } from './features/accounts';
-import { createTaxesFeature } from './features/taxes';
-import { createScenariosFeature } from './features/scenarios';
-import { createPlannerFeature } from './features/planner';
 import { createLedger, type Ledger } from './accounting/ledger';
 import { createTagService, type TagService } from './accounting/tags';
 import { createPrecisionAnalyzer, type PrecisionAnalyzer } from './accounting/precision';
@@ -84,7 +78,6 @@ export interface FinanceAppNamespace {
     margins: typeof margins;
     /** Avisos con antelación sobre los cruces ya detectados. */
     avisos: typeof avisos;
-    optimizer: typeof optimizer;
     dashboard: typeof dashboard;
   };
   /** Store tipado ya cargado (migraciones aplicadas). */
@@ -382,26 +375,13 @@ function bootstrap(): FinanceAppNamespace {
     createAccountsFeature({
       store,
       ledger,
-      mostrarObjetivos: () => flags.isEnabled('goals'),
-      onDatosCambiados: refrescarLegacy,
-    }),
-  );
-  app.register(
-    createAccountingFeature({
-      ledger,
       tags,
       precision,
       adjuster,
-      accounts: () => store.get('accounts'),
-      estimaciones: () => store.get('expenses'),
       onDatosCambiados: refrescarLegacy,
     }),
   );
   // Planificación:
-  app.register(createPlannerFeature({ store, onDatosCambiados: refrescarLegacy }));
-  app.register(createScenariosFeature({ store, onDatosCambiados: refrescarLegacy }));
-  app.register(createInflationFeature({ store, onDatosCambiados: refrescarLegacy }));
-  app.register(createTaxesFeature({ store }));
   app.register(createMarginsFeature({ store, onDatosCambiados: refrescarLegacy }));
 
   return {
@@ -426,7 +406,6 @@ function bootstrap(): FinanceAppNamespace {
       analysis,
       margins,
       avisos,
-      optimizer,
       dashboard,
     },
     store,
@@ -463,9 +442,6 @@ function bootstrap(): FinanceAppNamespace {
             expenses: store.get('expenses'),
             loans: store.get('loans'),
             nominas: store.get('nominas'),
-            escenarios: store.get('escenarios'),
-            planes: store.get('planes'),
-            goals: store.get('goals'),
             transacciones: store.get('transacciones'),
           }),
           // Lo que vive en una vista apagada por un flag no se ofrece: llevaría

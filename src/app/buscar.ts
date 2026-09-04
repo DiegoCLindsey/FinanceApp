@@ -23,7 +23,7 @@
 
 import type { AppState } from '@/state/schema';
 
-export type TipoResultado = 'gasto' | 'ingreso' | 'cuenta' | 'prestamo' | 'nomina' | 'supuesto' | 'plan' | 'objetivo' | 'movimiento';
+export type TipoResultado = 'gasto' | 'ingreso' | 'cuenta' | 'prestamo' | 'nomina' | 'movimiento';
 
 export interface Resultado {
   tipo: TipoResultado;
@@ -116,28 +116,6 @@ export function catalogar(state: Partial<AppState>): Candidato[] {
   for (const n of state.nominas ?? []) {
     out.push({ tipo: 'nomina', etiqueta: 'Nómina', id: n._id, titulo: n.nombre, detalle: `${eur(n.bruto)} brutos`, ruta: 'nominas' });
   }
-  for (const s of state.escenarios ?? []) {
-    out.push({ tipo: 'supuesto', etiqueta: 'Supuesto', id: s._id, titulo: s.nombre, detalle: s.descripcion ?? '', ruta: 'escenarios' });
-  }
-  for (const p of state.planes ?? []) {
-    out.push({ tipo: 'plan', etiqueta: 'Plan', id: p._id, titulo: p.nombre, detalle: p.notas ?? '', ruta: 'planner' });
-    // Los objetivos viven DENTRO del plan, y son justo lo que el usuario tiene
-    // en la cabeza cuando busca («la entrada del piso»), no el plan que los
-    // contiene.
-    for (const o of p.objetivos ?? []) {
-      out.push({
-        tipo: 'objetivo',
-        etiqueta: 'Objetivo',
-        id: o._id,
-        titulo: o.nombre,
-        detalle: [o.importeObjetivo !== null ? eur(o.importeObjetivo / 100) : '', p.nombre].filter(Boolean).join(' · '),
-        ruta: 'planner',
-      });
-    }
-  }
-  for (const g of state.goals ?? []) {
-    out.push({ tipo: 'objetivo', etiqueta: 'Objetivo', id: g._id, titulo: g.nombre, detalle: eur(g.targetAmount), ruta: 'accounts' });
-  }
   for (const t of state.transacciones ?? []) {
     out.push({
       tipo: 'movimiento',
@@ -145,7 +123,7 @@ export function catalogar(state: Partial<AppState>): Candidato[] {
       id: t._id,
       titulo: t.concepto,
       detalle: [t.fecha, eur(t.importeCts / 100), cuenta(t.cuentaId)].filter(Boolean).join(' · '),
-      ruta: 'contabilidad',
+      ruta: 'accounts',
       extra: (t.tags ?? []).join(' '),
     });
   }

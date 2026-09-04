@@ -23,7 +23,6 @@ export interface ContextoTarjeta {
   /** Cuota que toca pagar este mes, 0 si el préstamo aún no ha arrancado. */
   cuotaMes: number;
   completado: boolean;
-  nombreEscenario: (id: string) => string;
   personas: Persona[];
 }
 
@@ -173,7 +172,6 @@ export function renderLoanCard(loan: Loan, ctx: ContextoTarjeta): string {
                  Simula amortizaciones anticipadas y descubre cuánto puedes ahorrar.
                </div>
                <button class="btn-primary btn-sm" data-amort-loan="${esc(loan._id)}">+ Amortizar</button>
-               <button class="btn-secondary btn-sm" data-optimizar data-feature="optimizador">✨ Optimizar</button>
              </div>`
           : ''
       }
@@ -225,7 +223,7 @@ export function renderLoanCard(loan: Loan, ctx: ContextoTarjeta): string {
       ${
         tieneAmorts
           ? `<div class="card-title mt-12">Amortizaciones programadas</div>
-             ${(loan.amortizaciones || []).map((am, idx) => filaAmortizacion(loan._id, am, ahorros[idx] ?? null, ctx)).join('')}`
+             ${(loan.amortizaciones || []).map((am, idx) => filaAmortizacion(loan._id, am, ahorros[idx] ?? null)).join('')}`
           : ''
       }
     </div>
@@ -290,21 +288,12 @@ function filaTabla(row: FilaAmortizacion, conInflac: boolean, ctx: ContextoTarje
 
 type AmortizacionLoan = NonNullable<Loan['amortizaciones']>[number];
 
-function filaAmortizacion(
-  loanId: string,
-  am: AmortizacionLoan,
-  ahorro: { nominal: number; real: number } | null,
-  ctx: ContextoTarjeta,
-): string {
-  const escenarios = ((am as { escenarioIds?: string[] }).escenarioIds || [])
-    .map((id) => `<span class="badge badge-yellow">🔭 ${esc(ctx.nombreEscenario(id))}</span>`)
-    .join('');
+function filaAmortizacion(loanId: string, am: AmortizacionLoan, ahorro: { nominal: number; real: number } | null): string {
   return `<div class="amort-item" style="flex-wrap:wrap">
     <span class="num">${esc(am.fecha)}</span>
     <span class="num">${esc(formatEUR(am.cantidad))}</span>
     <span class="badge ${am.simulacion ? 'badge-sim' : 'badge-active'}">${am.simulacion ? 'SIM' : 'REAL'}</span>
     <span class="badge badge-blue">${am.tipo === 'plazo' ? '↓ plazo' : '↓ cuota'}</span>
-    ${escenarios}
     ${
       ahorro
         ? `<span style="font-size:11px;color:var(--text3);margin-left:4px" title="Ahorro de intereses atribuible a esta amortización">

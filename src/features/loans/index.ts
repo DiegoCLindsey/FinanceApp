@@ -18,7 +18,7 @@ import { formatEUR } from '@/core/money';
 import { parseLocalDate, todayISO, type ISODate } from '@/core/dates';
 import { resumenPrestamo, type LoanInput } from '@/core/loan';
 import type { FeatureManifest } from '@/app/feature-registry';
-import type { Account, AppConfig, Escenario, Expense, Loan, Nomina, Persona } from '@/state/schema';
+import type { Account, AppConfig, Expense, Loan, Nomina, Persona } from '@/state/schema';
 import type { PeriodoInflacion } from '@/core/inflation';
 import { idPersonaPorDefecto, personasImplicadas } from '@/core/reparto';
 import { confirmar, esc, onClick, toast } from '../accounting/dom';
@@ -26,14 +26,12 @@ import { leerDiaPago, sincronizarDiaPago } from '../shared/dia-pago';
 import { leerRepartoWidget, sincronizarRepartoWidget } from '../shared/reparto-widget';
 import { renderLoanCard } from './card';
 import { formularioAmortizacion, formularioPrestamo } from './forms';
-import { createOptimizerModal } from './optimizer-modal';
 
 export interface LoansStoreLike {
   get(key: 'loans'): Loan[];
   get(key: 'expenses'): Expense[];
   get(key: 'accounts'): Account[];
   get(key: 'nominas'): Nomina[];
-  get(key: 'escenarios'): Escenario[];
   get(key: 'inflacion'): PeriodoInflacion[];
   get(key: 'personas'): Persona[];
   get(key: 'config'): AppConfig;
@@ -57,13 +55,10 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
   let mostrarFinalizados = false;
   /** Tarjetas desplegadas, para restaurarlas tras cada re-render. */
   const abiertas = new Set<string>();
-  let optimizador: ReturnType<typeof createOptimizerModal> | null = null;
   /** `null` = "Todas". Vive fuera de `render` para sobrevivir a los repintados. */
   let personaTabId: string | null = null;
 
   const notificar = () => deps.onDatosCambiados?.();
-  const escenarios = () => deps.store.get('escenarios');
-  const nombreEscenario = (id: string) => escenarios().find((e) => e._id === id)?.nombre ?? id;
 
   /** Pestañas por persona, solo con dos o más activas — igual que el widget de reparto. */
   function tabsPersonaHtml(personas: Persona[]): string {
@@ -174,7 +169,6 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
         <h1 class="page-title">Mis <span>Préstamos</span></h1>
         <div class="page-actions">
           ${finalizados.size > 0 ? `<button class="btn-secondary btn-sm" data-toggle-finalizados>${mostrarFinalizados ? 'Ocultar' : 'Mostrar'} finalizados (${finalizados.size})</button>` : ''}
-          <button class="btn-secondary" data-optimizar data-feature="optimizador">✨ Optimizar amortizaciones</button>
           <button class="btn-primary" data-nuevo-loan>+ Nuevo préstamo</button>
         </div>
       </div>
@@ -230,7 +224,6 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
                     hoy: hoy(),
                     cuotaMes: cuotas.porLoan.get(l._id) ?? 0,
                     completado: finalizados.has(l._id),
-                    nombreEscenario,
                     personas,
                   }),
                 )
@@ -264,7 +257,7 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
     const loan = id ? (deps.store.get('loans').find((l) => l._id === id) ?? null) : null;
     const el = abrirModal(
       id ? 'Editar préstamo' : 'Nuevo préstamo',
-      formularioPrestamo(loan, deps.store.get('accounts'), escenarios(), deps.store.get('personas'), hoy()),
+      formularioPrestamo(loan, deps.store.get('accounts'), deps.store.get('personas'), hoy()),
     );
     if (!el) return;
     el.addEventListener('change', (ev) => {
@@ -313,7 +306,6 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
         .split(',')
         .map((t) => t.trim())
         .filter(Boolean),
-      escenarioIds: [...el.querySelectorAll<HTMLInputElement>('.loan-escenario:checked')].map((i) => i.value),
       repartoConsumo: leerRepartoWidget(el, 'consumo'),
       repartoPago: leerRepartoWidget(el, 'pago'),
     };
@@ -333,7 +325,7 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
     const loan = deps.store.get('loans').find((l) => l._id === loanId);
     if (!loan) return;
     const am = amortId ? ((loan.amortizaciones || []).find((a) => a._id === amortId) ?? null) : null;
-    const el = abrirModal(amortId ? 'Editar amortización' : 'Añadir amortización', formularioAmortizacion(loanId, am, escenarios(), hoy()));
+    const el = abrirModal(amortId ? 'Editar amortización' : 'Añadir amortización', formularioAmortizacion(loanId, am, hoy()));
     if (!el) return;
     onClick(el, '[data-guardar-amort]', (btn) => {
       const [lid, aid] = (btn.getAttribute('data-guardar-amort') || '').split('|');
@@ -360,7 +352,6 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
       cantidad,
       tipo: val('#am-tipo'),
       simulacion: !!(el.querySelector('#am-sim') as HTMLInputElement | null)?.checked,
-      escenarioIds: [...el.querySelectorAll<HTMLInputElement>('.amort-escenario:checked')].map((i) => i.value),
     };
     const actuales = loan.amortizaciones || [];
     const amortizaciones = amortId
@@ -375,7 +366,7 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
 
   // ── Cableado ────────────────────────────────────────────────────────────────
 
-  function wire(container: HTMLElement, refrescar: (abrir?: string[]) => void, optimizador: ReturnType<typeof createOptimizerModal>): void {
+  function wire(container: HTMLElement, refrescar: (abrir?: string[]) => void): void {
     onClick(container, '[data-toggle-finalizados]', () => {
       mostrarFinalizados = !mostrarFinalizados;
       refrescar();
@@ -385,7 +376,6 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
       refrescar();
     });
     onClick(container, '[data-nuevo-loan]', () => abrirFormularioPrestamo(null, refrescar));
-    onClick(container, '[data-optimizar]', () => optimizador.abrir());
 
     // La cabecera pliega/despliega, salvo cuando el clic viene de un botón suyo
     onClick(container, '[data-toggle-loan]', (el, ev) => {
@@ -440,24 +430,9 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
         for (const id of abrir) abiertas.add(id);
         render(container);
       };
-      // El optimizador guarda el último plan calculado: se crea una vez por
-      // montaje del contenedor, no en cada navegación.
-      optimizador ??= createOptimizerModal({
-        loans: () => deps.store.get('loans'),
-        expenses: () => deps.store.get('expenses'),
-        accounts: () => deps.store.get('accounts'),
-        nominas: () => deps.store.get('nominas'),
-        config: () => deps.store.get('config'),
-        guardarAmortizaciones: (loanId, amortizaciones) => {
-          deps.store.updateItem('loans', loanId, { amortizaciones });
-          notificar();
-        },
-        hoy,
-        refrescar,
-      });
       render(container);
       if (container.dataset.wired !== '1') {
-        wire(container, refrescar, optimizador);
+        wire(container, refrescar);
         container.dataset.wired = '1';
       }
     },

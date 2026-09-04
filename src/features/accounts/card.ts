@@ -55,7 +55,6 @@ export interface CardCtx {
   nominas: Nomina[];
   tramosIRPF: Tramos;
   tramosGanancias: Tramos;
-  nombreEscenario: (id: string) => string;
   flujos: (accId: string) => FlujosCuenta;
   invModo: (accId: string) => 'real' | 'proyeccion';
 }
@@ -311,7 +310,6 @@ export function renderAccountCard(acc: Account, ctx: CardCtx): string {
       ? `<span class="badge" style="background:rgba(99,214,160,0.12);color:#63d6a0">🎫 ${esc((TIPOS_BENEFICIO[acc.tipoBeneficio ?? ''] ?? { label: 'Beneficio' }).label)}</span>`
       : '',
     acc.simulacion ? '<span class="badge badge-sim">SIM</span>' : '',
-    ...(acc.escenarioIds || []).map((id) => `<span class="badge badge-yellow">🔭 ${esc(ctx.nombreEscenario(id))}</span>`),
   ].join('');
 
   return `<div class="card" style="${principal ? 'border-color:var(--accent2)' : ''}">

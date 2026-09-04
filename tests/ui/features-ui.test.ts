@@ -28,9 +28,6 @@ function montarShell() {
         <button class="nav-btn" data-view="accounts"></button>
       </li>
       <li class="nav-section">
-        <button class="nav-btn" data-view="escenarios"></button>
-        <button class="nav-btn" data-view="inflacion"></button>
-        <button class="nav-btn" data-view="rentas"></button>
         <button class="nav-btn" data-view="margenes"></button>
       </li>
     </ul></nav>
@@ -70,7 +67,7 @@ describe('ventana de funcionalidades', () => {
     const dashboard = document.querySelector<HTMLInputElement>('[data-feature-toggle="dashboard"]');
     expect(dashboard?.disabled).toBe(true);
     expect(dashboard?.checked).toBe(true);
-    expect(document.querySelector<HTMLInputElement>('[data-feature-toggle="inflacion"]')?.checked).toBe(false);
+    expect(document.querySelector<HTMLInputElement>('[data-feature-toggle="autoguardado"]')?.checked).toBe(false);
     expect(document.querySelector<HTMLInputElement>('[data-feature-toggle="expenses"]')?.checked).toBe(true);
   });
 
@@ -79,13 +76,13 @@ describe('ventana de funcionalidades', () => {
     const onChange = vi.fn();
     createFeaturesModal({ flags, onChange, notify: () => {} }).open();
 
-    const input = document.querySelector<HTMLInputElement>('[data-feature-toggle="inflacion"]') as HTMLInputElement;
+    const input = document.querySelector<HTMLInputElement>('[data-feature-toggle="autoguardado"]') as HTMLInputElement;
     input.checked = true;
     input.dispatchEvent(new Event('change'));
 
-    expect(flags.isEnabled('inflacion')).toBe(true);
-    expect(store.get('config').features.inflacion).toBe(true);
-    expect(onChange).toHaveBeenCalledWith(expect.arrayContaining(['inflacion']));
+    expect(flags.isEnabled('autoguardado')).toBe(true);
+    expect(store.get('config').features.autoguardado).toBe(true);
+    expect(onChange).toHaveBeenCalledWith(expect.arrayContaining(['autoguardado']));
   });
 
   it('la cascada de apagado se refleja en el re-render y se avisa al usuario', () => {
@@ -97,27 +94,27 @@ describe('ventana de funcionalidades', () => {
     accounts.checked = false;
     accounts.dispatchEvent(new Event('change'));
 
-    expect(flags.isEnabled('goals')).toBe(false);
+    expect(flags.isEnabled('precision-estimaciones')).toBe(false);
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('dependían'), 'warn');
-    // Tras el re-render el toggle de goals aparece apagado
-    expect(document.querySelector<HTMLInputElement>('[data-feature-toggle="goals"]')?.checked).toBe(false);
+    // Tras el re-render el toggle de precisión de estimaciones aparece apagado
+    expect(document.querySelector<HTMLInputElement>('[data-feature-toggle="precision-estimaciones"]')?.checked).toBe(false);
   });
 
   it('muestra qué dependencia bloquea una feature activa', () => {
     const { store, flags } = nuevoEntorno();
-    store.patchConfig({ features: { ...store.get('config').features, accounts: false, goals: true } });
+    store.patchConfig({ features: { ...store.get('config').features, accounts: false, 'precision-estimaciones': true } });
     createFeaturesModal({ flags, notify: () => {} }).open();
     expect(document.body.innerHTML).toContain('Requiere: accounts');
   });
 
   it('restablecer vuelve a los valores por defecto', () => {
     const { flags } = nuevoEntorno();
-    flags.setEnabled('inflacion', true);
+    flags.setEnabled('autoguardado', true);
     const notify = vi.fn();
     createFeaturesModal({ flags, notify }).open();
 
     document.querySelector<HTMLElement>('[data-feature-action="reset"]')?.click();
-    expect(flags.isEnabled('inflacion')).toBe(false);
+    expect(flags.isEnabled('autoguardado')).toBe(false);
     expect(notify).toHaveBeenCalledWith('Funcionalidades restablecidas', 'ok');
   });
 
@@ -139,9 +136,7 @@ describe('gating del shell', () => {
 
     expect(visible('expenses')).toBe(true);
     expect(visible('loans')).toBe(true);
-    expect(visible('inflacion')).toBe(false); // off por defecto
-    expect(visible('rentas')).toBe(false);
-    expect(visible('margenes')).toBe(false);
+    expect(visible('margenes')).toBe(false); // off por defecto
     expect(visible('dashboard')).toBe(true); // no está en el mapa: nunca se toca
   });
 
@@ -149,16 +144,16 @@ describe('gating del shell', () => {
     const { flags } = nuevoEntorno();
     const gating = createGating({ flags });
     gating.apply();
-    expect(visible('inflacion')).toBe(false);
+    expect(visible('margenes')).toBe(false);
 
-    flags.setEnabled('inflacion', true);
+    flags.setEnabled('margenes', true);
     gating.apply();
-    expect(visible('inflacion')).toBe(true);
+    expect(visible('margenes')).toBe(true);
   });
 
   it('oculta la sección entera del sidebar si ninguna de sus vistas está activa', () => {
     const { flags } = nuevoEntorno();
-    for (const id of ['supuestos', 'inflacion', 'fiscalidad', 'margenes']) flags.setEnabled(id, false);
+    flags.setEnabled('margenes', false);
     createGating({ flags }).apply();
 
     const secciones = document.querySelectorAll<HTMLElement>('.nav-section');
@@ -215,8 +210,8 @@ describe('gating de sub-funcionalidades (data-feature)', () => {
 
   it('oculta y deshabilita lo marcado cuando el flag está apagado', () => {
     const { flags, gating } = gate();
-    flags.setEnabled('optimizador', false);
-    const zona = pon('<button data-feature="optimizador">Optimizar</button>');
+    flags.setEnabled('margenes', false);
+    const zona = pon('<button data-feature="margenes">Optimizar</button>');
     gating.apply();
 
     const btn = zona.querySelector('button') as HTMLButtonElement;
@@ -229,9 +224,8 @@ describe('gating de sub-funcionalidades (data-feature)', () => {
 
   it('lo deja visible y utilizable cuando el flag está encendido', () => {
     const { flags, gating } = gate();
-    flags.setEnabled('loans', true);
-    flags.setEnabled('optimizador', true);
-    const zona = pon('<button data-feature="optimizador">Optimizar</button>');
+    flags.setEnabled('margenes', true);
+    const zona = pon('<button data-feature="margenes">Optimizar</button>');
     gating.apply();
 
     const btn = zona.querySelector('button') as HTMLButtonElement;
@@ -242,14 +236,13 @@ describe('gating de sub-funcionalidades (data-feature)', () => {
 
   it('vuelve a mostrarlo al reactivar sin necesidad de recargar', () => {
     const { flags, gating } = gate();
-    flags.setEnabled('optimizador', false);
-    const zona = pon('<button data-feature="optimizador">Optimizar</button>');
+    flags.setEnabled('margenes', false);
+    const zona = pon('<button data-feature="margenes">Optimizar</button>');
     gating.apply();
     const btn = zona.querySelector('button') as HTMLButtonElement;
     expect(btn.style.display).toBe('none');
 
-    flags.setEnabled('loans', true);
-    flags.setEnabled('optimizador', true);
+    flags.setEnabled('margenes', true);
     gating.apply();
     expect(btn.style.display).not.toBe('none');
     expect(btn.disabled).toBe(false);
@@ -257,15 +250,15 @@ describe('gating de sub-funcionalidades (data-feature)', () => {
 
   it('cubre varios elementos del mismo flag a la vez', () => {
     const { flags, gating } = gate();
-    flags.setEnabled('optimizador', false);
-    const zona = pon('<button data-feature="optimizador">A</button><div data-feature="optimizador">B</div>');
+    flags.setEnabled('margenes', false);
+    const zona = pon('<button data-feature="margenes">A</button><div data-feature="margenes">B</div>');
     gating.apply();
     expect([...zona.querySelectorAll<HTMLElement>('[data-feature]')].every((el) => el.style.display === 'none')).toBe(true);
   });
 
   it('no toca lo que no está marcado', () => {
     const { flags, gating } = gate();
-    flags.setEnabled('optimizador', false);
+    flags.setEnabled('margenes', false);
     const zona = pon('<button id="otro">Nuevo préstamo</button>');
     gating.apply();
     expect((zona.querySelector('#otro') as HTMLElement).style.display).toBe('');

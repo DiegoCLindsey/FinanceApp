@@ -11,7 +11,6 @@ import type { PlanAportacion } from '@/engine/providers/contributions';
 import type { ComponenteFlexible } from '@/engine/providers/salaries';
 import type { Amortizacion } from '@/core/loan';
 import type { MargenSeguridad, PuntoReserva } from '@/engine/margins';
-import type { Plan } from '@/planner/tipos';
 
 /**
  * v5 (2026-07): formaliza el esquema y limpia los restos de las features
@@ -23,7 +22,7 @@ import type { Plan } from '@/planner/tipos';
  * v7 (2026-07): retira `historialPrecios` de las estimaciones — cada entrada
  *   pasa a ser una transacción real enlazada a su estimación (tarea 4.8).
  */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 /**
  * Quién hay en el proyecto — no necesariamente personas físicas: la nota
@@ -85,7 +84,6 @@ export interface Loan {
   basico?: boolean;
   simulacion?: boolean;
   mostrarFechaFinEnDashboard?: boolean;
-  escenarioIds: string[];
   /** Quién consume/paga esta cuota. Sin reparto, el 100% es de la persona por defecto. */
   repartoConsumo?: Reparto;
   repartoPago?: Reparto;
@@ -111,7 +109,6 @@ export interface Expense {
   basico?: boolean;
   sujetoIRPF?: boolean;
   clasificacion?: Clasificacion;
-  escenarioIds: string[];
   /** Estimación de la que proviene por un ajuste automático (F4, tarea 4.6). */
   ajustadaDesdeId?: string;
   /** Fecha en la que se aplicó el ajuste que la creó. */
@@ -141,7 +138,6 @@ export interface Account {
   impuestoRetirada?: number;
   grupoNomina?: string;
   tipoBeneficio?: 'transporte' | 'restaurante' | 'otros' | string;
-  escenarioIds: string[];
 }
 
 export interface Nomina {
@@ -161,22 +157,9 @@ export interface Nomina {
   grupoNomina: string;
   mesActualizacionIPC?: number | null;
   retribucionFlexible?: ComponenteFlexible[];
-  escenarioIds: string[];
   /** Quién consume/percibe esta nómina. Sin reparto, el 100% es de la persona por defecto. */
   repartoConsumo?: Reparto;
   repartoPago?: Reparto;
-}
-
-export interface Goal {
-  _id: string;
-  nombre: string;
-  targetAmount: number;
-  targetDate?: ISODate | null;
-  cuentaIds: string[];
-  color?: string;
-  prioridad: number;
-  completado: boolean;
-  usarColchon: boolean;
 }
 
 export interface TablaFiscalAnual {
@@ -221,15 +204,6 @@ export interface PuntoControl {
   cuentaId: string;
   saldoCts: number;
   nota?: string;
-}
-
-/** Sustituido por Supuestos en F5 (diffs sobre el canónico). */
-export interface Escenario {
-  _id: string;
-  nombre: string;
-  color?: string;
-  descripcion?: string;
-  fechaFin?: ISODate | null;
 }
 
 /** Flags de funcionalidades activas por usuario (F2). */
@@ -280,7 +254,6 @@ export interface AppConfig {
    */
   autoLogoutMinutos: number;
   onboardingDone: boolean;
-  escenarioActivo: string | null;
   features: FeatureFlags;
 }
 
@@ -289,15 +262,11 @@ export interface AppState {
   expenses: Expense[];
   accounts: Account[];
   nominas: Nomina[];
-  goals: Goal[];
-  /** Planes del gestor de objetivos financieros (v8). */
-  planes: Plan[];
   transacciones: Transaccion[];
   puntosControl: PuntoControl[];
   inflacion: PeriodoInflacion[];
   tramosIRPFHistorico: TablaFiscalAnual[];
   tramosGananciasCapitalHistorico: TablaFiscalAnual[];
-  escenarios: Escenario[];
   /** Quién hay en el proyecto (v9). Siempre al menos una, la de por defecto. */
   personas: Persona[];
   config: AppConfig;
@@ -339,7 +308,6 @@ export function defaultAccount(hoyISO: ISODate): Account {
     modeloFondo: 'cuenta',
     aportaciones: [],
     planAportaciones: [],
-    escenarioIds: [],
   };
 }
 
@@ -385,7 +353,6 @@ export function defaultConfig(hoyISO: ISODate, finISO: ISODate): AppConfig {
     autoSaveInterval: 15,
     autoLogoutMinutos: 0,
     onboardingDone: false,
-    escenarioActivo: null,
     features: {},
   };
 }
@@ -396,14 +363,11 @@ export function defaultState(hoyISO: ISODate, finISO: ISODate): AppState {
     expenses: [],
     accounts: [defaultAccount(hoyISO)],
     nominas: [],
-    goals: [],
-    planes: [],
     transacciones: [],
     puntosControl: [],
     inflacion: [],
     tramosIRPFHistorico: [],
     tramosGananciasCapitalHistorico: [],
-    escenarios: [],
     personas: [defaultPersona()],
     config: defaultConfig(hoyISO, finISO),
   };

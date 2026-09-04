@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // Cabecera del cuadro de mando (1.7 — 9/9, en curso).
 import { describe, it, expect } from 'vitest';
-import { avisoEscenario, heroKpis, pastillasCuentas, proximosCargos } from '@/features/dashboard/hero';
+import { heroKpis, pastillasCuentas, proximosCargos } from '@/features/dashboard/hero';
 import type { CashEvent } from '@/engine/types';
 
 const ev = (fecha: string, concepto: string, cuantia: number, extra: Partial<CashEvent> = {}): CashEvent => ({
@@ -14,32 +14,6 @@ const ev = (fecha: string, concepto: string, cuantia: number, extra: Partial<Cas
   tags: [],
   cuenta: 'a1',
   ...extra,
-});
-
-describe('aviso de escenario', () => {
-  it('no pinta nada sin escenario activo', () => {
-    expect(avisoEscenario(null)).toBe('');
-  });
-
-  it('muestra nombre y descripción, y un botón para salir', () => {
-    const html = avisoEscenario({ _id: 's1', nombre: 'Paro 6 meses', descripcion: 'sin nómina', color: '#ff0000' });
-    expect(html).toContain('Escenario: Paro 6 meses');
-    expect(html).toContain('sin nómina');
-    expect(html).toContain('data-dash-salir-escenario');
-    expect(html).not.toContain('onclick');
-  });
-
-  it('cae en el id cuando el escenario no tiene nombre', () => {
-    expect(avisoEscenario({ _id: 's-sin-nombre' })).toContain('Escenario: s-sin-nombre');
-  });
-
-  it('escapa el texto que escribe el usuario', () => {
-    // El legacy lo interpolaba crudo: un `<` en el nombre rompía la vista entera
-    const html = avisoEscenario({ _id: 's1', nombre: '<img src=x onerror=alert(1)>', descripcion: 'a & b' });
-    expect(html).not.toContain('<img');
-    expect(html).toContain('&lt;img');
-    expect(html).toContain('a &amp; b');
-  });
 });
 
 describe('KPIs del hero', () => {

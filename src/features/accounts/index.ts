@@ -1,6 +1,14 @@
 // ── features/accounts ─────────────────────────────────────────────────────────
-// Cuentas, fondos y objetivos de ahorro (F1, tarea 1.7 — port de
-// `accounts/accounts.js` y `goals/goals.js`).
+// Cuentas y fondos, fusionada con Contabilidad real (simplificación grande,
+// 2026-09): eran dos vistas separadas, pero Contabilidad ya exigía tener
+// Cuentas activa y el histórico de saldos de Cuentas pasa por el ledger de
+// Contabilidad desde F4 — dos rutas para lo mismo. Ahora es una sola vista
+// con pestañas (ver tabs.ts): Cuentas, Movimientos, Importar CSV, Cierre y
+// precisión. Los paneles de contabilidad (transactions-panel.ts,
+// import-panel.ts, cierre-panel.ts, precision-panel.ts) se movieron aquí tal
+// cual desde la antigua `features/accounting/`, que solo conserva `dom.ts`
+// (helpers de DOM compartidos por medio proyecto, no específicos de
+// contabilidad).
 //
 // Cambios respecto a la versión legacy, además del tipado:
 //   · delegación de eventos: se van los `onclick="AccountsModule.x('<id>')"`, y
@@ -23,33 +31,32 @@ import { modeloFondoDe } from '@/core/accounts';
 import { crearResolverTramos } from '@/core/tax/tables';
 import { TRAMOS_IRPF_DEFAULT, type Tramos } from '@/core/tax/irpf';
 import { TRAMOS_AHORRO_DEFAULT } from '@/core/tax/ahorro';
-import { calcColchonEnFecha } from '@/engine/margins';
 import { generarExtracto, type StatementAccount } from '@/engine/statement';
 import type { CashEvent } from '@/engine/types';
 import type { PlanAportacion } from '@/engine/providers/contributions';
 import type { PeriodoInflacion } from '@/core/inflation';
-import type { EventoSaldo } from '@/core/goals';
 import type { FeatureManifest } from '@/app/feature-registry';
-import type { Account, AppConfig, Escenario, Expense, Goal, Loan, Nomina, TablaFiscalAnual } from '@/state/schema';
+import type { Account, AppConfig, Expense, Loan, Nomina, TablaFiscalAnual } from '@/state/schema';
 import type { Ledger } from '@/accounting/ledger';
+import type { TagService } from '@/accounting/tags';
+import type { PrecisionAnalyzer } from '@/accounting/precision';
+import type { Adjuster } from '@/accounting/adjust';
 import { confirmar, esc, onClick, toast } from '../accounting/dom';
 import { carteraFiscalHtml, renderAccountCard, FLUJOS_VACIOS, type CardCtx, type FlujosCuenta, type LineaFlujo } from './card';
 import { construirCuenta, formularioCuenta, wireFormularioCuenta } from './form';
 import { historicoDeCuenta, historicoHtml } from './historico';
 import { createTramosGananciasModal } from './tramos-ganancias';
-import { createGoalsSection } from './goals';
+import { pestanasCuentasHtml, type PestanaCuentas } from './tabs';
+import { renderTransactionsPanel, wireTransactionsPanel, type EstadoPanel } from './transactions-panel';
+import { renderPrecisionPanel, wirePrecisionPanel } from './precision-panel';
+import { estadoImportInicial, renderImportPanel, wireImportPanel, type EstadoImport } from './import-panel';
+import { estadoCierreInicial, renderCierrePanel, wireCierrePanel, type EstadoCierre } from './cierre-panel';
 
-/**
- * Las sobrecargas van todas declaradas aquí: extender `GoalsStoreLike` no
- * funciona porque TypeScript no fusiona sobrecargas entre interfaces heredadas.
- */
 export interface AccountsStoreLike {
   get(key: 'accounts'): Account[];
   get(key: 'expenses'): Expense[];
   get(key: 'loans'): Loan[];
   get(key: 'nominas'): Nomina[];
-  get(key: 'goals'): Goal[];
-  get(key: 'escenarios'): Escenario[];
   get(key: 'inflacion'): PeriodoInflacion[];
   get(key: 'tramosIRPFHistorico'): TablaFiscalAnual[];
   get(key: 'tramosGananciasCapitalHistorico'): TablaFiscalAnual[];
@@ -58,19 +65,17 @@ export interface AccountsStoreLike {
   set(key: 'tramosGananciasCapitalHistorico', value: TablaFiscalAnual[]): void;
   patchConfig(patch: Partial<AppConfig>): void;
   addItem(col: 'accounts', item: Omit<Account, '_id'> & { _id?: string }): Account;
-  addItem(col: 'goals', item: Omit<Goal, '_id'> & { _id?: string }): Goal;
   updateItem(col: 'accounts', id: string, patch: Partial<Account>): void;
-  updateItem(col: 'goals', id: string, patch: Partial<Goal>): void;
   removeItem(col: 'accounts', id: string): void;
-  removeItem(col: 'goals', id: string): void;
 }
 
 export interface AccountsViewDeps {
   store: AccountsStoreLike;
   /** Puntos de control: el ledger manda sobre el pasado desde F4. */
   ledger: Ledger;
-  /** Si los objetivos de ahorro están activos (flag `goals`). */
-  mostrarObjetivos?: () => boolean;
+  tags: TagService;
+  precision: PrecisionAnalyzer;
+  adjuster: Adjuster;
   onDatosCambiados?: () => void;
   /** Inyectable para que los tests no dependan del día en que se ejecutan. */
   hoy?: () => ISODate;
@@ -79,20 +84,45 @@ export interface AccountsViewDeps {
 const ICONO =
   'M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z';
 
-/** Meses que explora la proyección de los objetivos de ahorro. */
-const HORIZONTE_OBJETIVOS_MESES = 120;
-
 export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
   const hoy = deps.hoy ?? todayISO;
   const notificar = () => deps.onDatosCambiados?.();
-  const mostrarObjetivos = deps.mostrarObjetivos ?? (() => true);
 
   /** Modo de la tarjeta de fondo de inversión, por cuenta. */
   const invModo = new Map<string, 'real' | 'proyeccion'>();
 
+  // ── Pestaña activa y estado de los paneles de contabilidad ──────────────────
+  // Cuentas y Contabilidad eran dos vistas separadas; ahora son pestañas de la
+  // misma (ver tabs.ts). El estado de cada panel es de interfaz, no del
+  // usuario, así que no va al store — igual que hacía la vista de Contabilidad.
+  let tabActiva: PestanaCuentas = 'cuentas';
+  const estadoTx: EstadoPanel = { cuentaId: '', mes: hoy().slice(0, 7), filtroTexto: '' };
+  const estadoImport: EstadoImport = estadoImportInicial();
+  const estadoCierre: EstadoCierre = estadoCierreInicial();
+
+  const estimaciones = () => deps.store.get('expenses');
+  const cuentasTodas = () => deps.store.get('accounts');
+
+  const txDeps = {
+    ledger: deps.ledger,
+    accounts: cuentasTodas,
+    estimaciones,
+    tagsConocidas: () => deps.tags.todas(),
+    onDatosCambiados: notificar,
+    hoy,
+  };
+  const impDeps = { ledger: deps.ledger, accounts: cuentasTodas, onDatosCambiados: notificar };
+  const cierreDeps = {
+    ledger: deps.ledger,
+    precision: deps.precision,
+    adjuster: deps.adjuster,
+    estimaciones,
+    onDatosCambiados: notificar,
+    hoy,
+  };
+  const precDeps = { precision: deps.precision, adjuster: deps.adjuster, estimaciones, onDatosCambiados: notificar, hoy };
+
   const config = () => deps.store.get('config');
-  const escenarios = () => deps.store.get('escenarios');
-  const nombreEscenario = (id: string) => escenarios().find((e) => e._id === id)?.nombre ?? id;
   const nombreCuenta = (id: string) => deps.store.get('accounts').find((a) => a._id === id)?.nombre ?? id;
 
   const tramosIRPF = (): Tramos =>
@@ -100,8 +130,6 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
   const resolverGanancias = () =>
     crearResolverTramos(deps.store.get('tramosGananciasCapitalHistorico'), config().tramosGananciasCapital ?? TRAMOS_AHORRO_DEFAULT);
   const tramosGanancias = (): Tramos => resolverGanancias()(Number(hoy().slice(0, 4)));
-
-  const colchonEnFecha = (fecha: ISODate) => calcColchonEnFecha(deps.store.get('expenses'), config(), deps.store.get('loans'), fecha);
 
   // ── Flujos proyectados sobre los fondos ─────────────────────────────────────
 
@@ -173,86 +201,68 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
     return mapa;
   }
 
-  // ── Proyección de objetivos ─────────────────────────────────────────────────
-
-  /**
-   * Extracto de una cuenta desde hoy hasta el horizonte de los objetivos.
-   * Se memoiza por render: el bucle de meses de `proyectarFechaCumplimiento`
-   * consulta el mismo extracto una y otra vez, y varios objetivos comparten
-   * cuenta.
-   */
-  function crearExtractoCuenta(): (acc: Account) => EventoSaldo[] {
-    const cache = new Map<string, EventoSaldo[]>();
-    const cfg = config();
-    const desde = hoy();
-    const fin = new Date(Number(desde.slice(0, 4)), Number(desde.slice(5, 7)) - 1 + HORIZONTE_OBJETIVOS_MESES + 1, 0);
-    const hasta = `${fin.getFullYear()}-${String(fin.getMonth() + 1).padStart(2, '0')}-${String(fin.getDate()).padStart(2, '0')}`;
-
-    return (acc: Account) => {
-      const guardado = cache.get(acc._id);
-      if (guardado) return guardado;
-      const eventos = generarExtracto({
-        loans: deps.store.get('loans'),
-        expenses: deps.store.get('expenses'),
-        accounts: deps.store.get('accounts') as StatementAccount[],
-        config: { ...cfg, dashboardStart: desde, dashboardEnd: hasta, fechaReferencia: desde },
-        filtroAccounts: [acc._id],
-        nominas: deps.store.get('nominas'),
-        inflacionPeriodos: deps.store.get('inflacion'),
-        resolverTramosIRPF: crearResolverTramos(deps.store.get('tramosIRPFHistorico'), cfg.tramos_irpf ?? TRAMOS_IRPF_DEFAULT),
-        resolverTramosGanancias: resolverGanancias(),
-      }).map((e) => ({ fecha: e.fecha, saldoAcum: e.saldoAcum }));
-      cache.set(acc._id, eventos);
-      return eventos;
-    };
-  }
-
-  const objetivos = createGoalsSection({
-    store: deps.store,
-    colchonEnFecha,
-    extractoCuenta: (acc) => extractoCuenta(acc),
-    hoy,
-    onDatosCambiados: notificar,
-  });
-  /** Se recrea en cada render para que la caché de extractos no se quede vieja. */
-  let extractoCuenta: (acc: Account) => EventoSaldo[] = crearExtractoCuenta();
-
   // ── Render ──────────────────────────────────────────────────────────────────
 
   function render(container: HTMLElement): void {
-    extractoCuenta = crearExtractoCuenta();
-    const todas = deps.store.get('accounts');
-    // Los planes de pensiones se gestionan en Nóminas: su fiscalidad es la del
-    // trabajo (ver features/salaries/pensions.ts).
-    const cuentas = todas.filter((a) => modeloFondoDe(a) !== 'pension');
-    const flujos = calcularFlujos();
-
-    const ctx: CardCtx = {
-      config: config(),
-      inflacion: deps.store.get('inflacion'),
-      nominas: deps.store.get('nominas'),
-      tramosIRPF: tramosIRPF(),
-      tramosGanancias: tramosGanancias(),
-      nombreEscenario,
-      flujos: (id) => flujos.get(id) ?? FLUJOS_VACIOS,
-      invModo: (id) => invModo.get(id) ?? 'proyeccion',
-    };
-
-    container.innerHTML = `
-      <div class="page-header">
-        <h1 class="page-title">Cuentas y <span>Ahorro</span></h1>
-        <div class="page-actions">
+    const accionesCuentas =
+      tabActiva === 'cuentas'
+        ? `<div class="page-actions">
           <button class="btn-secondary" data-tramos-ganancias title="Configurar los tramos del impuesto sobre ganancias de capital">⚙ Tramos ganancias capital</button>
           <button class="btn-secondary" data-reset-base>↻ Actualizar saldo base</button>
           <button class="btn-primary" data-nueva-acc>+ Nueva cuenta / fondo</button>
-        </div>
-      </div>
-      ${carteraFiscalHtml(cuentas, ctx.tramosGanancias)}
-      <div class="grid-3">${cuentas.map((a) => renderAccountCard(a, ctx)).join('')}</div>
-      ${mostrarObjetivos() ? '<div class="card mt-14" id="goals-section"></div>' : ''}`;
+        </div>`
+        : '';
 
-    const seccion = container.querySelector<HTMLElement>('#goals-section');
-    if (seccion) objetivos.render(seccion);
+    let contenido: string;
+    if (tabActiva === 'cuentas') {
+      const todas = deps.store.get('accounts');
+      // Los planes de pensiones se gestionan en Nóminas: su fiscalidad es la del
+      // trabajo (ver features/salaries/pensions.ts).
+      const cuentas = todas.filter((a) => modeloFondoDe(a) !== 'pension');
+      const flujos = calcularFlujos();
+      const ctx: CardCtx = {
+        config: config(),
+        inflacion: deps.store.get('inflacion'),
+        nominas: deps.store.get('nominas'),
+        tramosIRPF: tramosIRPF(),
+        tramosGanancias: tramosGanancias(),
+        flujos: (id) => flujos.get(id) ?? FLUJOS_VACIOS,
+        invModo: (id) => invModo.get(id) ?? 'proyeccion',
+      };
+      contenido = `${carteraFiscalHtml(cuentas, ctx.tramosGanancias)}<div class="grid-3">${cuentas.map((a) => renderAccountCard(a, ctx)).join('')}</div>`;
+    } else if (tabActiva === 'movimientos') {
+      contenido = `<div id="acc-tx"></div>`;
+    } else if (tabActiva === 'importar') {
+      contenido = `<div id="acc-import"></div>`;
+    } else {
+      contenido = `<div id="acc-cierre"></div><div id="acc-precision" data-feature="precision-estimaciones"></div>`;
+    }
+
+    container.innerHTML = `
+      <div class="page-header">
+        <h1 class="page-title">Cuentas y <span>Contabilidad</span></h1>
+        ${accionesCuentas}
+      </div>
+      ${pestanasCuentasHtml(tabActiva)}
+      ${contenido}`;
+
+    const refrescar = () => render(container);
+    if (tabActiva === 'movimientos') {
+      const zona = container.querySelector<HTMLElement>('#acc-tx') as HTMLElement;
+      zona.innerHTML = renderTransactionsPanel(txDeps, estadoTx);
+      wireTransactionsPanel(zona, txDeps, estadoTx, refrescar);
+    } else if (tabActiva === 'importar') {
+      const zona = container.querySelector<HTMLElement>('#acc-import') as HTMLElement;
+      zona.innerHTML = renderImportPanel(impDeps, estadoImport);
+      wireImportPanel(zona, impDeps, estadoImport, refrescar);
+    } else if (tabActiva === 'cierre') {
+      const zonaCierre = container.querySelector<HTMLElement>('#acc-cierre') as HTMLElement;
+      const zonaPrec = container.querySelector<HTMLElement>('#acc-precision') as HTMLElement;
+      zonaCierre.innerHTML = renderCierrePanel(cierreDeps, estadoCierre);
+      zonaPrec.innerHTML = renderPrecisionPanel(precDeps);
+      wireCierrePanel(zonaCierre, cierreDeps, estadoCierre, refrescar);
+      wirePrecisionPanel(zonaPrec, precDeps, refrescar);
+    }
   }
 
   // ── Modales ─────────────────────────────────────────────────────────────────
@@ -279,7 +289,6 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
     const el = abrirModal(
       id ? 'Editar cuenta / fondo' : 'Nueva cuenta / fondo',
       formularioCuenta(acc, {
-        escenarios: escenarios(),
         nominas: deps.store.get('nominas'),
         hoy: hoy(),
         saldoActual: saldoAnterior ?? 0,
@@ -378,6 +387,10 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
   // ── Cableado ────────────────────────────────────────────────────────────────
 
   function wire(container: HTMLElement, refrescar: () => void, tramos: ReturnType<typeof createTramosGananciasModal>): void {
+    onClick(container, '[data-cuentas-tab]', (el) => {
+      tabActiva = (el.getAttribute('data-cuentas-tab') as PestanaCuentas) || 'cuentas';
+      refrescar();
+    });
     onClick(container, '[data-nueva-acc]', () => abrirFormularioCuenta(null, refrescar));
     onClick(container, '[data-editar-acc]', (el) => abrirFormularioCuenta(el.getAttribute('data-editar-acc'), refrescar));
     onClick(container, '[data-tramos-ganancias]', () => tramos.abrir());
@@ -420,8 +433,6 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
       invModo.set(id, modo === 'real' ? 'real' : 'proyeccion');
       refrescar();
     });
-
-    objetivos.wire(container, refrescar);
   }
 
   let tramosModal: ReturnType<typeof createTramosGananciasModal> | null = null;
@@ -429,7 +440,7 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
   return {
     id: 'accounts',
     route: 'accounts',
-    nombre: 'Cuentas y ahorro',
+    nombre: 'Cuentas y contabilidad',
     flagId: 'accounts',
     seccion: 1, // "Mi dinero"
     iconoPath: ICONO,

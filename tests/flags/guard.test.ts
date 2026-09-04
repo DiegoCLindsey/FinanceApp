@@ -22,28 +22,28 @@ describe('guarda de funcionalidades', () => {
   });
 
   it('deja pasar lo activado', () => {
-    conFlags({ optimizador: true });
-    expect(() => exigirFeature('optimizador', 'calcular el plan')).not.toThrow();
+    conFlags({ margenes: true });
+    expect(() => exigirFeature('margenes', 'calcular el plan')).not.toThrow();
   });
 
   it('corta lo desactivado con un error identificable', () => {
-    conFlags({ optimizador: false });
-    expect(() => exigirFeature('optimizador', 'calcular el plan')).toThrow(FeatureDeshabilitadaError);
+    conFlags({ margenes: false });
+    expect(() => exigirFeature('margenes', 'calcular el plan')).toThrow(FeatureDeshabilitadaError);
     try {
-      exigirFeature('optimizador', 'calcular el plan');
+      exigirFeature('margenes', 'calcular el plan');
       expect.unreachable('tenía que lanzar');
     } catch (e) {
       expect(e).toBeInstanceOf(FeatureDeshabilitadaError);
-      expect((e as FeatureDeshabilitadaError).featureId).toBe('optimizador');
+      expect((e as FeatureDeshabilitadaError).featureId).toBe('margenes');
       // El mensaje es para el usuario: dice qué pasa y dónde se arregla
-      expect((e as Error).message).toContain('optimizador');
+      expect((e as Error).message).toContain('margenes');
       expect((e as Error).message).toContain('no se puede calcular el plan');
       expect((e as Error).message).toContain('Funcionalidades');
     }
   });
 
   it('una funcionalidad desconocida se considera desactivada', () => {
-    conFlags({ optimizador: true });
+    conFlags({ margenes: true });
     expect(featureActiva('no-existe')).toBe(false);
   });
 

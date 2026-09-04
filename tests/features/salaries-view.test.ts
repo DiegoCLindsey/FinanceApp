@@ -21,7 +21,6 @@ function montarShell() {
     <nav class="sidebar"><ul class="nav-list">
       <li class="nav-section"><button class="nav-btn active" data-view="dashboard"></button></li>
       <li class="nav-section"><button class="nav-btn" data-view="nominas"></button></li>
-      <li class="nav-section"><button class="nav-btn" data-view="escenarios"></button></li>
     </ul></nav>
     <div class="main-area"><main class="view-container"><div id="view-dashboard" class="view active"></div></main></div>
     <div id="modal-overlay" class="modal-overlay hidden"><div id="modal-content"></div></div>`;
@@ -39,7 +38,6 @@ const nomina = (extra: Partial<Nomina> = {}): Nomina => ({
   activo: true,
   tags: ['nomina'],
   grupoNomina: '',
-  escenarioIds: [],
   ...extra,
 });
 

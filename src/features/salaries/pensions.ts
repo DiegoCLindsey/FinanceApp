@@ -13,9 +13,8 @@ import { formatEUR } from '@/core/money';
 import { todayISO, type ISODate } from '@/core/dates';
 import { calcFondosPension, calcTipoMarginalPension } from '@/core/tax/pension';
 import type { Tramos } from '@/core/tax/irpf';
-import type { Account, Escenario, Nomina, PuntoSaldoLike } from './tipos';
+import type { Account, Nomina, PuntoSaldoLike } from './tipos';
 import { confirmar, esc, onChange, onClick, toast } from '../accounting/dom';
-import { checkboxesEscenarios } from '../loans/forms';
 
 /** Aportación programada en edición. */
 export interface AportacionPlan {
@@ -131,7 +130,6 @@ function aportacionesHtml(plan: AportacionPlan[]): string {
 
 export interface FormularioPensionDeps {
   nominas: Nomina[];
-  escenarios: Escenario[];
   hoy: ISODate;
 }
 
@@ -190,7 +188,6 @@ export function formularioPension(acc: Account | null, deps: FormularioPensionDe
       <label class="form-label" style="margin-left:12px">Simulación</label>
       <label class="toggle"><input type="checkbox" id="pen-sim"${acc?.simulacion ? ' checked' : ''}/><span class="toggle-slider"></span></label>
     </div>
-    ${checkboxesEscenarios(deps.escenarios, acc?.escenarioIds ?? [], 'pen-escenario')}
     <div class="flex gap-8 mt-16" style="justify-content:flex-end">
       <button class="btn-secondary" data-cancelar>Cancelar</button>
       <button class="btn-primary" data-guardar-pension="${esc(acc?._id ?? '')}">Guardar</button>
@@ -267,7 +264,6 @@ export function construirPension(
     descripcion: val('#pen-desc').trim(),
     activo: marcado('#pen-activo'),
     simulacion: marcado('#pen-sim'),
-    escenarioIds: [...el.querySelectorAll<HTMLInputElement>('.pen-escenario:checked')].map((i) => i.value),
   };
 
   const historico = [...((existente?.historicoSaldos as PuntoSaldoLike[]) ?? [])];

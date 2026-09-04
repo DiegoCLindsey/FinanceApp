@@ -51,14 +51,11 @@ const ETIQUETAS_COLECCION: Record<string, string> = {
   expenses: 'Gastos e ingresos',
   accounts: 'Cuentas',
   nominas: 'Nóminas',
-  goals: 'Objetivos (antiguo)',
-  planes: 'Planes (objetivos financieros)',
   transacciones: 'Contabilidad',
   puntosControl: 'Puntos de control',
   inflacion: 'Inflación',
   tramosIRPFHistorico: 'Tramos IRPF históricos',
   tramosGananciasCapitalHistorico: 'Tramos de ganancias históricos',
-  escenarios: 'Supuestos',
   personas: 'Personas',
 };
 

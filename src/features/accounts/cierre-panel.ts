@@ -16,7 +16,7 @@ import type { Adjuster } from '@/accounting/adjust';
 import type { PrecisionAnalyzer } from '@/accounting/precision';
 import { cerrarMes, mesAnterior, mesesConDatos, type CierreMes } from '@/accounting/cierre-mes';
 import type { Expense } from '@/state/schema';
-import { esc, nombreMes, onChange, onClick, toast } from './dom';
+import { esc, nombreMes, onChange, onClick, toast } from '../accounting/dom';
 
 export interface CierrePanelDeps {
   ledger: Ledger;
