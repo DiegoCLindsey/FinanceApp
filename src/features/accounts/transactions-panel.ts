@@ -6,7 +6,7 @@ import { formatEUR, fromCents } from '@/core/money';
 import { todayISO, type ISODate } from '@/core/dates';
 import type { Ledger } from '@/accounting/ledger';
 import type { Account, Expense, TipoTransaccion } from '@/state/schema';
-import { confirmar, esc, eurColor, numero, onChange, onClick, tagChips, toast, valor } from './dom';
+import { confirmar, esc, eurColor, numero, onChange, onClick, tagChips, toast, valor } from '../accounting/dom';
 
 export interface TransactionsPanelDeps {
   ledger: Ledger;

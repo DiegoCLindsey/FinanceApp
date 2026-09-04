@@ -89,7 +89,7 @@ describe('buscar', () => {
 
   it('busca en todas las vistas a la vez, que es el motivo de existir', () => {
     expect(buscar(estado, 'hipoteca')[0]).toMatchObject({ etiqueta: 'Préstamo', ruta: 'loans' });
-    expect(buscar(estado, 'supermercado')[0]).toMatchObject({ etiqueta: 'Movimiento', ruta: 'contabilidad' });
+    expect(buscar(estado, 'supermercado')[0]).toMatchObject({ etiqueta: 'Movimiento', ruta: 'accounts' });
   });
 
   it('distingue gasto de ingreso en la etiqueta', () => {

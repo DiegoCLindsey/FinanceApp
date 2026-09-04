@@ -42,7 +42,6 @@ import { instalarBuscador } from './ui/buscador';
 import { instalarAvisoGuardado, type Guardado } from './ui/guardado';
 import { instalarConsultaFlags } from './flags/guard';
 import { createFeatureRegistry, type FeatureRegistry } from './app/feature-registry';
-import { createAccountingFeature } from './features/accounting';
 import { createMarginsFeature } from './features/margins';
 import { createExpensesFeature } from './features/expenses';
 import { createLoansFeature } from './features/loans';
@@ -376,17 +375,9 @@ function bootstrap(): FinanceAppNamespace {
     createAccountsFeature({
       store,
       ledger,
-      onDatosCambiados: refrescarLegacy,
-    }),
-  );
-  app.register(
-    createAccountingFeature({
-      ledger,
       tags,
       precision,
       adjuster,
-      accounts: () => store.get('accounts'),
-      estimaciones: () => store.get('expenses'),
       onDatosCambiados: refrescarLegacy,
     }),
   );

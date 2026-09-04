@@ -94,15 +94,15 @@ describe('ventana de funcionalidades', () => {
     accounts.checked = false;
     accounts.dispatchEvent(new Event('change'));
 
-    expect(flags.isEnabled('contabilidad')).toBe(false);
+    expect(flags.isEnabled('precision-estimaciones')).toBe(false);
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('dependían'), 'warn');
-    // Tras el re-render el toggle de contabilidad aparece apagado
-    expect(document.querySelector<HTMLInputElement>('[data-feature-toggle="contabilidad"]')?.checked).toBe(false);
+    // Tras el re-render el toggle de precisión de estimaciones aparece apagado
+    expect(document.querySelector<HTMLInputElement>('[data-feature-toggle="precision-estimaciones"]')?.checked).toBe(false);
   });
 
   it('muestra qué dependencia bloquea una feature activa', () => {
     const { store, flags } = nuevoEntorno();
-    store.patchConfig({ features: { ...store.get('config').features, accounts: false, contabilidad: true } });
+    store.patchConfig({ features: { ...store.get('config').features, accounts: false, 'precision-estimaciones': true } });
     createFeaturesModal({ flags, notify: () => {} }).open();
     expect(document.body.innerHTML).toContain('Requiere: accounts');
   });

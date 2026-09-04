@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
-// Vista de Contabilidad en el paquete nuevo y registro de features
-// (F4 tarea 4.3, F1 tarea 1.7 — infraestructura).
+// Pestañas "Movimientos" y "Cierre y precisión" (panel de precisión) de la
+// vista fusionada Cuentas y Contabilidad — antes vivían en la vista
+// independiente "Contabilidad" (features/accounting, retirada al fusionarla
+// con Cuentas).
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createFeatureRegistry } from '@/app/feature-registry';
-import { createAccountingFeature } from '@/features/accounting';
+import { createAccountsFeature } from '@/features/accounts';
 import { createLedger } from '@/accounting/ledger';
 import { createTagService } from '@/accounting/tags';
 import { createPrecisionAnalyzer } from '@/accounting/precision';
@@ -24,7 +26,8 @@ function montarShell() {
     <div class="main-area"><main class="view-container">
       <div id="view-dashboard" class="view active"></div>
       <div id="view-expenses" class="view hidden"></div>
-    </main></div>`;
+    </main></div>
+    <div id="modal-overlay" class="modal-overlay hidden"><div id="modal-content"></div></div>`;
 }
 
 const estimacionLuz: Omit<Expense, '_id'> = {
@@ -69,14 +72,13 @@ function entorno({ conDatos = false }: { conDatos?: boolean } = {}) {
   }
 
   const onDatosCambiados = vi.fn();
-  const feature = createAccountingFeature({
+  const feature = createAccountsFeature({
+    store,
     ledger,
     tags: createTagService(store),
     precision: createPrecisionAnalyzer(ledger),
     adjuster: createAdjuster(store),
-    accounts: () => store.get('accounts'),
     hoy: () => '2026-07-30',
-    estimaciones: () => store.get('expenses'),
     onDatosCambiados,
   });
   const registry = createFeatureRegistry({ isEnabled: (id) => flags.isEnabled(id) });
@@ -85,75 +87,29 @@ function entorno({ conDatos = false }: { conDatos?: boolean } = {}) {
 }
 
 function contenedor(): HTMLElement {
-  return document.getElementById('view-contabilidad') as HTMLElement;
+  return document.getElementById('view-accounts') as HTMLElement;
 }
 
-describe('registro de features', () => {
+/** Cambia de pestaña dentro de la vista ya montada. */
+function irAPestana(id: 'cuentas' | 'movimientos' | 'importar' | 'cierre'): void {
+  (contenedor().querySelector<HTMLElement>(`[data-cuentas-tab="${id}"]`) as HTMLElement).click();
+}
+
+describe('vista fusionada — pestaña Movimientos', () => {
   beforeEach(() => montarShell());
 
-  it('crea el contenedor y el botón de sidebar de la vista', () => {
-    const { registry } = entorno();
-    expect(document.getElementById('view-contabilidad')).not.toBeNull();
-    const btn = document.querySelector<HTMLElement>('.nav-btn[data-view="contabilidad"]');
-    expect(btn?.textContent).toContain('Contabilidad');
-    // En la sección declarada por el manifest ("Mi dinero" = índice 1)
-    expect(document.querySelectorAll('.nav-section')[1].contains(btn as Node)).toBe(true);
-    expect(registry.routes()).toEqual(['contabilidad']);
-    expect(registry.has('contabilidad')).toBe(true);
-  });
-
-  it('no duplica contenedor ni botón al re-adjuntar', () => {
-    const { registry } = entorno();
-    registry.attachToShell();
-    registry.attachToShell();
-    expect(document.querySelectorAll('#view-contabilidad')).toHaveLength(1);
-    expect(document.querySelectorAll('.nav-btn[data-view="contabilidad"]')).toHaveLength(1);
-  });
-
-  it('una feature con su flag apagado desaparece de las rutas y no se monta', () => {
-    const { registry, flags } = entorno();
-    flags.setEnabled('contabilidad', false);
-    expect(registry.routes()).toEqual([]);
-    expect(registry.has('contabilidad')).toBe(false);
-    expect(registry.mount('contabilidad')).toBe(false);
-  });
-
-  it('mount devuelve false para una ruta desconocida', () => {
-    const { registry } = entorno();
-    expect(registry.mount('inexistente')).toBe(false);
-  });
-
-  it('flagPorRuta expone el mapa para el gating', () => {
-    const { registry } = entorno();
-    expect(registry.flagPorRuta()).toEqual({ contabilidad: 'contabilidad' });
-  });
-
-  it('rerender vuelve a montar la vista activa', () => {
-    const { registry } = entorno();
-    registry.mount('contabilidad');
-    contenedor().innerHTML = '';
-    registry.rerender();
-    expect(contenedor().querySelector('.page-title')).not.toBeNull();
-  });
-});
-
-describe('vista de contabilidad', () => {
-  beforeEach(() => montarShell());
-
-  it('pinta el resumen y los dos paneles', () => {
+  it('pinta la tabla de movimientos', () => {
     const { registry } = entorno({ conDatos: true });
-    expect(registry.mount('contabilidad')).toBe(true);
+    expect(registry.mount('accounts')).toBe(true);
+    irAPestana('movimientos');
     const c = contenedor();
-    expect(c.querySelector('.page-title')?.textContent).toContain('Contabilidad');
-    expect(c.querySelector('#acc-transacciones table')).not.toBeNull();
-    expect(c.querySelector('#acc-precision table')).not.toBeNull();
-    // El saldo real de hoy sale del ledger: 2000 − 150 − 160
-    expect(c.textContent).toContain('1690');
+    expect(c.querySelector('#acc-tx table')).not.toBeNull();
   });
 
   it('el filtro de mes limita los movimientos mostrados', () => {
     const { registry } = entorno({ conDatos: true });
-    registry.mount('contabilidad');
+    registry.mount('accounts');
+    irAPestana('movimientos');
     // Mes por defecto: julio 2026, sin movimientos
     expect(contenedor().querySelectorAll('[data-tx]')).toHaveLength(0);
 
@@ -165,7 +121,8 @@ describe('vista de contabilidad', () => {
 
   it('registra un movimiento desde el formulario', () => {
     const { registry, ledger, onDatosCambiados } = entorno();
-    registry.mount('contabilidad');
+    registry.mount('accounts');
+    irAPestana('movimientos');
     const c = contenedor();
     (c.querySelector('#nt-concepto') as HTMLInputElement).value = 'Agua';
     (c.querySelector('#nt-importe') as HTMLInputElement).value = '45.50';
@@ -183,7 +140,8 @@ describe('vista de contabilidad', () => {
 
   it('valida concepto e importe antes de registrar', () => {
     const { registry, ledger } = entorno();
-    registry.mount('contabilidad');
+    registry.mount('accounts');
+    irAPestana('movimientos');
     (contenedor().querySelector('#nt-guardar') as HTMLElement).click();
     expect(ledger.transacciones()).toHaveLength(0);
 
@@ -194,7 +152,8 @@ describe('vista de contabilidad', () => {
 
   it('registra un saldo real y lo usa como ancla', () => {
     const { registry, ledger } = entorno();
-    registry.mount('contabilidad');
+    registry.mount('accounts');
+    irAPestana('movimientos');
     const c = contenedor();
     (c.querySelector('#pc-fecha') as HTMLInputElement).value = '2026-07-01';
     (c.querySelector('#pc-saldo') as HTMLInputElement).value = '3000';
@@ -209,7 +168,8 @@ describe('vista de contabilidad', () => {
   it('asigna una transacción a una estimación desde el selector', () => {
     const { registry, ledger, estimacion } = entorno();
     ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 20, concepto: 'Suelto', tipo: 'gasto' });
-    registry.mount('contabilidad');
+    registry.mount('accounts');
+    irAPestana('movimientos');
 
     const select = contenedor().querySelector<HTMLSelectElement>('[data-tx-estimacion]') as HTMLSelectElement;
     select.value = estimacion._id;
@@ -218,16 +178,31 @@ describe('vista de contabilidad', () => {
     expect(ledger.transacciones()[0].estimacionId).toBe(estimacion._id);
   });
 
+  it('escapa el contenido de texto de los movimientos', () => {
+    const { registry, ledger } = entorno();
+    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 10, concepto: '<img src=x onerror=alert(1)>', tipo: 'gasto' });
+    registry.mount('accounts');
+    irAPestana('movimientos');
+    expect(contenedor().querySelector('img')).toBeNull();
+    expect(contenedor().innerHTML).toContain('&lt;img');
+  });
+});
+
+describe('vista fusionada — pestaña Cierre y precisión (panel de precisión)', () => {
+  beforeEach(() => montarShell());
+
   it('sin datos reales el panel de precisión explica qué hacer', () => {
     const { registry } = entorno();
-    registry.mount('contabilidad');
+    registry.mount('accounts');
+    irAPestana('cierre');
     expect(contenedor().textContent).toContain('Todavía no hay datos reales');
     expect(contenedor().querySelector('[data-sugerir]')).toBeNull();
   });
 
   it('muestra la precisión por estimación y por etiqueta', () => {
     const { registry } = entorno({ conDatos: true });
-    registry.mount('contabilidad');
+    registry.mount('accounts');
+    irAPestana('cierre');
     const texto = contenedor().textContent ?? '';
     expect(texto).toContain('Precisión de las estimaciones');
     expect(texto).toContain('Precisión conjunta por etiqueta');
@@ -238,7 +213,8 @@ describe('vista de contabilidad', () => {
 
   it('el botón de sugerencia propone la media real y aplica el ajuste', () => {
     const { registry, store, estimacion } = entorno({ conDatos: true });
-    registry.mount('contabilidad');
+    registry.mount('accounts');
+    irAPestana('cierre');
     const boton = contenedor().querySelector<HTMLElement>('[data-sugerir]') as HTMLElement;
     expect(boton.textContent).toContain('155'); // media de 150 y 160
 
@@ -255,7 +231,8 @@ describe('vista de contabilidad', () => {
 
   it('cancelar la confirmación no aplica el ajuste', () => {
     const { registry, store } = entorno({ conDatos: true });
-    registry.mount('contabilidad');
+    registry.mount('accounts');
+    irAPestana('cierre');
     vi.spyOn(window, 'confirm').mockReturnValue(false);
     (contenedor().querySelector('[data-sugerir]') as HTMLElement).click();
     expect(store.get('expenses')).toHaveLength(1);
@@ -266,7 +243,8 @@ describe('vista de contabilidad', () => {
     // Segunda estimación también desviada
     const otra = store.addItem('expenses', { ...estimacionLuz, concepto: 'Agua', cuantia: 50, tags: ['agua'] });
     ledger.registrar({ fecha: '2026-06-10', cuentaId: 'default', importe: 90, concepto: 'Canal', tipo: 'gasto', estimacionId: otra._id });
-    registry.mount('contabilidad');
+    registry.mount('accounts');
+    irAPestana('cierre');
 
     const boton = contenedor().querySelector<HTMLElement>('#ajustar-todas') as HTMLElement;
     expect(boton.textContent).toContain('(2)');
@@ -277,13 +255,5 @@ describe('vista de contabilidad', () => {
     const expenses = store.get('expenses');
     expect(expenses).toHaveLength(4); // 2 cerradas + 2 continuaciones
     expect(expenses.filter((e) => e.ajustadaDesdeId)).toHaveLength(2);
-  });
-
-  it('escapa el contenido de texto de los movimientos', () => {
-    const { registry, ledger } = entorno();
-    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 10, concepto: '<img src=x onerror=alert(1)>', tipo: 'gasto' });
-    registry.mount('contabilidad');
-    expect(contenedor().querySelector('img')).toBeNull();
-    expect(contenedor().innerHTML).toContain('&lt;img');
   });
 });

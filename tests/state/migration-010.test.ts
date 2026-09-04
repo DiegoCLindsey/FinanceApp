@@ -19,7 +19,10 @@ const estadoAntiguo = () => ({
       ],
     },
   ],
-  expenses: [{ _id: 'x1', concepto: 'Alquiler', escenarioIds: [] }, { _id: 'x2', concepto: 'Luz', escenarioIds: ['e1'] }],
+  expenses: [
+    { _id: 'x1', concepto: 'Alquiler', escenarioIds: [] },
+    { _id: 'x2', concepto: 'Luz', escenarioIds: ['e1'] },
+  ],
   nominas: [{ _id: 'n1', nombre: 'Sueldo', escenarioIds: ['e2'] }],
   accounts: [{ _id: 'c1', nombre: 'Principal', escenarioIds: [] }],
   escenarios: [

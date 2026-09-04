@@ -64,18 +64,11 @@ export const FEATURES: FeatureDefinition[] = [
   },
   {
     id: 'accounts',
-    nombre: 'Cuentas y ahorro',
-    descripcion: 'Cuentas, fondos de inversión, planes de pensiones y puntos de control de saldo.',
+    nombre: 'Cuentas y contabilidad',
+    descripcion:
+      'Cuentas, fondos de inversión, planes de pensiones, puntos de control de saldo, registro de movimientos reales, importación de extractos y análisis de precisión de las estimaciones.',
     grupo: GRUPOS.dinero,
     porDefecto: true,
-  },
-  {
-    id: 'contabilidad',
-    nombre: 'Contabilidad real',
-    descripcion: 'Registro de gastos e ingresos reales y análisis de precisión de las estimaciones.',
-    grupo: GRUPOS.dinero,
-    porDefecto: true,
-    dependencias: ['accounts'],
   },
 
   // ── Planificación ───────────────────────────────────────────────────────────
@@ -121,7 +114,7 @@ export const FEATURES: FeatureDefinition[] = [
     descripcion: 'Acierto de cada estimación frente al gasto real, con ajuste sugerido.',
     grupo: GRUPOS.analisis,
     porDefecto: true,
-    dependencias: ['contabilidad', 'expenses'],
+    dependencias: ['accounts', 'expenses'],
   },
 
   // ── Datos ───────────────────────────────────────────────────────────────────

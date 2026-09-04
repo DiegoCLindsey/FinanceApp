@@ -13,6 +13,9 @@ import { carteraFiscalHtml, renderAccountCard, FLUJOS_VACIOS, type CardCtx } fro
 import { createStore } from '@/state/store';
 import { createMemoryAdapter } from '@/state/storage/local';
 import { createLedger } from '@/accounting/ledger';
+import { createTagService } from '@/accounting/tags';
+import { createPrecisionAnalyzer } from '@/accounting/precision';
+import { createAdjuster } from '@/accounting/adjust';
 import { createFlags } from '@/flags/service';
 import { TRAMOS_AHORRO_FALLBACK, TRAMOS_IRPF_FALLBACK, type Account, type Expense, type Nomina } from '@/state/schema';
 
@@ -65,12 +68,18 @@ function entorno({
   const flags = createFlags(store);
   flags.setEnabled('accounts', true);
   const ledger = createLedger(store);
+  const tags = createTagService(store);
+  const precision = createPrecisionAnalyzer(ledger);
+  const adjuster = createAdjuster(store);
   const onDatosCambiados = vi.fn();
   const registry = createFeatureRegistry({ isEnabled: (id) => flags.isEnabled(id) });
   registry.register(
     createAccountsFeature({
       store,
       ledger,
+      tags,
+      precision,
+      adjuster,
       onDatosCambiados,
       hoy: () => HOY_ISO,
     }),

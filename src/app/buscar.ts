@@ -123,7 +123,7 @@ export function catalogar(state: Partial<AppState>): Candidato[] {
       id: t._id,
       titulo: t.concepto,
       detalle: [t.fecha, eur(t.importeCts / 100), cuenta(t.cuentaId)].filter(Boolean).join(' · '),
-      ruta: 'contabilidad',
+      ruta: 'accounts',
       extra: (t.tags ?? []).join(' '),
     });
   }

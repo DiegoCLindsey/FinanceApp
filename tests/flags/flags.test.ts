@@ -42,8 +42,8 @@ describe('registro de features', () => {
     expect(total).toBe(FEATURES.length);
   });
   it('dependientesDe encuentra la relación inversa', () => {
-    expect(dependientesDe('accounts').map((f) => f.id)).toContain('contabilidad');
-    expect(dependientesDe('contabilidad').map((f) => f.id)).toContain('precision-estimaciones');
+    expect(dependientesDe('accounts').map((f) => f.id)).toContain('precision-estimaciones');
+    expect(dependientesDe('sync-nube').map((f) => f.id)).toContain('autoguardado');
   });
 });
 
@@ -72,42 +72,41 @@ describe('servicio de flags', () => {
     expect(flags.isEnabled('dashboard')).toBe(true);
   });
 
-  it('activar arrastra las dependencias (transitivas)', () => {
+  it('activar arrastra las dependencias', () => {
     flags.setEnabled('accounts', false);
-    expect(flags.isEnabled('contabilidad')).toBe(false);
+    flags.setEnabled('expenses', false);
+    expect(flags.isEnabled('precision-estimaciones')).toBe(false);
 
     const res = flags.setEnabled('precision-estimaciones', true);
     expect(res.motivo).toBe('dependencias-activadas');
     expect(flags.isEnabled('accounts')).toBe(true);
-    expect(flags.isEnabled('contabilidad')).toBe(true);
+    expect(flags.isEnabled('expenses')).toBe(true);
     expect(flags.isEnabled('precision-estimaciones')).toBe(true);
     expect(res.cambiadas).toContain('precision-estimaciones');
   });
 
-  it('desactivar apaga en cascada a quien depende (transitivo)', () => {
-    flags.setEnabled('contabilidad', true);
+  it('desactivar apaga en cascada a quien depende', () => {
     flags.setEnabled('precision-estimaciones', true);
     expect(flags.isEnabled('precision-estimaciones')).toBe(true);
 
     const res = flags.setEnabled('accounts', false);
     expect(res.motivo).toBe('cascada-apagado');
-    expect(flags.isEnabled('contabilidad')).toBe(false);
     expect(flags.isEnabled('precision-estimaciones')).toBe(false);
-    expect(res.cambiadas).toEqual(expect.arrayContaining(['accounts', 'contabilidad', 'precision-estimaciones']));
+    expect(res.cambiadas).toEqual(expect.arrayContaining(['accounts', 'precision-estimaciones']));
   });
 
   it('isEnabled respeta las dependencias aunque la configuración diga lo contrario', () => {
     // Estado inconsistente escrito a mano (p.ej. perfil de una versión antigua)
-    store.patchConfig({ features: { ...defaultFlags(), accounts: false, contabilidad: true } });
-    expect(flags.isEnabled('contabilidad')).toBe(false);
-    expect(flags.bloqueadaPor('contabilidad')).toEqual(['accounts']);
+    store.patchConfig({ features: { ...defaultFlags(), accounts: false, 'precision-estimaciones': true } });
+    expect(flags.isEnabled('precision-estimaciones')).toBe(false);
+    expect(flags.bloqueadaPor('precision-estimaciones')).toEqual(['accounts']);
   });
 
   it('estado y estadoPorGrupo marcan lo bloqueado', () => {
-    store.patchConfig({ features: { ...defaultFlags(), accounts: false, contabilidad: true } });
-    const contabilidad = flags.estado().find((f) => f.id === 'contabilidad');
-    expect(contabilidad?.activa).toBe(false);
-    expect(contabilidad?.bloqueadaPor).toEqual(['accounts']);
+    store.patchConfig({ features: { ...defaultFlags(), accounts: false, 'precision-estimaciones': true } });
+    const precisionEst = flags.estado().find((f) => f.id === 'precision-estimaciones');
+    expect(precisionEst?.activa).toBe(false);
+    expect(precisionEst?.bloqueadaPor).toEqual(['accounts']);
 
     const grupos = flags.estadoPorGrupo();
     expect(grupos.length).toBeGreaterThan(1);

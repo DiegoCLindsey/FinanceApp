@@ -20,7 +20,7 @@ import type { ISODate } from '@/core/dates';
 import type { Ledger } from '@/accounting/ledger';
 import { analizarCsv, prepararFilas, resumir, type AnalisisCsv, type FilaImportada, type Mapeo } from '@/accounting/importar-csv';
 import type { Account } from '@/state/schema';
-import { esc, eurColor, onChange, onClick, toast } from './dom';
+import { esc, eurColor, onChange, onClick, toast } from '../accounting/dom';
 
 export interface ImportPanelDeps {
   ledger: Ledger;

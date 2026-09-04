@@ -1,5 +1,8 @@
-// Helpers de presentación compartidos por los paneles de contabilidad.
-// Sin dependencias del legacy: solo el design system (clases CSS existentes).
+// Helpers de presentación (escapado, formato, delegación de eventos) usados
+// por casi todas las vistas del paquete nuevo, no solo por contabilidad —
+// nace aquí porque fue el primer módulo escrito, y mover un import usado en
+// una docena de ficheros no compensaba el riesgo. Sin dependencias del
+// legacy: solo el design system (clases CSS existentes).
 
 import { formatEUR } from '@/core/money';
 
