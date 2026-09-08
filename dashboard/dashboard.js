@@ -1350,15 +1350,20 @@ const DashboardModule = (() => {
         a.activo && (filtroAccounts.length === 0 || filtroAccounts.includes(a._id))
       );
       // Recoger todas las fechas únicas; deduplicar por cuenta.
-      // saldoInicial at fechaInicialSaldo is the anchor — pre-floor entries are excluded.
+      // saldoInicial en fechaInicialSaldo es solo el ancla de arranque del
+      // extracto proyectado — no debe pisar puntos de control reales
+      // anteriores. "↻ Actualizar saldo base" mueve esa ancla a hoy en todas
+      // las cuentas a la vez; si esos puntos previos se descartaban aquí, el
+      // fallback de más abajo (saldoInicial constante) rellenaba TODAS las
+      // fechas anteriores con el saldo de hoy y aplanaba la serie entera.
       const allDates = new Set();
       const dedupedHist = visibles.map(acc => {
-        const floor = acc.fechaInicialSaldo || '';
         const byD = {};
-        if (floor) byD[floor] = acc.saldoInicial || 0;
         for (const h of (acc.historicoSaldos || [])) {
-          if (!floor || h.fecha >= floor) byD[h.fecha] = h.saldo;
+          byD[h.fecha] = h.saldo;
         }
+        const floor = acc.fechaInicialSaldo || '';
+        if (floor && !(floor in byD)) byD[floor] = acc.saldoInicial || 0;
         for (const d of Object.keys(byD)) allDates.add(d);
         return byD;
       });
