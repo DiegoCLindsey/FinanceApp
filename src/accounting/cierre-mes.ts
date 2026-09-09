@@ -19,7 +19,7 @@ import { roundMoney } from '@/core/money';
 import type { ISODate } from '@/core/dates';
 import type { Expense, Transaccion } from '@/state/schema';
 import type { Ledger } from './ledger';
-import { estimadoDelMes, type PrecisionEstimacion } from './precision';
+import { estimadoEnRango, type PrecisionEstimacion } from './precision';
 import { sugerirAjuste, type Sugerencia } from './adjust';
 
 export interface FilaCierre {
@@ -43,7 +43,10 @@ export interface GrupoSinEstimacion {
 }
 
 export interface CierreMes {
+  /** Mes del inicio del periodo. Con un cierre de mes, ese mes. */
   mes: string; // 'YYYY-MM'
+  desde: ISODate;
+  hasta: ISODate;
   /** Gasto previsto para el mes, sumando todas las estimaciones. */
   estimado: number;
   /** Gasto real del mes. */
@@ -136,6 +139,26 @@ export interface OpcionesCierre {
  */
 export function cerrarMes(ledger: Ledger, estimaciones: Expense[], mes: string, opciones: OpcionesCierre = {}): CierreMes {
   const { desde, hasta } = rangoDelMes(mes);
+  return { ...cerrarPeriodo(ledger, estimaciones, desde, hasta, opciones), mes };
+}
+
+/**
+ * Lo mismo sobre un intervalo cualquiera, que puede cruzar varios meses o
+ * cortar uno por la mitad — el periodo que esté configurado en la cabecera,
+ * sin obligar a cerrar mes a mes.
+ *
+ * El estimado NO se calcula sumando meses enteros: se le pide al motor la
+ * proyección del rango exacto (`estimadoEnRango`), así que un intervalo que
+ * empiece a mitad de mes no se lleva el gasto previsto de los días anteriores
+ * y lo estimado sigue siendo comparable con lo real.
+ */
+export function cerrarPeriodo(
+  ledger: Ledger,
+  estimaciones: Expense[],
+  desde: ISODate,
+  hasta: ISODate,
+  opciones: OpcionesCierre = {},
+): CierreMes {
   const delMes = ledger.transacciones({ desde, hasta });
 
   // Las transferencias entre cuentas propias no son gasto ni ingreso real: el
@@ -157,7 +180,7 @@ export function cerrarMes(ledger: Ledger, estimaciones: Expense[], mes: string, 
     for (const t of suyas) yaContadas.add(t._id);
 
     const real = roundMoney(suyas.reduce((s, t) => s + Math.abs(t.importeCts) / 100, 0));
-    const estimado = roundMoney(estimadoDelMes(exp, mes));
+    const estimado = roundMoney(estimadoEnRango(exp, desde, hasta));
     const analisis = porId.get(exp._id);
 
     return {
@@ -190,7 +213,9 @@ export function cerrarMes(ledger: Ledger, estimaciones: Expense[], mes: string, 
   const real = roundMoney(gastos.reduce((s, t) => s + Math.abs(t.importeCts) / 100, 0));
 
   return {
-    mes,
+    mes: desde.slice(0, 7),
+    desde,
+    hasta,
     estimado,
     real,
     desviacion: roundMoney(real - estimado),

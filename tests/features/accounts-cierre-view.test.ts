@@ -199,3 +199,76 @@ describe('cierre de mes', () => {
     expect(cierre().innerHTML).not.toContain('data-cie-ajustar-todas');
   });
 });
+
+// El intervalo de la cabecera del dashboard puede cruzar varios meses o cortar
+// uno por la mitad; el cierre tiene que poder calcularse sobre él tal cual.
+describe('cierre sobre el periodo de la cabecera', () => {
+  beforeEach(() => montarShell());
+
+  /** Entorno con el intervalo de la cabecera puesto y tres recibos mensuales. */
+  function conPeriodo(desde: string, hasta: string) {
+    const env = entorno();
+    env.store.set('config', { ...env.store.get('config'), dashboardStart: desde, dashboardEnd: hasta });
+    env.store.addItem('expenses', gasto()); // 100 €/mes, día 10
+    registrar(env.ledger, '2026-04-10', 90, 'ABRIL', { tags: ['casa'] });
+    registrar(env.ledger, '2026-05-10', 110, 'MAYO', { tags: ['casa'] });
+    registrar(env.ledger, '2026-06-10', 100, 'JUNIO', { tags: ['casa'] });
+    return env;
+  }
+
+  const precision = () => document.getElementById('acc-precision') as HTMLElement;
+
+  it('arranca en modo mes, con su selector', () => {
+    const { registry } = conPeriodo('2026-04-15', '2026-06-20');
+    montarEnCierre(registry);
+    expect(cierre().textContent).toContain('Cierre de mes');
+    expect(cierre().querySelector('#cie-mes')).not.toBeNull();
+  });
+
+  it('al elegir el periodo cierra el intervalo entero y enseña sus fechas', () => {
+    const { registry } = conPeriodo('2026-04-15', '2026-06-20');
+    montarEnCierre(registry);
+    clic('[data-cie-modo="periodo"]');
+
+    const txt = cierre().textContent ?? '';
+    expect(txt).toContain('Cierre del periodo');
+    expect(txt).toContain('2026-04-15');
+    expect(txt).toContain('2026-06-20');
+    // Mayo (110) y junio (100); el recibo del 10 de abril queda fuera.
+    expect(txt).toContain('210');
+    expect(cierre().querySelector('#cie-mes')).toBeNull();
+  });
+
+  it('el estimado se recorta al intervalo, no cuenta meses enteros', () => {
+    const { registry } = conPeriodo('2026-04-15', '2026-06-20');
+    montarEnCierre(registry);
+    clic('[data-cie-modo="periodo"]');
+    // Dos pagos proyectados dentro del rango (mayo y junio), no tres.
+    expect(cierre().textContent).toContain('200');
+  });
+
+  it('la tabla de precisión de debajo sigue el mismo periodo', () => {
+    const { registry } = conPeriodo('2026-04-15', '2026-06-20');
+    montarEnCierre(registry);
+    expect(precision().textContent).toContain('Se comparan solo los meses ya cerrados');
+
+    clic('[data-cie-modo="periodo"]');
+    expect(precision().textContent).toContain('Limitado al periodo de la cabecera');
+  });
+
+  it('se puede volver al cierre por meses', () => {
+    const { registry } = conPeriodo('2026-04-15', '2026-06-20');
+    montarEnCierre(registry);
+    clic('[data-cie-modo="periodo"]');
+    clic('[data-cie-modo="mes"]');
+    expect(cierre().textContent).toContain('Cierre de mes');
+    expect(cierre().querySelector('#cie-mes')).not.toBeNull();
+  });
+
+  it('un periodo sin movimientos lo dice en vez de enseñar ceros', () => {
+    const { registry } = conPeriodo('2026-01-01', '2026-02-28');
+    montarEnCierre(registry);
+    clic('[data-cie-modo="periodo"]');
+    expect(cierre().textContent).toContain('No hay movimientos registrados');
+  });
+});

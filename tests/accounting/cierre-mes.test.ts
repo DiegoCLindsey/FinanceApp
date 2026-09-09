@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { cerrarMes, mesAnterior, mesesConDatos, rangoDelMes } from '@/accounting/cierre-mes';
+import { cerrarMes, cerrarPeriodo, mesAnterior, mesesConDatos, rangoDelMes } from '@/accounting/cierre-mes';
 import { createLedger, type Ledger } from '@/accounting/ledger';
 import { createPrecisionAnalyzer } from '@/accounting/precision';
 import { createStore } from '@/state/store';
@@ -269,5 +269,78 @@ describe('cerrarMes · un movimiento cuenta como mucho para UNA estimación', ()
     const real = (c: typeof primero, concepto: string) => c.filas.find((f) => f.concepto === concepto)?.real;
     expect(real(primero, 'A')).toBe(real(alReves, 'A'));
     expect(real(primero, 'B')).toBe(real(alReves, 'B'));
+  });
+});
+
+// El cierre no siempre es de un mes natural: la cabecera del dashboard tiene un
+// intervalo configurable ("del 15 de abril al 20 de junio") y el cierre tiene
+// que poder calcularse sobre él tal cual, sin obligar a cerrar mes a mes.
+describe('cerrarPeriodo', () => {
+  let ledger: Ledger;
+  let store: ReturnType<typeof entorno>['store'];
+
+  beforeEach(() => {
+    const e = entorno();
+    ledger = e.ledger;
+    store = e.store;
+  });
+
+  it('suma el real de todos los meses del intervalo', () => {
+    store.addItem('expenses', gasto()); // 100 €/mes, día 10
+    registrar(ledger, '2026-04-10', 90, 'LUZ', { tags: ['casa'] });
+    registrar(ledger, '2026-05-10', 110, 'LUZ', { tags: ['casa'] });
+    registrar(ledger, '2026-06-10', 100, 'LUZ', { tags: ['casa'] });
+
+    const c = cerrarPeriodo(ledger, store.get('expenses'), '2026-04-01', '2026-06-30');
+    expect(c.real).toBe(300);
+    expect(c.estimado).toBe(300); // tres pagos proyectados dentro del rango
+    expect(c.desviacion).toBe(0);
+  });
+
+  it('un intervalo que corta el mes por la mitad no se lleva lo de antes', () => {
+    store.addItem('expenses', gasto());
+    registrar(ledger, '2026-04-10', 90, 'LUZ', { tags: ['casa'] });
+    registrar(ledger, '2026-05-10', 110, 'LUZ', { tags: ['casa'] });
+    registrar(ledger, '2026-06-10', 100, 'LUZ', { tags: ['casa'] });
+
+    // Empieza el 15 de abril: el recibo del 10 de abril queda fuera, y el
+    // estimado tampoco cuenta ese pago (si no, saldría una desviación falsa).
+    const c = cerrarPeriodo(ledger, store.get('expenses'), '2026-04-15', '2026-06-20');
+    expect(c.real).toBe(210);
+    expect(c.estimado).toBe(200);
+    expect(c.desviacion).toBe(10);
+  });
+
+  it('devuelve el intervalo que se ha cerrado y el mes en que empieza', () => {
+    store.addItem('expenses', gasto());
+    registrar(ledger, '2026-05-10', 110, 'LUZ', { tags: ['casa'] });
+    const c = cerrarPeriodo(ledger, store.get('expenses'), '2026-04-15', '2026-06-20');
+    expect(c.desde).toBe('2026-04-15');
+    expect(c.hasta).toBe('2026-06-20');
+    expect(c.mes).toBe('2026-04');
+  });
+
+  it('el gasto sin estimación también se agrupa en todo el intervalo', () => {
+    registrar(ledger, '2026-04-20', 30, 'SUPER MERCADONA 123');
+    registrar(ledger, '2026-05-02', 40, 'SUPER MERCADONA 998');
+
+    const c = cerrarPeriodo(ledger, store.get('expenses'), '2026-04-01', '2026-06-30');
+    expect(c.sinEstimacion).toHaveLength(1);
+    expect(c.sinEstimacion[0].movimientos).toBe(2);
+    expect(c.totalSinEstimacion).toBe(70);
+  });
+
+  it('un intervalo sin ningún movimiento se marca vacío', () => {
+    store.addItem('expenses', gasto());
+    registrar(ledger, '2026-04-10', 90, 'LUZ', { tags: ['casa'] });
+    expect(cerrarPeriodo(ledger, store.get('expenses'), '2026-05-01', '2026-05-31').vacio).toBe(true);
+  });
+
+  it('cerrar el mes es cerrar su intervalo', () => {
+    store.addItem('expenses', gasto());
+    registrar(ledger, '2026-07-10', 120, 'LUZ', { tags: ['casa'] });
+    const porMes = cerrarMes(ledger, store.get('expenses'), '2026-07');
+    const porRango = cerrarPeriodo(ledger, store.get('expenses'), '2026-07-01', '2026-07-31');
+    expect(porRango).toEqual(porMes);
   });
 });
