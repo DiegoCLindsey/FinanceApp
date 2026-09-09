@@ -354,6 +354,17 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
       notificar();
       reabrir();
     });
+    onClick(el, '[data-hist-semanal]', (btn) => {
+      const cuentaId = btn.getAttribute('data-hist-semanal') as string;
+      const n = deps.ledger.generarPuntosSemanales(cuentaId);
+      toast(
+        n > 0
+          ? `Histórico con ${n} punto${n !== 1 ? 's' : ''} semanal${n !== 1 ? 'es' : ''}`
+          : 'Sin movimientos con los que calcular el histórico',
+      );
+      notificar();
+      reabrir();
+    });
     onClick(el, '[data-hist-inicial]', (btn) => {
       const [cuentaId, puntoId] = (btn.getAttribute('data-hist-inicial') || '').split('|');
       const punto = deps.ledger.puntosControl(cuentaId).find((p) => p._id === puntoId);

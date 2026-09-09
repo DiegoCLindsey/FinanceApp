@@ -213,6 +213,16 @@ export interface PuntoControl {
   cuentaId: string;
   saldoCts: number;
   nota?: string;
+  /**
+   * 'derivado' = punto CALCULADO por el ledger (uno por semana, ver
+   * `generarPuntosSemanales`), no un saldo que haya dicho el banco. Existe
+   * para que el histórico tenga curva: el dashboard dibuja un punto por
+   * entrada de `historicoSaldos` y con un solo punto el pasado sale plano.
+   * Nunca ancla el cálculo del saldo — si lo hiciera, un punto calculado con
+   * datos viejos congelaría un saldo equivocado en cuanto se editara un
+   * movimiento. Ausente = manual (los datos anteriores a este campo lo son).
+   */
+  origen?: 'manual' | 'derivado';
 }
 
 /** Flags de funcionalidades activas por usuario (F2). */

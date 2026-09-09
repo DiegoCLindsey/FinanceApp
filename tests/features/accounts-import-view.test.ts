@@ -92,7 +92,10 @@ describe('importación de extractos', () => {
     expect(vista().innerHTML).toContain('data-imp-sincronizar');
     clic('[data-imp-sincronizar]');
 
-    expect(ledger.puntosControl('default')).toHaveLength(0);
+    const puntos = ledger.puntosControl('default');
+    // El punto tecleado a ojo se va y en su lugar queda la curva semanal.
+    expect(puntos.filter((p) => p.origen !== 'derivado')).toHaveLength(0);
+    expect(puntos.filter((p) => p.origen === 'derivado').map((p) => p.fecha)).toEqual(['2026-07-05']);
     expect(onDatosCambiados).toHaveBeenCalled();
   });
 
@@ -161,17 +164,31 @@ describe('importación de extractos', () => {
     await cargar(CSV);
     clic('[data-imp-confirmar]');
 
-    expect(ledger.puntosControl('default').map((p) => p.fecha)).toEqual(['2026-06-01']);
+    const manuales = ledger.puntosControl('default').filter((p) => p.origen !== 'derivado');
+    expect(manuales.map((p) => p.fecha)).toEqual(['2026-06-01']);
   });
 
-  it('no toca ningún punto de control cuando no hay ninguno en el periodo importado', async () => {
+  it('deja el histórico con un punto semanal por cada semana importada', async () => {
+    const { ledger, registry } = entorno();
+    montarEnImportar(registry);
+    clic('[data-imp-abrir]');
+    await cargar(CSV);
+    clic('[data-imp-confirmar]');
+
+    // El CSV va del 01/07 al 03/07 (misma semana): un solo punto, cerrado en
+    // el último día con datos, con el saldo que dejan los dos movimientos.
+    const derivados = ledger.puntosControl('default').filter((p) => p.origen === 'derivado');
+    expect(derivados.map((p) => [p.fecha, p.saldoCts])).toEqual([['2026-07-03', 175480]]);
+  });
+
+  it('no toca los puntos de control manuales de fuera del periodo importado', async () => {
     const { ledger, registry } = entorno();
     ledger.registrarPuntoControl('default', '2026-06-01', 1500);
     montarEnImportar(registry);
     clic('[data-imp-abrir]');
     await cargar(CSV);
     clic('[data-imp-confirmar]');
-    expect(ledger.puntosControl('default')).toHaveLength(1);
+    expect(ledger.puntosControl('default').filter((p) => p.origen !== 'derivado')).toHaveLength(1);
   });
 
   it('el panel se cierra tras importar', async () => {
