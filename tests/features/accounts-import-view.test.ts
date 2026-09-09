@@ -128,6 +128,31 @@ describe('importación de extractos', () => {
     expect(onDatosCambiados).toHaveBeenCalled();
   });
 
+  it('sustituye los puntos de control manuales de la cuenta dentro del periodo importado', async () => {
+    const { ledger, registry } = entorno();
+    // Dentro del rango del CSV (01/07 → 03/07): checkpoint manual que queda obsoleto.
+    ledger.registrarPuntoControl('default', '2026-07-02', 2000, 'a ojo');
+    // Fuera del rango: no se toca.
+    ledger.registrarPuntoControl('default', '2026-06-01', 1500, 'extracto junio');
+
+    montarEnImportar(registry);
+    clic('[data-imp-abrir]');
+    await cargar(CSV);
+    clic('[data-imp-confirmar]');
+
+    expect(ledger.puntosControl('default').map((p) => p.fecha)).toEqual(['2026-06-01']);
+  });
+
+  it('no toca ningún punto de control cuando no hay ninguno en el periodo importado', async () => {
+    const { ledger, registry } = entorno();
+    ledger.registrarPuntoControl('default', '2026-06-01', 1500);
+    montarEnImportar(registry);
+    clic('[data-imp-abrir]');
+    await cargar(CSV);
+    clic('[data-imp-confirmar]');
+    expect(ledger.puntosControl('default')).toHaveLength(1);
+  });
+
   it('el panel se cierra tras importar', async () => {
     montarEnImportar(entorno().registry);
     clic('[data-imp-abrir]');

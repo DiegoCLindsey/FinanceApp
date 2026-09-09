@@ -173,6 +173,30 @@ describe('puntos de control y saldos derivados', () => {
     expect(store.get('accounts').find((a) => a._id === 'default')?.historicoSaldos).toHaveLength(1);
   });
 
+  it('eliminarPuntosControlEnRango borra solo los puntos manuales dentro del rango, de esa cuenta', () => {
+    const { ledger, store } = env;
+    ledger.registrarPuntoControl('default', '2026-06-15', 500); // antes del rango: se queda
+    ledger.registrarPuntoControl('default', '2026-07-05', 800); // dentro: se borra
+    ledger.registrarPuntoControl('default', '2026-07-20', 900); // dentro: se borra
+    ledger.registrarPuntoControl('default', '2026-08-01', 1000); // después: se queda
+    ledger.registrarPuntoControl('ahorro', '2026-07-10', 5000); // otra cuenta: se queda
+
+    const borrados = ledger.eliminarPuntosControlEnRango('default', '2026-07-01', '2026-07-31');
+
+    expect(borrados).toBe(2);
+    expect(ledger.puntosControl('default').map((p) => p.fecha)).toEqual(['2026-06-15', '2026-08-01']);
+    expect(ledger.puntosControl('ahorro')).toHaveLength(1);
+    // El puente con el legacy también refleja el borrado
+    expect(store.get('accounts').find((a) => a._id === 'default')?.historicoSaldos).toHaveLength(2);
+  });
+
+  it('eliminarPuntosControlEnRango no toca nada ni sincroniza si no hay puntos en rango', () => {
+    const { ledger } = env;
+    ledger.registrarPuntoControl('default', '2026-06-01', 500);
+    expect(ledger.eliminarPuntosControlEnRango('default', '2026-07-01', '2026-07-31')).toBe(0);
+    expect(ledger.puntosControl('default')).toHaveLength(1);
+  });
+
   it('saldoTotal suma las cuentas activas', () => {
     const { ledger } = env;
     ledger.registrarPuntoControl('default', '2026-07-01', 1000);

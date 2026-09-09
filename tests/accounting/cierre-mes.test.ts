@@ -139,6 +139,28 @@ describe('cerrarMes', () => {
     expect(c.ingresosReales).toBe(1800);
   });
 
+  it('las transferencias entre cuentas propias no cuentan como gasto ni ingreso real', () => {
+    store.addItem('expenses', gasto({ concepto: 'Luz', cuantia: 100, tags: ['casa'] }));
+    registrar(ledger, '2026-07-10', 130, 'Endesa', { tags: ['casa'] });
+    // Traspaso a la otra cuenta donde luego se paga de verdad: no es gasto ni
+    // "sin estimación", solo dinero cambiando de sitio.
+    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 300, concepto: 'Traspaso a Ahorro', tipo: 'transferencia' });
+    ledger.registrar({
+      fecha: '2026-07-05',
+      cuentaId: 'default',
+      importe: 300,
+      concepto: 'Traspaso de Principal',
+      tipo: 'transferencia',
+      negativo: true,
+    });
+
+    const c = cerrarMes(ledger, store.get('expenses'), '2026-07');
+    expect(c.real).toBe(130);
+    expect(c.ingresosReales).toBe(0);
+    expect(c.totalSinEstimacion).toBe(0);
+    expect(c.sinEstimacion).toEqual([]);
+  });
+
   it('ignora las estimaciones desactivadas y las que no son gasto', () => {
     store.addItem('expenses', gasto({ concepto: 'Vieja', cuantia: 50, activo: false }));
     store.addItem('expenses', gasto({ concepto: 'Nómina', cuantia: 1800, tipo: 'ingreso' }));

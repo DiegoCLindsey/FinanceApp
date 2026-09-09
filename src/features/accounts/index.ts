@@ -47,7 +47,7 @@ import { construirCuenta, formularioCuenta, wireFormularioCuenta } from './form'
 import { historicoDeCuenta, historicoHtml } from './historico';
 import { createTramosGananciasModal } from './tramos-ganancias';
 import { pestanasCuentasHtml, type PestanaCuentas } from './tabs';
-import { renderTransactionsPanel, wireTransactionsPanel, type EstadoPanel } from './transactions-panel';
+import { estadoPanelInicial, renderTransactionsPanel, wireTransactionsPanel, type EstadoPanel } from './transactions-panel';
 import { renderPrecisionPanel, wirePrecisionPanel } from './precision-panel';
 import { estadoImportInicial, renderImportPanel, wireImportPanel, type EstadoImport } from './import-panel';
 import { estadoCierreInicial, renderCierrePanel, wireCierrePanel, type EstadoCierre } from './cierre-panel';
@@ -96,7 +96,7 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
   // misma (ver tabs.ts). El estado de cada panel es de interfaz, no del
   // usuario, así que no va al store — igual que hacía la vista de Contabilidad.
   let tabActiva: PestanaCuentas = 'cuentas';
-  const estadoTx: EstadoPanel = { cuentaId: '', mes: hoy().slice(0, 7), filtroTexto: '' };
+  const estadoTx: EstadoPanel = estadoPanelInicial(hoy().slice(0, 7));
   const estadoImport: EstadoImport = estadoImportInicial();
   const estadoCierre: EstadoCierre = estadoCierreInicial();
 
@@ -107,6 +107,8 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
     ledger: deps.ledger,
     accounts: cuentasTodas,
     estimaciones,
+    loans: () => deps.store.get('loans'),
+    nominas: () => deps.store.get('nominas'),
     tagsConocidas: () => deps.tags.todas(),
     onDatosCambiados: notificar,
     hoy,

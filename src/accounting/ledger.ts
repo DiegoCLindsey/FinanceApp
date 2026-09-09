@@ -167,6 +167,27 @@ export function createLedger(store: LedgerStoreLike) {
   }
 
   /**
+   * Borra los puntos de control MANUALES de una cuenta dentro de un rango de
+   * fechas. Lo usa la importación de extractos (F4): un extracto real es más
+   * fiable que un punto tecleado a ojo, así que un checkpoint manual que caiga
+   * dentro del periodo recién importado queda obsoleto — mandar ahí seguiría
+   * ignorando los movimientos reales que ya se han traído para esas fechas.
+   * Los puntos fuera del rango (el ancla de antes del extracto, o saldos
+   * posteriores) no se tocan. Devuelve cuántos se han borrado.
+   */
+  function eliminarPuntosControlEnRango(cuentaId: string, desde: ISODate, hasta: ISODate): number {
+    const enRango = (p: PuntoControl) => p.cuentaId === cuentaId && p.fecha >= desde && p.fecha <= hasta;
+    const afectados = store.get('puntosControl').filter(enRango).length;
+    if (afectados === 0) return 0;
+    store.set(
+      'puntosControl',
+      store.get('puntosControl').filter((p) => !enRango(p)),
+    );
+    sincronizarConLegacy(cuentaId);
+    return afectados;
+  }
+
+  /**
    * Puente temporal: replica los puntos de control en
    * `accounts[].historicoSaldos`, que es lo que leen el motor legacy y el
    * dashboard. Se elimina al portar el dashboard (tarea 1.7).
@@ -275,6 +296,7 @@ export function createLedger(store: LedgerStoreLike) {
     puntosControl,
     registrarPuntoControl,
     eliminarPuntoControl,
+    eliminarPuntosControlEnRango,
     saldoCuenta,
     saldoCuentaCts,
     saldoTotal,

@@ -138,8 +138,11 @@ export function cerrarMes(ledger: Ledger, estimaciones: Expense[], mes: string, 
   const { desde, hasta } = rangoDelMes(mes);
   const delMes = ledger.transacciones({ desde, hasta });
 
-  const gastos = delMes.filter((t) => t.importeCts < 0);
-  const ingresos = delMes.filter((t) => t.importeCts > 0);
+  // Las transferencias entre cuentas propias no son gasto ni ingreso real: el
+  // dinero solo ha cambiado de cuenta, así que contarlas aquí duplicaría la
+  // compra real que se paga luego desde la cuenta de destino.
+  const gastos = delMes.filter((t) => t.tipo !== 'transferencia' && t.importeCts < 0);
+  const ingresos = delMes.filter((t) => t.tipo !== 'transferencia' && t.importeCts > 0);
 
   const deGasto = estimaciones.filter((e) => e.tipo === 'gasto' && e.activo !== false);
   const porId = new Map((opciones.analisis ?? []).map((a) => [a.estimacionId, a]));

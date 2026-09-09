@@ -170,7 +170,16 @@ export interface TablaFiscalAnual {
 
 // ── Contabilidad real (F4) ────────────────────────────────────────────────────
 
-export type TipoTransaccion = 'gasto' | 'ingreso' | 'ajuste';
+/**
+ * 'transferencia' = movimiento entre cuentas propias: el dinero no se ha
+ * gastado ni ganado, solo ha cambiado de sitio (p.ej. un traspaso a la cuenta
+ * donde luego se paga la compra real). Cuenta para el saldo de la cuenta como
+ * cualquier otro movimiento, pero se excluye del gasto/ingreso real en el
+ * cierre de mes y en los totales del panel — si no, la misma compra aparece
+ * dos veces: una como traspaso "sin estimación" y otra como el gasto de
+ * verdad en la cuenta de destino.
+ */
+export type TipoTransaccion = 'gasto' | 'ingreso' | 'ajuste' | 'transferencia';
 
 /**
  * Movimiento REAL de una cuenta. Los importes van en céntimos enteros con
