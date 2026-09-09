@@ -274,8 +274,31 @@ export function createLedger(store: LedgerStoreLike) {
       'puntosControl',
       [...sinDerivados, ...nuevos].sort((a, b) => a.fecha.localeCompare(b.fecha)),
     );
+    moverArranqueSiTapa(cuentaId, primera, saldoEn(primera));
     sincronizarConLegacy(cuentaId);
     return nuevos.length;
+  }
+
+  /**
+   * Retrasa el punto de arranque de la cuenta (`saldoInicial` en
+   * `fechaInicialSaldo`) hasta el primer movimiento, si estaba por delante.
+   *
+   * Ese arranque no es un dato más: `saldoEnFecha` (core/accounts) descarta
+   * todo punto del histórico anterior a él, y la gráfica del dashboard hace lo
+   * mismo. Una cuenta creada hoy —o a la que se le haya dado a «Actualizar
+   * saldo base»— arranca hoy, así que tapaba entera la curva semanal recién
+   * calculada y el dashboard seguía anclando en aquel saldo en vez de en el
+   * último conocido. Moviéndolo al primer movimiento se ve la curva completa y
+   * el ancla pasa a ser el último punto real.
+   */
+  function moverArranqueSiTapa(cuentaId: string, primera: ISODate, saldoCtsEnPrimera: number): void {
+    const accounts = store.get('accounts');
+    const cuenta = accounts.find((a) => a._id === cuentaId);
+    if (!cuenta || (cuenta.fechaInicialSaldo && cuenta.fechaInicialSaldo <= primera)) return;
+    store.set(
+      'accounts',
+      accounts.map((a) => (a._id === cuentaId ? { ...a, saldoInicial: fromCents(saldoCtsEnPrimera), fechaInicialSaldo: primera } : a)),
+    );
   }
 
   /** `generarPuntosSemanales` para varias cuentas (todas, si se omite). */

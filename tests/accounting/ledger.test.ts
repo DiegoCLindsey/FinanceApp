@@ -327,6 +327,40 @@ describe('puntos de control y saldos derivados', () => {
     expect(ledger.puntosControl('default')).toHaveLength(0);
   });
 
+  it('retrasa el arranque de la cuenta hasta el primer movimiento si lo estaba tapando', () => {
+    const { ledger, store } = env;
+    // Cuenta creada DESPUÉS de los movimientos (o tras «Actualizar saldo
+    // base»): su arranque taparía toda la curva semanal en saldoEnFecha y en
+    // la gráfica del dashboard.
+    store.set(
+      'accounts',
+      store.get('accounts').map((a) => (a._id === 'default' ? { ...a, saldoInicial: 0, fechaInicialSaldo: '2026-07-30' } : a)),
+    );
+    ledger.registrar({ fecha: '2026-06-02', cuentaId: 'default', importe: 100, concepto: 'a', tipo: 'ingreso' });
+    ledger.registrar({ fecha: '2026-06-16', cuentaId: 'default', importe: 30, concepto: 'b', tipo: 'gasto' });
+
+    ledger.generarPuntosSemanales('default');
+
+    const cuenta = store.get('accounts').find((a) => a._id === 'default');
+    expect(cuenta?.fechaInicialSaldo).toBe('2026-06-02');
+    expect(cuenta?.saldoInicial).toBe(100); // el saldo que había ese día
+  });
+
+  it('no toca el arranque si ya es anterior al primer movimiento', () => {
+    const { ledger, store } = env;
+    store.set(
+      'accounts',
+      store.get('accounts').map((a) => (a._id === 'default' ? { ...a, saldoInicial: 4200, fechaInicialSaldo: '2026-01-01' } : a)),
+    );
+    ledger.registrar({ fecha: '2026-06-02', cuentaId: 'default', importe: 100, concepto: 'a', tipo: 'ingreso' });
+
+    ledger.generarPuntosSemanales('default');
+
+    const cuenta = store.get('accounts').find((a) => a._id === 'default');
+    expect(cuenta?.fechaInicialSaldo).toBe('2026-01-01');
+    expect(cuenta?.saldoInicial).toBe(4200);
+  });
+
   it('generarPuntosSemanalesTodas recorre las cuentas con movimientos', () => {
     const { ledger } = env;
     ledger.registrar({ fecha: '2026-06-02', cuentaId: 'default', importe: 100, concepto: 'a', tipo: 'ingreso' });

@@ -56,7 +56,7 @@ export function historicoHtml(
     <div class="flex justify-between items-center" style="gap:10px;flex-wrap:wrap">
       <div class="card-title" style="margin:0">Histórico — ${esc(nombreCuenta)}</div>
       <button class="btn-secondary btn-sm" data-hist-semanal="${esc(accId)}"
-        title="Recalcula un punto por semana con el saldo al cierre de cada una, a partir de los movimientos">↻ Recalcular semanal</button>
+        title="Recalcula un punto por semana con el saldo al cierre de cada una, a partir de los movimientos. Si el arranque de la cuenta es posterior al primer movimiento, lo retrasa hasta él para que no tape la curva.">↻ Recalcular semanal</button>
     </div>
     <div class="text-sm mt-4 mb-8" style="color:var(--text3)">
       ${derivados > 0 ? `${derivados} de los puntos son semanales calculados del ledger; el resto los has registrado tú y mandan sobre el saldo.` : 'Los puntos que registras aquí anclan el saldo. «Recalcular semanal» añade además un punto por semana con lo que dicen los movimientos.'}
