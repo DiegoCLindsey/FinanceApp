@@ -5,8 +5,10 @@
 import { formatEUR, fromCents } from '@/core/money';
 import { todayISO, type ISODate } from '@/core/dates';
 import type { Ledger } from '@/accounting/ledger';
+import { compararIntervalo } from '@/accounting/comparativa';
 import type { Account, Expense, Loan, Nomina, Transaccion, TipoTransaccion } from '@/state/schema';
 import { confirmar, esc, eurColor, numero, onChange, onClick, tagChips, toast, valor } from '../accounting/dom';
+import { renderComparativaSvg } from './comparativa-chart';
 
 const ETIQUETA_TIPO: Record<TipoTransaccion, string> = {
   gasto: 'Gasto',
@@ -44,15 +46,23 @@ export interface EstadoPanel {
    * a todos de golpe en vez de fila a fila — el caso típico es un cargo
    * recurrente ("Netflix", "Gimnasio…") cuyo importe varía mes a mes.
    */
-  vista: 'mensual' | 'agrupado';
+  vista: 'mensual' | 'intervalo' | 'agrupado';
   periodoDesde: string; // 'YYYY-MM'
   periodoHasta: string; // 'YYYY-MM'
   /** Conceptos con la fila de detalle desplegada, en la vista agrupada. */
   detalleAbierto: Set<string>;
+  /**
+   * Vista de intervalo (F4, alta): fechas concretas, día a día, en vez de un
+   * mes cerrado — el filtro de la lista puede cruzar varios meses. Debajo se
+   * enseña el real frente a lo estimado de ese mismo intervalo.
+   */
+  intervaloDesde: ISODate;
+  intervaloHasta: ISODate;
 }
 
-/** Estado inicial del panel: vista mensual del mes actual, y un periodo de
- * seis meses hacia atrás ya listo por si se cambia a la vista agrupada. */
+/** Estado inicial del panel: vista mensual del mes actual, con un periodo de
+ * seis meses hacia atrás ya listo por si se cambia a la vista agrupada o de
+ * intervalo. */
 export function estadoPanelInicial(mesActual: string): EstadoPanel {
   return {
     cuentaId: '',
@@ -62,6 +72,8 @@ export function estadoPanelInicial(mesActual: string): EstadoPanel {
     periodoDesde: mesAntes(mesActual, 5),
     periodoHasta: mesActual,
     detalleAbierto: new Set(),
+    intervaloDesde: rangoMes(mesAntes(mesActual, 5)).desde,
+    intervaloHasta: rangoMes(mesActual).hasta,
   };
 }
 
@@ -86,12 +98,19 @@ function rangoPeriodo(desdeMes: string, hastaMes: string): { desde: ISODate; has
   return { desde: rangoMes(d).desde, hasta: rangoMes(h).hasta };
 }
 
+/** Igual que `rangoPeriodo`, pero con fechas concretas ('YYYY-MM-DD') en vez de meses. */
+function rangoIntervalo(desde: ISODate, hasta: ISODate): { desde: ISODate; hasta: ISODate } {
+  return desde <= hasta ? { desde, hasta } : { desde: hasta, hasta: desde };
+}
+
 export interface GrupoConcepto {
   concepto: string;
   movimientos: Transaccion[];
   total: number; // céntimos, con signo
   /** La estimación asignada, si TODOS los movimientos del grupo comparten la misma (o ninguno). */
   estimacionComun: string | null;
+  /** Unión de las etiquetas de todos los movimientos del grupo. */
+  tagsComunes: string[];
 }
 
 /**
@@ -116,9 +135,52 @@ export function agruparPorConcepto(movimientos: Transaccion[]): GrupoConcepto[] 
         movimientos: txs.slice().sort((a, b) => a.fecha.localeCompare(b.fecha)),
         total: txs.reduce((s, t) => s + t.importeCts, 0),
         estimacionComun: asignaciones.size === 1 ? (asignaciones.values().next().value ?? null) : null,
+        tagsComunes: [...new Set(txs.flatMap((t) => t.tags))].sort(),
       };
     })
     .sort((a, b) => b.movimientos.length - a.movimientos.length || a.concepto.localeCompare(b.concepto));
+}
+
+export interface ReconciliacionGrupo {
+  tags: string[];
+  transferidoCts: number; // valor absoluto del total del grupo
+  gastadoCts: number; // gasto real con esas etiquetas, fuera del grupo
+  diferenciaCts: number; // gastadoCts − transferidoCts
+}
+
+/**
+ * Compara un grupo con etiquetas asignadas frente al gasto real que esas
+ * etiquetas representan FUERA del propio grupo, en el mismo periodo.
+ *
+ * El caso de uso: un traspaso grande y recurrente a otra cuenta ("Traspaso a
+ * Ahorro") que en la práctica cubre varias categorías de gasto (gasolina,
+ * súper, gasto personal...) pagadas desde esa segunda cuenta. Sin esto, cada
+ * traspaso se ve como un bloque opaco; con etiquetas asignadas se puede
+ * comprobar si lo traspasado cuadra con lo que realmente se gastó en esas
+ * categorías, o si hay una diferencia que investigar.
+ */
+export function reconciliarGrupo(grupo: GrupoConcepto, movimientosDelPeriodo: Transaccion[]): ReconciliacionGrupo | null {
+  if (grupo.tagsComunes.length === 0) return null;
+  const idsGrupo = new Set(grupo.movimientos.map((t) => t._id));
+  const gastadoCts = movimientosDelPeriodo
+    .filter((t) => !idsGrupo.has(t._id) && t.tipo === 'gasto' && t.tags.some((tag) => grupo.tagsComunes.includes(tag)))
+    .reduce((s, t) => s + Math.abs(t.importeCts), 0);
+  const transferidoCts = Math.abs(grupo.total);
+  return { tags: grupo.tagsComunes, transferidoCts, gastadoCts, diferenciaCts: gastadoCts - transferidoCts };
+}
+
+function reconciliacionHtml(rec: ReconciliacionGrupo | null): string {
+  if (!rec) {
+    return '<div class="text-sm" style="color:var(--text3)">Añade etiquetas para comparar lo traspasado con el gasto real que cubre.</div>';
+  }
+  const color = rec.diferenciaCts === 0 ? 'var(--text2)' : rec.diferenciaCts > 0 ? 'var(--red)' : 'var(--accent)';
+  const signo = rec.diferenciaCts > 0 ? '+' : '';
+  return `
+    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px">
+      <span>Traspasado: <strong style="font-family:var(--font-mono)">${esc(formatEUR(fromCents(rec.transferidoCts)))}</strong></span>
+      <span>Gastado en esas etiquetas: <strong style="font-family:var(--font-mono)">${esc(formatEUR(fromCents(rec.gastadoCts)))}</strong></span>
+      <span style="color:${color}">Diferencia: <strong style="font-family:var(--font-mono)">${signo}${esc(formatEUR(fromCents(rec.diferenciaCts)))}</strong></span>
+    </div>`;
 }
 
 export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: EstadoPanel): string {
@@ -126,7 +188,12 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
   const hoy = (deps.hoy ?? todayISO)();
   const cuentas = deps.accounts().filter((a) => a.activo);
   const agrupado = estado.vista === 'agrupado';
-  const { desde, hasta } = agrupado ? rangoPeriodo(estado.periodoDesde, estado.periodoHasta) : rangoMes(estado.mes);
+  const intervalo = estado.vista === 'intervalo';
+  const { desde, hasta } = agrupado
+    ? rangoPeriodo(estado.periodoDesde, estado.periodoHasta)
+    : intervalo
+      ? rangoIntervalo(estado.intervaloDesde, estado.intervaloHasta)
+      : rangoMes(estado.mes);
   const filtro = { cuentaId: estado.cuentaId || undefined, desde, hasta, texto: estado.filtroTexto || undefined };
   const movimientos = ledger.transacciones(filtro);
   const estimaciones = deps.estimaciones().filter((e) => e.tipo !== 'transferencia');
@@ -190,10 +257,35 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
     )
     .join('');
 
+  // El real-vs-estimado del intervalo mira el gasto proyectado mes a mes, así
+  // que no depende de la cuenta ni del texto buscado — es una vista de
+  // conjunto, no del filtro de la tabla.
+  const datosComparativa = intervalo ? compararIntervalo(ledger, estimaciones, desde, hasta) : [];
+
+  // Para la reconciliación de grupo hace falta el gasto real de TODAS las
+  // cuentas del periodo (el traspaso sale de una cuenta, pero lo que cubre se
+  // gasta normalmente en otra), no solo de la cuenta que esté filtrada.
+  const movimientosDelPeriodo = agrupado ? ledger.transacciones({ desde, hasta }) : [];
+
   const grupos = agrupado ? agruparPorConcepto(movimientos) : [];
   const filasGrupo = grupos
     .map((g) => {
       const abierto = estado.detalleAbierto.has(g.concepto);
+      const configGrupo = abierto
+        ? `<tr style="background:var(--bg2);border-bottom:1px solid var(--border)">
+             <td colspan="5" style="padding:9px 8px 9px 26px">
+               <div class="text-sm mb-6" style="color:var(--text2)">
+                 Etiquetas del grupo — para conciliar un traspaso con el gasto real que cubre (p. ej. «gasolina, super, personal»)
+               </div>
+               <div class="flex gap-8 items-center flex-wrap mb-8">
+                 ${tagChips(g.tagsComunes)}
+                 <input class="form-input" type="text" data-grp-tags="${esc(g.concepto)}" list="acc-tags-list" placeholder="añadir etiquetas…" style="flex:1;min-width:160px;font-size:12px;padding:3px 6px"/>
+                 <button class="btn-secondary btn-sm" data-grp-tags-asignar="${esc(g.concepto)}">Asignar</button>
+               </div>
+               ${reconciliacionHtml(reconciliarGrupo(g, movimientosDelPeriodo))}
+             </td>
+           </tr>`
+        : '';
       const detalle = abierto
         ? g.movimientos
             .map(
@@ -224,7 +316,7 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
         </td>
         <td style="padding:7px 8px;text-align:right;font-family:var(--font-mono);font-size:13px;white-space:nowrap">${eurColor(fromCents(g.total))}</td>
         <td></td>
-      </tr>${detalle}`;
+      </tr>${configGrupo}${detalle}`;
     })
     .join('');
 
@@ -250,7 +342,8 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
         <div class="flex justify-between items-center flex-wrap" style="gap:8px;margin-bottom:10px">
           <div class="card-title" style="margin:0">Movimientos reales</div>
           <div class="flex gap-6">
-            <button class="btn-secondary btn-sm" data-acc-vista="mensual" style="${!agrupado ? 'background:var(--accent);color:#04120c;border-color:var(--accent)' : ''}">Vista mensual</button>
+            <button class="btn-secondary btn-sm" data-acc-vista="mensual" style="${estado.vista === 'mensual' ? 'background:var(--accent);color:#04120c;border-color:var(--accent)' : ''}">Mes</button>
+            <button class="btn-secondary btn-sm" data-acc-vista="intervalo" style="${intervalo ? 'background:var(--accent);color:#04120c;border-color:var(--accent)' : ''}" title="Elige un rango de fechas concreto, aunque cruce varios meses">Intervalo</button>
             <button class="btn-secondary btn-sm" data-acc-vista="agrupado" style="${agrupado ? 'background:var(--accent);color:#04120c;border-color:var(--accent)' : ''}" title="Agrupa los gastos que se repiten con el mismo concepto en un periodo, para asignarles la estimación de golpe">Agrupar por concepto</button>
           </div>
         </div>
@@ -269,10 +362,19 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
                    <label class="form-label">Hasta</label>
                    <input class="form-input" type="month" id="acc-periodo-hasta" value="${esc(estado.periodoHasta)}" style="width:140px"/>
                  </div>`
-              : `<div class="form-group" style="margin:0">
-                   <label class="form-label">Mes</label>
-                   <input class="form-input" type="month" id="acc-mes" value="${esc(estado.mes)}" style="width:140px"/>
-                 </div>`
+              : intervalo
+                ? `<div class="form-group" style="margin:0">
+                     <label class="form-label">Desde</label>
+                     <input class="form-input" type="date" id="acc-intervalo-desde" value="${esc(estado.intervaloDesde)}" style="width:150px"/>
+                   </div>
+                   <div class="form-group" style="margin:0">
+                     <label class="form-label">Hasta</label>
+                     <input class="form-input" type="date" id="acc-intervalo-hasta" value="${esc(estado.intervaloHasta)}" style="width:150px"/>
+                   </div>`
+                : `<div class="form-group" style="margin:0">
+                     <label class="form-label">Mes</label>
+                     <input class="form-input" type="month" id="acc-mes" value="${esc(estado.mes)}" style="width:140px"/>
+                   </div>`
           }
           <div class="form-group" style="margin:0;flex:1;min-width:120px">
             <label class="form-label">Buscar</label>
@@ -324,7 +426,14 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
                      ${filas || `<tr><td colspan="8" style="padding:18px;text-align:center;color:var(--text2);font-size:13px">Sin movimientos en este periodo.</td></tr>`}
                    </tbody>
                  </table>
-               </div>`
+               </div>
+               ${
+                 intervalo
+                   ? `<div class="divider"></div>
+                      <div class="card-title mb-8">Real frente a estimado — ${esc(desde)} → ${esc(hasta)}</div>
+                      ${renderComparativaSvg(datosComparativa)}`
+                   : ''
+               }`
         }
       </div>
 
@@ -411,6 +520,14 @@ export function wireTransactionsPanel(
     estado.periodoHasta = (el as HTMLInputElement).value || estado.periodoHasta;
     refrescar();
   });
+  onChange(container, '#acc-intervalo-desde', (el) => {
+    estado.intervaloDesde = (el as HTMLInputElement).value || estado.intervaloDesde;
+    refrescar();
+  });
+  onChange(container, '#acc-intervalo-hasta', (el) => {
+    estado.intervaloHasta = (el as HTMLInputElement).value || estado.intervaloHasta;
+    refrescar();
+  });
   onClick(container, '[data-grp-detalle]', (el) => {
     const concepto = el.getAttribute('data-grp-detalle') as string;
     if (estado.detalleAbierto.has(concepto)) estado.detalleAbierto.delete(concepto);
@@ -433,6 +550,32 @@ export function wireTransactionsPanel(
     if (!grupo) return;
     for (const t of grupo.movimientos) ledger.asignarEstimacion(t._id, valorNuevo);
     toast(`Estimación asignada a ${grupo.movimientos.length} movimientos`);
+    deps.onDatosCambiados();
+    refrescar();
+  });
+  onClick(container, '[data-grp-tags-asignar]', (el) => {
+    const concepto = el.getAttribute('data-grp-tags-asignar') as string;
+    const entrada = el.closest('tr')?.querySelector<HTMLInputElement>('[data-grp-tags]') ?? null;
+    const nuevas = (entrada?.value ?? '')
+      .split(',')
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
+    if (nuevas.length === 0) return toast('Escribe al menos una etiqueta', 'err');
+    const { desde, hasta } = rangoPeriodo(estado.periodoDesde, estado.periodoHasta);
+    const movimientos = ledger.transacciones({
+      cuentaId: estado.cuentaId || undefined,
+      desde,
+      hasta,
+      texto: estado.filtroTexto || undefined,
+    });
+    const grupo = agruparPorConcepto(movimientos).find((g) => g.concepto === concepto);
+    if (!grupo) return;
+    // Se une con las etiquetas que ya tuviera cada movimiento: asignar en
+    // bloque no debe borrar una etiqueta puesta a mano en uno solo.
+    for (const t of grupo.movimientos) {
+      ledger.actualizar(t._id, { tags: [...new Set([...t.tags, ...nuevas])] });
+    }
+    toast(`Etiquetas añadidas a ${grupo.movimientos.length} movimientos`);
     deps.onDatosCambiados();
     refrescar();
   });

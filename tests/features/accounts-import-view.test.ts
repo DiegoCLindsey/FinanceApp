@@ -82,6 +82,27 @@ describe('importación de extractos', () => {
     expect(vista().querySelector('#imp-fichero')).toBeNull();
   });
 
+  it('el botón de sincronizar históricos vuelve a barrer lo ya importado sin subir nada', () => {
+    const { ledger, registry, onDatosCambiados } = entorno();
+    ledger.registrarPuntoControl('default', '2026-07-02', 2000, 'a ojo'); // dentro de lo ya importado más abajo
+    ledger.registrar({ fecha: '2026-07-01', cuentaId: 'default', importe: 10, concepto: 'x', tipo: 'gasto', origen: 'importado' });
+    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 20, concepto: 'y', tipo: 'gasto', origen: 'importado' });
+    montarEnImportar(registry);
+
+    expect(vista().innerHTML).toContain('data-imp-sincronizar');
+    clic('[data-imp-sincronizar]');
+
+    expect(ledger.puntosControl('default')).toHaveLength(0);
+    expect(onDatosCambiados).toHaveBeenCalled();
+  });
+
+  it('el botón de sincronizar históricos avisa cuando no hay nada que barrer', () => {
+    const { registry } = entorno();
+    montarEnImportar(registry);
+    clic('[data-imp-sincronizar]');
+    expect(vista().querySelector('#imp-fichero')).toBeNull(); // no ha abierto el panel de importar
+  });
+
   it('al abrir con una sola cuenta la elige sola', () => {
     montarEnImportar(entorno().registry);
     clic('[data-imp-abrir]');

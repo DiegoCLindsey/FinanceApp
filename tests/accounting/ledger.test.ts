@@ -197,6 +197,49 @@ describe('puntos de control y saldos derivados', () => {
     expect(ledger.puntosControl('default')).toHaveLength(1);
   });
 
+  it('sincronizarHistoricoImportado repite el barrido sobre el rango ya importado de cada cuenta', () => {
+    const { ledger, store } = env;
+    ledger.registrarPuntoControl('default', '2026-07-10', 800); // dentro de lo importado: se borra
+    ledger.registrarPuntoControl('default', '2026-06-01', 500); // fuera: se queda
+    ledger.registrarPuntoControl('ahorro', '2026-07-15', 900); // dentro de lo importado de ahorro: se borra
+    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 20, concepto: 'a', tipo: 'gasto', origen: 'importado' });
+    ledger.registrar({ fecha: '2026-07-20', cuentaId: 'default', importe: 30, concepto: 'b', tipo: 'gasto', origen: 'importado' });
+    ledger.registrar({ fecha: '2026-07-12', cuentaId: 'ahorro', importe: 40, concepto: 'c', tipo: 'ingreso', origen: 'importado' });
+    ledger.registrar({ fecha: '2026-07-18', cuentaId: 'ahorro', importe: 50, concepto: 'd', tipo: 'ingreso', origen: 'importado' });
+    // Un movimiento manual no cuenta como "importado": no debería crear rango propio.
+    ledger.registrar({ fecha: '2026-05-01', cuentaId: 'default', importe: 10, concepto: 'manual', tipo: 'gasto' });
+
+    const resultados = ledger.sincronizarHistoricoImportado();
+
+    expect(resultados.sort((a, b) => a.cuentaId.localeCompare(b.cuentaId))).toEqual([
+      { cuentaId: 'ahorro', eliminados: 1 },
+      { cuentaId: 'default', eliminados: 1 },
+    ]);
+    expect(ledger.puntosControl('default').map((p) => p.fecha)).toEqual(['2026-06-01']);
+    expect(ledger.puntosControl('ahorro')).toHaveLength(0);
+    expect(store.get('accounts').find((a) => a._id === 'default')?.historicoSaldos).toHaveLength(1);
+  });
+
+  it('sincronizarHistoricoImportado se puede acotar a una sola cuenta', () => {
+    const { ledger } = env;
+    ledger.registrarPuntoControl('default', '2026-07-10', 800);
+    ledger.registrarPuntoControl('ahorro', '2026-07-15', 900);
+    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 20, concepto: 'a', tipo: 'gasto', origen: 'importado' });
+    ledger.registrar({ fecha: '2026-07-20', cuentaId: 'default', importe: 25, concepto: 'e', tipo: 'gasto', origen: 'importado' });
+    ledger.registrar({ fecha: '2026-07-12', cuentaId: 'ahorro', importe: 40, concepto: 'c', tipo: 'ingreso', origen: 'importado' });
+    ledger.registrar({ fecha: '2026-07-18', cuentaId: 'ahorro', importe: 50, concepto: 'd', tipo: 'ingreso', origen: 'importado' });
+
+    expect(ledger.sincronizarHistoricoImportado('default')).toEqual([{ cuentaId: 'default', eliminados: 1 }]);
+    expect(ledger.puntosControl('ahorro')).toHaveLength(1); // no tocada
+  });
+
+  it('sincronizarHistoricoImportado no devuelve nada si no hay movimientos importados o nada que borrar', () => {
+    const { ledger } = env;
+    expect(ledger.sincronizarHistoricoImportado()).toEqual([]);
+    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 20, concepto: 'a', tipo: 'gasto', origen: 'importado' });
+    expect(ledger.sincronizarHistoricoImportado()).toEqual([]); // sin puntos de control que borrar
+  });
+
   it('saldoTotal suma las cuentas activas', () => {
     const { ledger } = env;
     ledger.registrarPuntoControl('default', '2026-07-01', 1000);

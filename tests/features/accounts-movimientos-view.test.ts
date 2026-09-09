@@ -286,6 +286,61 @@ describe('vista fusionada — pestaña Movimientos', () => {
     expect(ledger.transacciones({ texto: 'único' })[0].estimacionId).toBeNull();
   });
 
+  it('vista de intervalo: filtra por fechas concretas de varios meses y compara real vs estimado', () => {
+    const { registry, ledger } = entorno();
+    ledger.registrar({ fecha: '2026-03-05', cuentaId: 'default', importe: 40, concepto: 'Marzo', tipo: 'gasto' });
+    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 60, concepto: 'Julio', tipo: 'gasto' });
+
+    registry.mount('accounts');
+    irAPestana('movimientos');
+    // Vista mensual (julio 2026 por defecto): no ve marzo.
+    expect(contenedor().textContent).not.toContain('Marzo');
+
+    (contenedor().querySelector('[data-acc-vista="intervalo"]') as HTMLElement).click();
+    const desde = contenedor().querySelector<HTMLInputElement>('#acc-intervalo-desde') as HTMLInputElement;
+    desde.value = '2026-03-01';
+    desde.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const html = contenedor().innerHTML;
+    expect(html).toContain('Marzo');
+    expect(html).toContain('Julio');
+    expect(html).toContain('Real frente a estimado');
+    // El intervalo por defecto llega hasta julio: marzo-julio son 5 meses.
+    expect((html.match(/<polyline/g) ?? []).length).toBe(2);
+    // Solo la línea "real" lleva marcadores por punto — la de "estimado" no.
+    expect((html.match(/<circle/g) ?? []).length).toBe(5);
+  });
+
+  it('vista agrupada: asigna varias etiquetas a un grupo y compara lo traspasado con el gasto real', () => {
+    const { registry, ledger } = entorno();
+    // Traspasos recurrentes a otra cuenta que en la práctica cubren varias categorías.
+    ledger.registrar({ fecha: '2026-06-01', cuentaId: 'default', importe: 300, concepto: 'Traspaso a Ahorro', tipo: 'gasto' });
+    ledger.registrar({ fecha: '2026-07-01', cuentaId: 'default', importe: 300, concepto: 'Traspaso a Ahorro', tipo: 'gasto' });
+    // Gasto real, ya con las etiquetas que se van a asignar al grupo.
+    ledger.registrar({ fecha: '2026-06-10', cuentaId: 'default', importe: 150, concepto: 'Gasolinera', tipo: 'gasto', tags: ['gasolina'] });
+    ledger.registrar({ fecha: '2026-06-15', cuentaId: 'default', importe: 100, concepto: 'Super', tipo: 'gasto', tags: ['super'] });
+
+    registry.mount('accounts');
+    irAPestana('movimientos');
+    (contenedor().querySelector('[data-acc-vista="agrupado"]') as HTMLElement).click();
+    (contenedor().querySelector('[data-grp-detalle="Traspaso a Ahorro"]') as HTMLElement).click();
+
+    const input = contenedor().querySelector<HTMLInputElement>('[data-grp-tags="Traspaso a Ahorro"]') as HTMLInputElement;
+    input.value = 'gasolina, super';
+    (contenedor().querySelector('[data-grp-tags-asignar="Traspaso a Ahorro"]') as HTMLElement).click();
+
+    const traspasos = ledger.transacciones({ texto: 'traspaso' });
+    expect(traspasos.every((t) => t.tags.includes('gasolina') && t.tags.includes('super'))).toBe(true);
+
+    const texto = contenedor().textContent ?? '';
+    expect(texto).toContain('Traspasado');
+    expect(texto).toContain('600,00'); // 300 + 300
+    expect(texto).toContain('Gastado en esas etiquetas');
+    expect(texto).toContain('250,00'); // 150 + 100
+    expect(texto).toContain('Diferencia');
+    expect(texto).toContain('-350,00'); // 250 − 600
+  });
+
   it('escapa el contenido de texto de los movimientos', () => {
     const { registry, ledger } = entorno();
     ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 10, concepto: '<img src=x onerror=alert(1)>', tipo: 'gasto' });
