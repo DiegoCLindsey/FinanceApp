@@ -149,7 +149,13 @@ export function instalarAvisoGuardado(deps: DepsGuardado): Guardado {
         }, msExito);
       } catch (e) {
         console.error('[guardado] no se ha podido subir la copia:', e);
-        estado = 'error';
+        // Si el destino se ha desconectado entre que se marcó pendiente y que
+        // se intentó subir (sesión caducada, red caída y vuelta...) no hay
+        // nada que reintentar: mismo criterio que al suscribirse — sin nube
+        // no hay nada que avisar — así que se retira el aviso en vez de dejar
+        // un «Reintentar» que va a fallar siempre igual hasta que se
+        // reconecte un destino.
+        estado = deps.hayDestino() ? 'error' : 'oculto';
         pintar();
       } finally {
         enVuelo = null;

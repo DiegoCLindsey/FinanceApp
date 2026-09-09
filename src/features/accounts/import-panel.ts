@@ -14,6 +14,12 @@
 //  · Las filas con error no se importan nunca, pero no impiden importar el
 //    resto: un extracto con una línea de totales al final no debe bloquear las
 //    doscientas buenas.
+//  · Los movimientos importados son la verdad para su periodo: al confirmar
+//    se borran los puntos de control MANUALES de la cuenta destino que caigan
+//    dentro del rango de fechas importado (ver `eliminarPuntosControlEnRango`
+//    en el ledger). Sin esto, un checkpoint tecleado a ojo antes de tener el
+//    extracto seguiría mandando sobre el saldo calculado y el extracto real
+//    se ignoraría en silencio para esas fechas.
 
 import { formatEUR, fromCents } from '@/core/money';
 import type { ISODate } from '@/core/dates';
@@ -318,7 +324,17 @@ export function wireImportPanel(raiz: HTMLElement, deps: ImportPanelDeps, estado
       });
     }
 
-    toast(`${aImportar.length} movimiento${aImportar.length !== 1 ? 's' : ''} importado${aImportar.length !== 1 ? 's' : ''}`);
+    // El extracto manda sobre su periodo: los checkpoints manuales que caigan
+    // dentro de ese rango quedan obsoletos frente a los movimientos reales.
+    const fechas = (aImportar.map((f) => f.fecha) as ISODate[]).sort();
+    const puntosSustituidos = deps.ledger.eliminarPuntosControlEnRango(estado.cuentaId, fechas[0], fechas[fechas.length - 1]);
+
+    toast(
+      `${aImportar.length} movimiento${aImportar.length !== 1 ? 's' : ''} importado${aImportar.length !== 1 ? 's' : ''}` +
+        (puntosSustituidos > 0
+          ? ` · ${puntosSustituidos} punto${puntosSustituidos !== 1 ? 's' : ''} de control manual sustituido${puntosSustituidos !== 1 ? 's' : ''}`
+          : ''),
+    );
     Object.assign(estado, estadoImportInicial());
     deps.onDatosCambiados();
     refrescar();

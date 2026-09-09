@@ -131,6 +131,26 @@ describe('aviso de cambios sin guardar', () => {
     error.mockRestore();
   });
 
+  it('si falla porque ya no hay destino conectado, retira el aviso en vez de ofrecer un reintentar inútil', async () => {
+    let conectado = true;
+    const guardar = vi.fn(async () => {
+      if (!conectado) throw new Error('No hay ningún destino de copia conectado.');
+    });
+    const { cambios, aviso } = montar({ guardar, hayDestino: () => conectado });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    cambios.marcar('expenses');
+    // El destino se desconecta justo antes de que la subida se dispare (sesión
+    // caducada, red caída...): el mismo criterio de "sin nube no hay nada que
+    // avisar" que se aplica al suscribirse se aplica también al fallar.
+    conectado = false;
+    await aviso.guardarAhora();
+
+    expect(aviso.estado()).toBe('oculto');
+    expect(caja()).toBeNull();
+    error.mockRestore();
+  });
+
   it('tras un fallo, reintentar puede salir bien', async () => {
     let fallar = true;
     const guardar = vi.fn(async () => {

@@ -13,7 +13,7 @@ import { createAdjuster } from '@/accounting/adjust';
 import { createStore } from '@/state/store';
 import { createMemoryAdapter } from '@/state/storage/local';
 import { createFlags } from '@/flags/service';
-import type { Expense } from '@/state/schema';
+import type { Expense, Loan, Nomina } from '@/state/schema';
 
 const HOY = new Date(2026, 6, 30); // 2026-07-30
 
@@ -176,6 +176,114 @@ describe('vista fusionada — pestaña Movimientos', () => {
     select.dispatchEvent(new Event('change', { bubbles: true }));
 
     expect(ledger.transacciones()[0].estimacionId).toBe(estimacion._id);
+  });
+
+  it('la estimación relacionada también ofrece préstamos y nóminas activos', () => {
+    const { registry, store, ledger } = entorno();
+    const prestamo = store.addItem('loans', {
+      nombre: 'Hipoteca',
+      capital: 100000,
+      tin: 2,
+      meses: 240,
+      fechaInicio: '2020-01-01',
+      amortizaciones: [],
+      tags: [],
+      activo: true,
+    } satisfies Omit<Loan, '_id'>);
+    store.addItem('nominas', {
+      nombre: 'Trabajo',
+      bruto: 30000,
+      nPagas: 12,
+      irpfModo: 'auto',
+      irpfPct: 15,
+      representacion: 'simplificado',
+      cuenta: 'default',
+      activo: true,
+      tags: [],
+      grupoNomina: 'principal',
+    } satisfies Omit<Nomina, '_id'>);
+    // Uno inactivo: no debe aparecer en el selector.
+    store.addItem('loans', {
+      nombre: 'Cancelado',
+      capital: 500,
+      tin: 1,
+      meses: 12,
+      fechaInicio: '2020-01-01',
+      amortizaciones: [],
+      tags: [],
+      activo: false,
+    });
+
+    const cuota = ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 400, concepto: 'Cuota hipoteca', tipo: 'gasto' });
+    registry.mount('accounts');
+    irAPestana('movimientos');
+
+    const html = contenedor().innerHTML;
+    expect(html).toContain('Préstamo: Hipoteca');
+    expect(html).toContain('Nómina: Trabajo');
+    expect(html).not.toContain('Cancelado');
+
+    const select = contenedor().querySelector<HTMLSelectElement>(`[data-tx-estimacion="${cuota._id}"]`) as HTMLSelectElement;
+    select.value = prestamo._id;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(ledger.transacciones().find((t) => t._id === cuota._id)?.estimacionId).toBe(prestamo._id);
+  });
+
+  it('reclasifica un movimiento a transferencia y deja de contar como gasto', () => {
+    const { registry, ledger } = entorno();
+    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 100, concepto: 'Compra', tipo: 'gasto' });
+    const traspaso = ledger.registrar({
+      fecha: '2026-07-06',
+      cuentaId: 'default',
+      importe: 300,
+      concepto: 'Traspaso a Ahorro',
+      tipo: 'gasto',
+    });
+    registry.mount('accounts');
+    irAPestana('movimientos');
+
+    expect(contenedor().textContent).toContain('Gastos: -400,00');
+
+    const select = contenedor().querySelector<HTMLSelectElement>(`[data-tx-tipo="${traspaso._id}"]`) as HTMLSelectElement;
+    select.value = 'transferencia';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+
+    expect(ledger.transacciones().find((t) => t._id === traspaso._id)?.tipo).toBe('transferencia');
+    // El importe no cambia, pero deja de sumar en "Gastos".
+    expect(ledger.transacciones().find((t) => t._id === traspaso._id)?.importeCts).toBe(-30000);
+    expect(contenedor().textContent).toContain('Gastos: -100,00');
+  });
+
+  it('vista agrupada: agrupa por concepto exacto en un periodo y asigna la estimación de golpe', () => {
+    const { registry, ledger, estimacion } = entorno();
+    ledger.registrar({ fecha: '2026-05-08', cuentaId: 'default', importe: 12.99, concepto: 'Netflix', tipo: 'gasto' });
+    ledger.registrar({ fecha: '2026-06-08', cuentaId: 'default', importe: 15.99, concepto: 'Netflix', tipo: 'gasto' });
+    ledger.registrar({ fecha: '2026-07-08', cuentaId: 'default', importe: 15.99, concepto: 'Netflix', tipo: 'gasto' });
+    ledger.registrar({ fecha: '2026-07-10', cuentaId: 'default', importe: 20, concepto: 'Único', tipo: 'gasto' });
+
+    registry.mount('accounts');
+    irAPestana('movimientos');
+    (contenedor().querySelector('[data-acc-vista="agrupado"]') as HTMLElement).click();
+
+    const html = contenedor().innerHTML;
+    expect(html).toContain('Netflix');
+    expect(html).toContain('3 movimientos');
+    expect(html).not.toContain('Único'); // no se repite: no forma grupo
+
+    // Aún no hay detalle desplegado.
+    expect(contenedor().querySelectorAll('[data-tx-estimacion]')).toHaveLength(0);
+    (contenedor().querySelector('[data-grp-detalle="Netflix"]') as HTMLElement).click();
+    expect(contenedor().querySelectorAll('[data-tx-estimacion]')).toHaveLength(3);
+
+    const select = contenedor().querySelector<HTMLSelectElement>('[data-grp-estimacion="Netflix"]') as HTMLSelectElement;
+    select.value = estimacion._id;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const netflix = ledger.transacciones({ texto: 'netflix' });
+    expect(netflix).toHaveLength(3);
+    expect(netflix.every((t) => t.estimacionId === estimacion._id)).toBe(true);
+    // El movimiento suelto no se ha tocado.
+    expect(ledger.transacciones({ texto: 'único' })[0].estimacionId).toBeNull();
   });
 
   it('escapa el contenido de texto de los movimientos', () => {
