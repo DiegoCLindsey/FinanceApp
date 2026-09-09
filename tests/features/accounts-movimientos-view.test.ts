@@ -362,26 +362,33 @@ describe('vista fusionada — pestaña Cierre y precisión (panel de precisión)
     expect(contenedor().querySelector('[data-sugerir]')).toBeNull();
   });
 
-  it('muestra la precisión por estimación y por etiqueta', () => {
+  it('muestra la precisión conjunta por etiqueta', () => {
     const { registry } = entorno({ conDatos: true });
     registry.mount('accounts');
     irAPestana('cierre');
     const texto = contenedor().textContent ?? '';
-    expect(texto).toContain('Precisión de las estimaciones');
     expect(texto).toContain('Precisión conjunta por etiqueta');
     expect(texto).toContain('casa');
     // Estimado 200 vs real 310 → precisión 45 %
     expect(texto).toContain('45.0%');
   });
 
-  it('el botón de sugerencia propone la media real y aplica el ajuste', () => {
+  it('el desglose estimación a estimación es el del cierre, no una segunda tabla', () => {
+    const { registry } = entorno({ conDatos: true });
+    registry.mount('accounts');
+    irAPestana('cierre');
+    // La tabla duplicada ya no está; el detalle por estimación vive en el cierre.
+    expect(contenedor().querySelector('[data-sugerir]')).toBeNull();
+    expect(contenedor().textContent).toContain('Dónde te desviaste');
+  });
+
+  it('el botón de ajuste del cierre propone la media real y la aplica', () => {
     const { registry, store, estimacion } = entorno({ conDatos: true });
     registry.mount('accounts');
     irAPestana('cierre');
-    const boton = contenedor().querySelector<HTMLElement>('[data-sugerir]') as HTMLElement;
+    const boton = contenedor().querySelector<HTMLElement>('[data-cie-ajustar]') as HTMLElement;
     expect(boton.textContent).toContain('155'); // media de 150 y 160
 
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     boton.click();
 
     const expenses = store.get('expenses');
@@ -392,12 +399,12 @@ describe('vista fusionada — pestaña Cierre y precisión (panel de precisión)
     expect(nueva?.fechaInicio).toBe('2026-07-30');
   });
 
-  it('cancelar la confirmación no aplica el ajuste', () => {
+  it('cancelar la confirmación de «ajustar todas» no aplica nada', () => {
     const { registry, store } = entorno({ conDatos: true });
     registry.mount('accounts');
     irAPestana('cierre');
     vi.spyOn(window, 'confirm').mockReturnValue(false);
-    (contenedor().querySelector('[data-sugerir]') as HTMLElement).click();
+    (contenedor().querySelector('#ajustar-todas') as HTMLElement).click();
     expect(store.get('expenses')).toHaveLength(1);
   });
 

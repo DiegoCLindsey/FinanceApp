@@ -14,15 +14,32 @@ import { todayISO, type ISODate } from '@/core/dates';
 import type { Ledger } from '@/accounting/ledger';
 import type { Adjuster } from '@/accounting/adjust';
 import type { PrecisionAnalyzer } from '@/accounting/precision';
-import { cerrarMes, cerrarPeriodo, mesAnterior, mesesConDatos, type CierreMes } from '@/accounting/cierre-mes';
-import type { Expense } from '@/state/schema';
-import { esc, nombreMes, onChange, onClick, toast } from '../accounting/dom';
+import {
+  cerrarMes,
+  cerrarPeriodo,
+  mesAnterior,
+  mesesConDatos,
+  previsionesDelPeriodo,
+  type CierreMes,
+  type GrupoSinEstimacion,
+  type OpcionesCierre,
+} from '@/accounting/cierre-mes';
+import type { Expense, Loan, Nomina } from '@/state/schema';
+import { confirmar, esc, nombreMes, onChange, onClick, toast } from '../accounting/dom';
+import { renderAnillosTag } from './anillos-tag';
 
 export interface CierrePanelDeps {
   ledger: Ledger;
   precision: PrecisionAnalyzer;
   adjuster: Adjuster;
   estimaciones: () => Expense[];
+  /** Nóminas y préstamos: lo previsible que no vive en `expenses`. */
+  nominas: () => Nomina[];
+  loans: () => Loan[];
+  resolverTramosIRPF?: () => (año: number) => [number, number][];
+  /** Conceptos que el usuario ha decidido no contar, y cómo cambiarlos. */
+  omitidos: () => string[];
+  setOmitidos: (claves: string[]) => void;
   onDatosCambiados: () => void;
   /** Intervalo configurado en la cabecera del dashboard. */
   periodo: () => { desde: ISODate; hasta: ISODate };
@@ -59,16 +76,59 @@ export function mesEfectivo(deps: CierrePanelDeps, estado: EstadoCierre): string
 export function calcularCierre(deps: CierrePanelDeps, estado: EstadoCierre): CierreMes {
   const hoy = (deps.hoy ?? todayISO)();
   const estimaciones = deps.estimaciones();
+  const comunes: OpcionesCierre = {
+    hoy,
+    nominas: deps.nominas(),
+    loans: deps.loans(),
+    resolverTramosIRPF: deps.resolverTramosIRPF?.(),
+    omitidos: deps.omitidos(),
+  };
   if (estado.modo === 'periodo') {
     const { desde, hasta } = deps.periodo();
     // El análisis de precisión se restringe al mismo intervalo: si no, las
     // sugerencias de ajuste hablarían de un histórico que no es el que se está
     // mirando en pantalla.
     const analisis = deps.precision.analizarTodas(estimaciones, { hoy, desde, hasta });
-    return cerrarPeriodo(deps.ledger, estimaciones, desde, hasta, { analisis, hoy });
+    return cerrarPeriodo(deps.ledger, estimaciones, desde, hasta, { ...comunes, analisis });
   }
   const analisis = deps.precision.analizarTodas(estimaciones, { hoy });
-  return cerrarMes(deps.ledger, estimaciones, mesEfectivo(deps, estado), { analisis, hoy });
+  return cerrarMes(deps.ledger, estimaciones, mesEfectivo(deps, estado), { ...comunes, analisis });
+}
+
+/** Opciones del desplegable «Asignar a…», ya en HTML, por tipo de movimiento. */
+interface OpcionesAsignar {
+  gasto: string;
+  ingreso: string;
+}
+
+/**
+ * A qué se puede asignar un grupo de imprevistos: a cualquier previsión del
+ * mismo signo. Se sacan de `previsionesDelPeriodo` para que la lista sea la
+ * misma que compara el cierre, préstamos y nóminas incluidos.
+ */
+function opcionesAsignar(deps: CierrePanelDeps): OpcionesAsignar {
+  const hoy = (deps.hoy ?? todayISO)();
+  const previsiones = previsionesDelPeriodo(deps.estimaciones(), hoy, hoy, {
+    nominas: deps.nominas(),
+    loans: deps.loans(),
+    resolverTramosIRPF: deps.resolverTramosIRPF?.(),
+  });
+  const opciones = (tipo: 'gasto' | 'ingreso') =>
+    previsiones
+      .filter((p) => p.tipo === tipo)
+      .map((p) => `<option value="${esc(p._id)}">${esc(p.concepto)}</option>`)
+      .join('');
+  return { gasto: opciones('gasto'), ingreso: opciones('ingreso') };
+}
+
+/**
+ * El mismo importe repartido entre los meses del periodo. Un total de 21.000 €
+ * no dice nada por sí solo: son cinco meses o uno, y la cifra cambia de
+ * significado por completo.
+ */
+function alMes(total: number, meses: number): string {
+  if (meses <= 0) return '—';
+  return `${esc(formatEUR(total / meses))}/mes`;
 }
 
 /** Botón de modo, con el aspecto de pestaña seleccionada del resto de vistas. */
@@ -126,34 +186,49 @@ export function renderCierrePanel(deps: CierrePanelDeps, estado: EstadoCierre): 
         ${controles}
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:6px">
         <div class="stat-card" style="padding:12px">
           <div class="stat-label">Gasto</div>
           <div class="stat-value" style="font-size:1.15rem">${esc(formatEUR(c.real))}</div>
-          <div class="stat-sub">previsto ${esc(formatEUR(c.estimado))} · ${signo(c.desviacion)}${esc(formatEUR(c.desviacion))}</div>
+          <div class="stat-sub">${alMes(c.real, c.meses)} · previsto ${esc(formatEUR(c.estimado))} (${alMes(c.estimado, c.meses)})</div>
+          <div class="stat-sub">${signo(c.desviacion)}${esc(formatEUR(c.desviacion))} · ${signo(c.desviacion)}${alMes(c.desviacion, c.meses)}</div>
         </div>
         <div class="stat-card" style="padding:12px">
           <div class="stat-label">Ingresos</div>
           <div class="stat-value" style="font-size:1.15rem">${esc(formatEUR(c.ingresosReales))}</div>
-          <div class="stat-sub">previsto ${esc(formatEUR(c.ingresosEstimados))} · ${signo(c.desviacionIngresos)}${esc(formatEUR(c.desviacionIngresos))}</div>
+          <div class="stat-sub">${alMes(c.ingresosReales, c.meses)} · previsto ${esc(formatEUR(c.ingresosEstimados))} (${alMes(c.ingresosEstimados, c.meses)})</div>
+          <div class="stat-sub">${signo(c.desviacionIngresos)}${esc(formatEUR(c.desviacionIngresos))} · ${signo(c.desviacionIngresos)}${alMes(c.desviacionIngresos, c.meses)}</div>
         </div>
         <div class="stat-card" style="padding:12px">
           <div class="stat-label">Desviación neta</div>
           <div class="stat-value" style="font-size:1.15rem;color:${colorDesv}">${signo(c.desviacionNeta)}${esc(formatEUR(c.desviacionNeta))}</div>
+          <div class="stat-sub">${signo(c.desviacionNeta)}${alMes(c.desviacionNeta, c.meses)}</div>
           <div class="stat-sub">neto real ${esc(formatEUR(c.netoReal))} · previsto ${esc(formatEUR(c.netoEstimado))}</div>
         </div>
         <div class="stat-card" style="padding:12px">
           <div class="stat-label">Sin prever</div>
           <div class="stat-value" style="font-size:1.15rem;color:${c.totalSinEstimacion > 0 ? 'var(--yellow)' : 'var(--text)'}">${esc(formatEUR(c.totalSinEstimacion))}</div>
-          <div class="stat-sub">${c.sinEstimacion.length} concepto${c.sinEstimacion.length !== 1 ? 's' : ''} de gasto${
-            c.totalIngresosSinPrever > 0 ? ` · ${esc(formatEUR(c.totalIngresosSinPrever))} de ingreso` : ''
-          }</div>
+          <div class="stat-sub">${alMes(c.totalSinEstimacion, c.meses)} · ${c.sinEstimacion.length} concepto${c.sinEstimacion.length !== 1 ? 's' : ''} de gasto</div>
+          <div class="stat-sub">${c.totalIngresosSinPrever > 0 ? `${esc(formatEUR(c.totalIngresosSinPrever))} de ingreso` : 'sin ingresos sueltos'}</div>
         </div>
+      </div>
+      <div class="text-sm mb-12" style="color:var(--text3)">
+        El periodo son ${esc(c.meses.toFixed(1).replace('.', ','))} meses; «/mes» es el total repartido entre ellos.
       </div>
 
       ${tablaDesviaciones(c)}
-      ${bloqueSinPrever(c)}
-      ${bloqueIngresosSinPrever(c)}
+      ${bloqueSinPrever(c, opcionesAsignar(deps))}
+      ${bloqueIngresosSinPrever(c, opcionesAsignar(deps))}
+      ${bloqueOmitidos(c)}
+    </div>
+
+    <div class="card mb-14">
+      <div class="card-title mb-8">Real frente a previsto por etiqueta</div>
+      <div class="text-sm mb-12" style="color:var(--text3)">
+        Cada anillo es una etiqueta: cuánto llevas gastado de lo que tenías previsto en el periodo.
+        Un movimiento con varias etiquetas cuenta en todas, así que los anillos no reparten el total.
+      </div>
+      ${renderAnillosTag(c.porTag)}
     </div>`;
 }
 
@@ -222,7 +297,40 @@ function tablaDesviaciones(c: CierreMes): string {
     }`;
 }
 
-function bloqueSinPrever(c: CierreMes): string {
+/**
+ * Una fila de la lista de imprevistos, con lo que se puede hacer con ella.
+ *
+ * Enseñar el problema sin dar la salida era la mitad del trabajo: la lista se
+ * repetía mes a mes con los mismos veinte conceptos. Ahora cada grupo se puede
+ * asignar entero a una previsión (deja de ser imprevisto y pasa a compararse) u
+ * omitir (deja de contar, como una transferencia).
+ */
+function filaSinPrever(g: GrupoSinEstimacion, meses: number, opciones: string, color: string): string {
+  return `<tr>
+    <td style="font-size:12px">${esc(g.concepto)}</td>
+    <td style="text-align:right;font-size:12px;color:var(--text3)">${g.movimientos}</td>
+    <td style="text-align:right;font-family:var(--font-mono);font-size:12px;color:${color}">${esc(formatEUR(g.total))}</td>
+    <td style="text-align:right;font-family:var(--font-mono);font-size:11px;color:var(--text3)">${alMes(g.total, meses)}</td>
+    <td style="text-align:right;white-space:nowrap">
+      <select class="form-select" data-cie-asignar="${esc(g.clave)}" style="font-size:11px;padding:2px 6px;max-width:150px">
+        <option value="">Asignar a…</option>
+        ${opciones}
+      </select>
+      <button class="btn-secondary btn-sm" data-cie-omitir="${esc(g.clave)}" title="No contar este concepto en el cierre"
+              style="font-size:11px;padding:2px 8px;margin-left:4px">Omitir</button>
+    </td>
+  </tr>`;
+}
+
+const CABECERA_SIN_PREVER = `<thead><tr>
+  <th style="cursor:default">Concepto</th>
+  <th style="cursor:default;text-align:right">Movimientos</th>
+  <th style="cursor:default;text-align:right">Total</th>
+  <th style="cursor:default;text-align:right">Al mes</th>
+  <th style="cursor:default"></th>
+</tr></thead>`;
+
+function bloqueSinPrever(c: CierreMes, opciones: OpcionesAsignar): string {
   if (c.sinEstimacion.length === 0) {
     return `<div class="alert-card alert-info">
       <div class="alert-icon">✓</div>
@@ -236,25 +344,16 @@ function bloqueSinPrever(c: CierreMes): string {
   return `
     <div class="card-title mb-8">Gasto que no tenías previsto</div>
     <div class="text-sm mb-8" style="color:var(--text3)">
-      Movimientos que no cuadran con ninguna estimación. Si alguno se repite mes a mes, merece una estimación propia.
+      Movimientos que no cuadran con ninguna previsión. Asigna el grupo entero a una estimación
+      (o a un préstamo) si es eso, u omítelo si no es gasto tuyo — un traspaso interno, por ejemplo.
     </div>
     <div class="table-wrap">
-      <table style="min-width:320px">
-        <thead><tr>
-          <th style="cursor:default">Concepto</th>
-          <th style="cursor:default;text-align:right">Movimientos</th>
-          <th style="cursor:default;text-align:right">Total</th>
-        </tr></thead>
+      <table style="min-width:520px">
+        ${CABECERA_SIN_PREVER}
         <tbody>
           ${c.sinEstimacion
             .slice(0, 10)
-            .map(
-              (g) => `<tr>
-                <td style="font-size:12px">${esc(g.concepto)}</td>
-                <td style="text-align:right;font-size:12px;color:var(--text3)">${g.movimientos}</td>
-                <td style="text-align:right;font-family:var(--font-mono);font-size:12px;color:var(--yellow)">${esc(formatEUR(g.total))}</td>
-              </tr>`,
-            )
+            .map((g) => filaSinPrever(g, c.meses, opciones.gasto, 'var(--yellow)'))
             .join('')}
         </tbody>
       </table>
@@ -262,12 +361,30 @@ function bloqueSinPrever(c: CierreMes): string {
     ${c.sinEstimacion.length > 10 ? `<div class="text-sm mt-8" style="color:var(--text3)">…y ${c.sinEstimacion.length - 10} concepto(s) más.</div>` : ''}`;
 }
 
+/** Lo que el usuario ha decidido no contar, con la puerta de vuelta. */
+function bloqueOmitidos(c: CierreMes): string {
+  if (c.omitidos.length === 0) return '';
+  return `
+    <div class="card-title mb-8 mt-14">No se cuentan</div>
+    <div class="text-sm mb-8" style="color:var(--text3)">
+      ${c.omitidos.length} concepto(s) omitido(s), ${esc(formatEUR(c.totalOmitido))} en el periodo. No suman ni en gasto ni en ingresos.
+    </div>
+    <div class="flex gap-6 flex-wrap">
+      ${c.omitidos
+        .map(
+          (g) => `<button class="btn-secondary btn-sm" data-cie-restaurar="${esc(g.clave)}" title="Volver a contarlo"
+                    style="font-size:11px;padding:2px 9px">${esc(g.concepto)} · ${esc(formatEUR(g.total))} ✕</button>`,
+        )
+        .join('')}
+    </div>`;
+}
+
 /**
  * Ingresos que no preveía ninguna estimación. Suelen ser el otro lado de un
  * traspaso entre cuentas propias: el cargo aparece como gasto y, si el abono no
  * se cuenta en ninguna parte, la desviación se dispara sin motivo.
  */
-function bloqueIngresosSinPrever(c: CierreMes): string {
+function bloqueIngresosSinPrever(c: CierreMes, opciones: OpcionesAsignar): string {
   if (c.ingresosSinPrever.length === 0) return '';
   return `
     <div class="card-title mb-8 mt-14">Ingresos que no tenías previstos</div>
@@ -276,22 +393,12 @@ function bloqueIngresosSinPrever(c: CierreMes): string {
       y dejará de contar en los dos sitios.
     </div>
     <div class="table-wrap">
-      <table style="min-width:320px">
-        <thead><tr>
-          <th style="cursor:default">Concepto</th>
-          <th style="cursor:default;text-align:right">Movimientos</th>
-          <th style="cursor:default;text-align:right">Total</th>
-        </tr></thead>
+      <table style="min-width:520px">
+        ${CABECERA_SIN_PREVER}
         <tbody>
           ${c.ingresosSinPrever
             .slice(0, 10)
-            .map(
-              (g) => `<tr>
-                <td style="font-size:12px">${esc(g.concepto)}</td>
-                <td style="text-align:right;font-size:12px;color:var(--text3)">${g.movimientos}</td>
-                <td style="text-align:right;font-family:var(--font-mono);font-size:12px;color:var(--accent)">${esc(formatEUR(g.total))}</td>
-              </tr>`,
-            )
+            .map((g) => filaSinPrever(g, c.meses, opciones.ingreso, 'var(--accent)'))
             .join('')}
         </tbody>
       </table>
@@ -307,6 +414,41 @@ export function wireCierrePanel(raiz: HTMLElement, deps: CierrePanelDeps, estado
 
   onClick(raiz, '[data-cie-modo]', (el) => {
     estado.modo = (el.getAttribute('data-cie-modo') as EstadoCierre['modo']) || 'mes';
+    refrescar();
+  });
+
+  // Omitir es una decisión sobre el CONCEPTO, no sobre los movimientos de este
+  // periodo: si no, habría que repetirla cada mes con el mismo traspaso.
+  onClick(raiz, '[data-cie-omitir]', (el) => {
+    const clave = el.getAttribute('data-cie-omitir') as string;
+    const actuales = deps.omitidos();
+    if (actuales.includes(clave)) return;
+    deps.setOmitidos([...actuales, clave]);
+    toast('Concepto omitido: deja de contar en el cierre');
+    refrescar();
+  });
+
+  onClick(raiz, '[data-cie-restaurar]', (el) => {
+    const clave = el.getAttribute('data-cie-restaurar') as string;
+    deps.setOmitidos(deps.omitidos().filter((k) => k !== clave));
+    refrescar();
+  });
+
+  onChange(raiz, '[data-cie-asignar]', (el) => {
+    const select = el as HTMLSelectElement;
+    const clave = select.getAttribute('data-cie-asignar') as string;
+    const destino = select.value;
+    if (!destino) return;
+    const c = calcularCierre(deps, estado);
+    const grupo = [...c.sinEstimacion, ...c.ingresosSinPrever].find((g) => g.clave === clave);
+    if (!grupo) return;
+    if (!confirmar(`Se van a asignar ${grupo.movimientos} movimiento(s) de «${grupo.concepto}». ¿Continuar?`)) {
+      select.value = '';
+      return;
+    }
+    for (const id of grupo.ids) deps.ledger.asignarEstimacion(id, destino);
+    toast(`${grupo.movimientos} movimiento(s) asignados`);
+    deps.onDatosCambiados();
     refrescar();
   });
 

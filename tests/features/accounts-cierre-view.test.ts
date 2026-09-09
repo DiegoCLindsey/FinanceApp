@@ -273,3 +273,97 @@ describe('cierre sobre el periodo de la cabecera', () => {
     expect(cierre().textContent).toContain('No hay movimientos registrados');
   });
 });
+
+// Lo previsto no vive solo en `expenses`, y la lista de imprevistos ahora tiene
+// salida: asignar el grupo entero u omitirlo.
+describe('previsión completa e imprevistos accionables', () => {
+  beforeEach(() => montarShell());
+
+  const nomina = {
+    nombre: 'Sueldo',
+    bruto: 30000,
+    nPagas: 12,
+    irpfModo: 'manual' as const,
+    irpfPct: 15,
+    representacion: 'simplificado' as const,
+    fechaInicio: '2025-01-05',
+    fechaFin: null,
+    cuenta: 'default',
+    activo: true,
+    tags: ['nomina'],
+    grupoNomina: '',
+  };
+
+  it('la nómina cuenta como ingreso previsto', () => {
+    const { store, ledger, registry } = entorno();
+    store.addItem('nominas', nomina);
+    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 1966.25, concepto: 'NOMINA', tipo: 'ingreso', tags: ['nomina'] });
+    montarEnCierre(registry);
+
+    const txt = cierre().textContent ?? '';
+    expect(txt).toContain('Ingresos');
+    expect(txt).toContain('1966,25'); // previsto y real coinciden
+    expect(txt).not.toContain('previsto 0,00 € ·');
+  });
+
+  it('omitir un concepto lo saca del cierre y se puede restaurar', () => {
+    const { store, ledger, registry } = entorno();
+    registrar(ledger, '2026-07-12', 300, 'TRASPASO A CUENTA 2');
+    registrar(ledger, '2026-07-15', 40, 'BAR PEPE');
+    montarEnCierre(registry);
+
+    (cierre().querySelector('[data-cie-omitir="traspaso a cuenta"]') as HTMLElement).click();
+    expect(store.get('config').cierreOmitidos).toEqual(['traspaso a cuenta']);
+    const txt = cierre().textContent ?? '';
+    expect(txt).toContain('No se cuentan');
+    expect(txt).toContain('300,00');
+
+    (cierre().querySelector('[data-cie-restaurar="traspaso a cuenta"]') as HTMLElement).click();
+    expect(store.get('config').cierreOmitidos).toEqual([]);
+  });
+
+  it('asignar un grupo de imprevistos lo mete en su estimación', () => {
+    const { store, ledger, registry } = entorno();
+    const luz = store.addItem('expenses', gasto({ concepto: 'Luz', cuantia: 100, tags: [] }));
+    const a = registrar(ledger, '2026-07-10', 60, 'ENDESA JULIO');
+    const b = registrar(ledger, '2026-07-20', 70, 'ENDESA JULIO 2');
+    montarEnCierre(registry);
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const select = cierre().querySelector('[data-cie-asignar]') as HTMLSelectElement;
+    select.value = luz._id;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const tx = ledger.transacciones({ estimacionId: luz._id }).map((t) => t._id);
+    expect(tx.sort()).toEqual([a._id, b._id].sort());
+    expect(cierre().textContent).toContain('Todo el gasto estaba previsto');
+  });
+
+  it('enseña el total y la media mensual del periodo', () => {
+    const { store, ledger, registry } = entorno();
+    store.set('config', { ...store.get('config'), dashboardStart: '2026-05-01', dashboardEnd: '2026-06-30' });
+    registrar(ledger, '2026-05-10', 100, 'ENDESA');
+    registrar(ledger, '2026-06-10', 300, 'ENDESA');
+    montarEnCierre(registry);
+    clic('[data-cie-modo="periodo"]');
+
+    const txt = (cierre().textContent ?? '').replace(/\s+/g, ' ');
+    expect(txt).toContain('400,00'); // total
+    expect(txt).toContain('200,00 €/mes'); // dos meses exactos
+    expect(txt).toContain('2,0 meses');
+  });
+
+  it('pinta un anillo por etiqueta con lo real frente a lo previsto', () => {
+    const { store, ledger, registry } = entorno();
+    store.addItem('expenses', gasto({ concepto: 'Luz', cuantia: 100, tags: ['casa'] }));
+    registrar(ledger, '2026-07-10', 130, 'ENDESA', { tags: ['casa'] });
+    registrar(ledger, '2026-07-12', 60, 'BAR', { tags: ['ocio'] });
+    montarEnCierre(registry);
+
+    const svgs = cierre().querySelectorAll('svg[role="img"]');
+    expect(svgs.length).toBe(2);
+    const titulos = [...cierre().querySelectorAll('svg title')].map((t) => t.textContent ?? '');
+    expect(titulos.some((t) => t.startsWith('casa: real 130,00'))).toBe(true);
+    expect(titulos.some((t) => t.startsWith('ocio: real 60,00'))).toBe(true);
+  });
+});
