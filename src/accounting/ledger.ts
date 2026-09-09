@@ -188,6 +188,31 @@ export function createLedger(store: LedgerStoreLike) {
   }
 
   /**
+   * Repite el barrido de `eliminarPuntosControlEnRango` a mano, sobre el rango
+   * real de fechas ya importadas de cada cuenta (o de una sola, si se indica),
+   * sin tener que volver a subir el CSV. Sirve para limpiar históricos
+   * manuales que se colaron después de importar (p.ej. un punto de control
+   * tecleado por error, o datos importados antes de que este barrido
+   * existiera). Devuelve solo las cuentas donde de verdad se ha borrado algo.
+   */
+  function sincronizarHistoricoImportado(cuentaId?: string): { cuentaId: string; eliminados: number }[] {
+    const importadas = store.get('transacciones').filter((t) => t.origen === 'importado' && (!cuentaId || t.cuentaId === cuentaId));
+    const porCuenta = new Map<string, ISODate[]>();
+    for (const t of importadas) {
+      const fechas = porCuenta.get(t.cuentaId);
+      if (fechas) fechas.push(t.fecha);
+      else porCuenta.set(t.cuentaId, [t.fecha]);
+    }
+    const resultados: { cuentaId: string; eliminados: number }[] = [];
+    for (const [cid, fechas] of porCuenta) {
+      fechas.sort();
+      const eliminados = eliminarPuntosControlEnRango(cid, fechas[0], fechas[fechas.length - 1]);
+      if (eliminados > 0) resultados.push({ cuentaId: cid, eliminados });
+    }
+    return resultados;
+  }
+
+  /**
    * Puente temporal: replica los puntos de control en
    * `accounts[].historicoSaldos`, que es lo que leen el motor legacy y el
    * dashboard. Se elimina al portar el dashboard (tarea 1.7).
@@ -297,6 +322,7 @@ export function createLedger(store: LedgerStoreLike) {
     registrarPuntoControl,
     eliminarPuntoControl,
     eliminarPuntosControlEnRango,
+    sincronizarHistoricoImportado,
     saldoCuenta,
     saldoCuentaCts,
     saldoTotal,

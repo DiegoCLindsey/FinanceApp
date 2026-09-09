@@ -20,6 +20,11 @@
 //    en el ledger). Sin esto, un checkpoint tecleado a ojo antes de tener el
 //    extracto seguiría mandando sobre el saldo calculado y el extracto real
 //    se ignoraría en silencio para esas fechas.
+//  · Ese barrido también se puede lanzar A MANO, sin repetir la importación
+//    (botón "Sincronizar históricos"): cubre el extracto ya importado antes
+//    de que este barrido existiera, o un punto de control añadido después por
+//    error. Recorre TODAS las cuentas con movimientos importados, no solo la
+//    que se estaba subiendo.
 
 import { formatEUR, fromCents } from '@/core/money';
 import type { ISODate } from '@/core/dates';
@@ -91,7 +96,10 @@ export function renderImportPanel(deps: ImportPanelDeps, estado: EstadoImport): 
               Sube el CSV que descargas del banco en vez de teclear los movimientos.
             </div>
           </div>
-          <button class="btn-secondary btn-sm" data-imp-abrir>Importar CSV</button>
+          <div class="flex gap-8">
+            <button class="btn-secondary btn-sm" data-imp-sincronizar title="Vuelve a borrar los históricos manuales dentro del rango ya importado de cada cuenta, sin subir nada nuevo">↻ Sincronizar históricos</button>
+            <button class="btn-secondary btn-sm" data-imp-abrir>Importar CSV</button>
+          </div>
         </div>
       </div>`;
   }
@@ -251,6 +259,17 @@ function bloqueAnalisis(estado: EstadoImport, analisis: AnalisisCsv, mapeo: Mape
 }
 
 export function wireImportPanel(raiz: HTMLElement, deps: ImportPanelDeps, estado: EstadoImport, refrescar: () => void): void {
+  onClick(raiz, '[data-imp-sincronizar]', () => {
+    const resultados = deps.ledger.sincronizarHistoricoImportado();
+    if (resultados.length === 0) return toast('Nada que sincronizar: ningún histórico manual coincide con lo importado');
+    const nombreCuenta = (id: string) => deps.accounts().find((a) => a._id === id)?.nombre ?? id;
+    const total = resultados.reduce((s, r) => s + r.eliminados, 0);
+    const detalle = resultados.map((r) => `${nombreCuenta(r.cuentaId)} (${r.eliminados})`).join(', ');
+    toast(`${total} punto${total !== 1 ? 's' : ''} de control sustituido${total !== 1 ? 's' : ''} · ${detalle}`);
+    deps.onDatosCambiados();
+    refrescar();
+  });
+
   onClick(raiz, '[data-imp-abrir]', () => {
     const cuentas = deps.accounts().filter((a) => a.activo);
     Object.assign(estado, estadoImportInicial(), {
