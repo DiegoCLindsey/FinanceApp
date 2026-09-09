@@ -251,6 +251,12 @@ export interface AppConfig {
   histCuenta: string;
   analisisCollapsed: boolean;
   activeTagsFilter: string[];
+  /**
+   * Conceptos (normalizados) que el cierre no cuenta: traspasos internos,
+   * movimientos de una cuenta que se lleva aparte… Se omiten enteros, igual que
+   * las transferencias, en vez de aparecer como gasto imprevisto cada mes.
+   */
+  cierreOmitidos?: string[];
   // tagCategorias + tagGrupos se unifican en 1.9 (docs/03, B3)
   tagCategorias: string[];
   tagGrupos: string[];
@@ -358,6 +364,7 @@ export function defaultConfig(hoyISO: ISODate, finISO: ISODate): AppConfig {
     histCuenta: '',
     analisisCollapsed: false,
     activeTagsFilter: [],
+    cierreOmitidos: [],
     tagCategorias: [],
     tagGrupos: [],
     saludUmbralAhorroVerde: 20,

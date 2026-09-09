@@ -124,6 +124,14 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
     precision: deps.precision,
     adjuster: deps.adjuster,
     estimaciones,
+    // Lo previsto no vive solo en `expenses`: la nómina y la cuota del préstamo
+    // son lo más previsible que hay, y sin ellas el cierre daba «previsto 0» en
+    // ingresos y la hipoteca salía como gasto imprevisto todos los meses.
+    nominas: () => deps.store.get('nominas'),
+    loans: () => deps.store.get('loans'),
+    resolverTramosIRPF: () => crearResolverTramos(deps.store.get('tramosIRPFHistorico'), config().tramos_irpf ?? TRAMOS_IRPF_DEFAULT),
+    omitidos: () => config().cierreOmitidos ?? [],
+    setOmitidos: (claves: string[]) => deps.store.patchConfig({ cierreOmitidos: claves }),
     onDatosCambiados: notificar,
     periodo: periodoHeader,
     hoy,

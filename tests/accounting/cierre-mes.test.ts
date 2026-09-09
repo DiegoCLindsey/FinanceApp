@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { cerrarMes, cerrarPeriodo, mesAnterior, mesesConDatos, rangoDelMes } from '@/accounting/cierre-mes';
+import { cerrarMes, cerrarPeriodo, mesAnterior, mesesConDatos, mesesDelPeriodo, rangoDelMes } from '@/accounting/cierre-mes';
 import { createLedger, type Ledger } from '@/accounting/ledger';
 import { createPrecisionAnalyzer } from '@/accounting/precision';
 import { createStore } from '@/state/store';
@@ -405,5 +405,140 @@ describe('el cierre también compara los ingresos', () => {
     const c = cerrarMes(ledger, store.get('expenses'), '2026-07');
     expect(c.filas.find((f) => f.tipo === 'ingreso')?.real).toBe(0);
     expect(c.totalSinEstimacion).toBe(100);
+  });
+});
+
+// «Lo previsto» no vive solo en `expenses`: la nómina está en su colección y la
+// cuota del préstamo sale de su cuadro de amortización. Mientras el cierre solo
+// miraba las estimaciones, los ingresos previstos salían a cero y la hipoteca
+// aparecía como gasto imprevisto todos los meses.
+describe('nóminas y préstamos también son previsión', () => {
+  let ledger: Ledger;
+
+  beforeEach(() => {
+    ledger = entorno().ledger;
+  });
+
+  const nomina = {
+    _id: 'n1',
+    nombre: 'Sueldo',
+    bruto: 30000,
+    nPagas: 12,
+    irpfModo: 'manual' as const,
+    irpfPct: 15,
+    representacion: 'simplificado' as const,
+    fechaInicio: '2025-01-05',
+    fechaFin: null,
+    cuenta: 'default',
+    activo: true,
+    tags: ['nomina'],
+    grupoNomina: '',
+  };
+
+  const prestamo = {
+    _id: 'l1',
+    nombre: 'Coche',
+    capital: 12000,
+    tin: 5,
+    meses: 48,
+    fechaInicio: '2025-06-01',
+    comisionApertura: 0,
+    comisionAmort: 0,
+    amortizaciones: [],
+    cuenta: 'default',
+    tags: ['coche'],
+    activo: true,
+  };
+
+  it('la nómina cuenta como ingreso previsto, por su neto', () => {
+    const c = cerrarMes(ledger, [], '2026-07', { nominas: [nomina] });
+    // 2500 brutos − SS 6,35 % (158,75) − IRPF 15 % (375) = 1966,25
+    expect(c.ingresosEstimados).toBeCloseTo(1966.25, 2);
+    expect(c.filas.find((f) => f.origen === 'nomina')?.concepto).toBe('Sueldo');
+  });
+
+  it('el ingreso real de la nómina se le asigna por etiqueta y deja de ser imprevisto', () => {
+    ledger.registrar({
+      fecha: '2026-07-05',
+      cuentaId: 'default',
+      importe: 1966.25,
+      concepto: 'NOMINA JULIO',
+      tipo: 'ingreso',
+      tags: ['nomina'],
+    });
+    const c = cerrarMes(ledger, [], '2026-07', { nominas: [nomina] });
+    expect(c.filas.find((f) => f.origen === 'nomina')?.real).toBeCloseTo(1966.25, 2);
+    expect(c.ingresosSinPrever).toEqual([]);
+    expect(c.desviacionNeta).toBeCloseTo(0, 2);
+  });
+
+  it('la cuota del préstamo es gasto previsto, no un imprevisto', () => {
+    const c = cerrarMes(ledger, [], '2026-07', { loans: [prestamo] });
+    const fila = c.filas.find((f) => f.origen === 'prestamo');
+    expect(fila?.concepto).toBe('Cuota Coche');
+    expect(fila?.estimado).toBeGreaterThan(0);
+
+    registrar(ledger, '2026-07-01', fila?.estimado ?? 0, 'CUOTA COCHE', { tags: ['coche'] });
+    const conPago = cerrarMes(ledger, [], '2026-07', { loans: [prestamo] });
+    expect(conPago.sinEstimacion).toEqual([]);
+    expect(conPago.desviacion).toBeCloseTo(0, 2);
+  });
+
+  it('ni la nómina ni el préstamo proponen ajuste: no son estimaciones ajustables', () => {
+    const c = cerrarMes(ledger, [], '2026-07', { nominas: [nomina], loans: [prestamo] });
+    expect(c.filas.every((f) => f.sugerencia === null)).toBe(true);
+  });
+});
+
+describe('omitir conceptos del cierre', () => {
+  let ledger: Ledger;
+
+  beforeEach(() => {
+    ledger = entorno().ledger;
+  });
+
+  it('un concepto omitido no cuenta como gasto ni sale en la lista', () => {
+    registrar(ledger, '2026-07-10', 100, 'ENDESA');
+    registrar(ledger, '2026-07-12', 300, 'TRASPASO A CUENTA 2');
+    registrar(ledger, '2026-07-20', 250, 'TRASPASO A CUENTA 2');
+
+    const c = cerrarMes(ledger, [], '2026-07', { omitidos: ['traspaso a cuenta'] });
+    expect(c.real).toBe(100);
+    expect(c.sinEstimacion.map((g) => g.concepto)).toEqual(['ENDESA']);
+    expect(c.totalOmitido).toBe(550);
+    expect(c.omitidos[0].movimientos).toBe(2);
+  });
+
+  it('cada grupo lleva su clave y los ids de sus movimientos, para asignarlos de una vez', () => {
+    const a = registrar(ledger, '2026-07-10', 30, 'SUPER 1');
+    const b = registrar(ledger, '2026-07-11', 40, 'SUPER 2');
+    const c = cerrarMes(ledger, [], '2026-07');
+    expect(c.sinEstimacion[0].clave).toBe('super');
+    expect(c.sinEstimacion[0].ids.sort()).toEqual([a._id, b._id].sort());
+  });
+});
+
+describe('duración del periodo y gasto por etiqueta', () => {
+  it('mesesDelPeriodo cuenta los trozos de mes, no los días entre 30', () => {
+    expect(mesesDelPeriodo('2026-07-01', '2026-07-31')).toBeCloseTo(1, 6);
+    expect(mesesDelPeriodo('2026-04-01', '2026-06-30')).toBeCloseTo(3, 6);
+    // Del 16 al 30 de abril es medio mes (15 de 30 días).
+    expect(mesesDelPeriodo('2026-04-16', '2026-04-30')).toBeCloseTo(0.5, 6);
+    expect(mesesDelPeriodo('2026-04-16', '2026-05-31')).toBeCloseTo(1.5, 6);
+    expect(mesesDelPeriodo('2026-07-10', '2026-07-01')).toBe(0);
+  });
+
+  it('porTag compara previsto y real por etiqueta, incluido lo que nadie preveía', () => {
+    const { store, ledger } = entorno();
+    store.addItem('expenses', gasto({ concepto: 'Luz', cuantia: 100, tags: ['casa'] }));
+    registrar(ledger, '2026-07-10', 130, 'ENDESA', { tags: ['casa'] });
+    registrar(ledger, '2026-07-12', 60, 'BAR', { tags: ['ocio'] });
+    registrar(ledger, '2026-07-13', 20, 'SIN NADA');
+
+    const c = cerrarMes(ledger, store.get('expenses'), '2026-07');
+    const porTag = Object.fromEntries(c.porTag.map((t) => [t.tag, t]));
+    expect(porTag.casa).toMatchObject({ estimado: 100, real: 130, desviacion: 30 });
+    expect(porTag.ocio).toMatchObject({ estimado: 0, real: 60 });
+    expect(porTag['sin etiqueta']).toMatchObject({ real: 20 });
   });
 });
