@@ -17,6 +17,13 @@ export interface PrecisionPanelDeps {
   onDatosCambiados: () => void;
   /** Fecha de corte del ajuste. Inyectable para que los tests no dependan del día. */
   hoy: () => ISODate;
+  /**
+   * Intervalo al que limitar la comparación, o `null` para el histórico
+   * completo. Lo manda el modo del cierre, que está justo encima: sería
+   * desconcertante cerrar un periodo y que la tabla de precisión de debajo
+   * hablase de otros meses.
+   */
+  rango?: () => { desde: ISODate; hasta: ISODate } | null;
 }
 
 interface FilaAnalisis {
@@ -27,14 +34,25 @@ interface FilaAnalisis {
 
 function calcularFilas(deps: PrecisionPanelDeps): FilaAnalisis[] {
   const estimaciones = deps.estimaciones();
+  const rango = deps.rango?.() ?? null;
   const porId = new Map(estimaciones.map((e) => [e._id, e]));
   return deps.precision
-    .analizarTodas(estimaciones)
+    .analizarTodas(estimaciones, rango ? { desde: rango.desde, hasta: rango.hasta } : {})
     .map((analisis) => {
       const estimacion = porId.get(analisis.estimacionId) as Expense;
       return { analisis, estimacion, sugerencia: sugerirAjuste(analisis, estimacion.cuantia) };
     })
     .filter((f) => !!f.estimacion);
+}
+
+/** Qué meses entran en la comparación, dicho en una frase. */
+function alcance(deps: PrecisionPanelDeps): string {
+  const rango = deps.rango?.() ?? null;
+  if (!rango) return 'Se comparan solo los meses ya cerrados que tengan movimientos reales.';
+  return esc(
+    `Limitado al periodo de la cabecera (${rango.desde} → ${rango.hasta}): se comparan los meses ya cerrados que caen dentro, ` +
+      `recortados al intervalo. El mes en curso nunca entra.`,
+  );
 }
 
 export function renderPrecisionPanel(deps: PrecisionPanelDeps): string {
@@ -48,9 +66,9 @@ export function renderPrecisionPanel(deps: PrecisionPanelDeps): string {
       <div class="card mb-14">
         <div class="card-title">Precisión de las estimaciones</div>
         <div class="text-sm" style="color:var(--text2);line-height:1.6">
-          Todavía no hay datos reales que comparar. Registra movimientos y asígnalos a una
-          estimación (o etiquétalos igual) y aquí verás qué acierto tiene cada previsión,
-          con la opción de ajustarla.
+          Todavía no hay datos reales que comparar${deps.rango?.() ? ' en el periodo de la cabecera' : ''}. Registra movimientos
+          y asígnalos a una estimación (o etiquétalos igual) y aquí verás qué acierto tiene cada
+          previsión, con la opción de ajustarla.
         </div>
       </div>`;
   }
@@ -112,7 +130,7 @@ export function renderPrecisionPanel(deps: PrecisionPanelDeps): string {
         }
       </div>
       <div class="text-sm mb-10" style="color:var(--text2);line-height:1.6">
-        Se comparan solo los meses ya cerrados que tengan movimientos reales. Al ajustar, la
+        ${alcance(deps)} Al ajustar, la
         estimación actual se cierra hoy y se crea su continuación con el importe corregido:
         el pasado se mantiene tal como lo estimaste.
       </div>

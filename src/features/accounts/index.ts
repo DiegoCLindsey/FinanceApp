@@ -114,17 +114,30 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
     hoy,
   };
   const impDeps = { ledger: deps.ledger, accounts: cuentasTodas, onDatosCambiados: notificar };
+  const config = () => deps.store.get('config');
+  // El intervalo de la cabecera del dashboard, para cerrar sobre él en vez de
+  // mes a mes.
+  const periodoHeader = () => ({ desde: config().dashboardStart, hasta: config().dashboardEnd });
+
   const cierreDeps = {
     ledger: deps.ledger,
     precision: deps.precision,
     adjuster: deps.adjuster,
     estimaciones,
     onDatosCambiados: notificar,
+    periodo: periodoHeader,
     hoy,
   };
-  const precDeps = { precision: deps.precision, adjuster: deps.adjuster, estimaciones, onDatosCambiados: notificar, hoy };
+  // La tabla de precisión sigue al modo del cierre, que se pinta justo encima.
+  const precDeps = {
+    precision: deps.precision,
+    adjuster: deps.adjuster,
+    estimaciones,
+    onDatosCambiados: notificar,
+    rango: () => (estadoCierre.modo === 'periodo' ? periodoHeader() : null),
+    hoy,
+  };
 
-  const config = () => deps.store.get('config');
   const nombreCuenta = (id: string) => deps.store.get('accounts').find((a) => a._id === id)?.nombre ?? id;
 
   const tramosIRPF = (): Tramos =>

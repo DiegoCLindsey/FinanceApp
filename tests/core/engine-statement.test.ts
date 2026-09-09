@@ -242,3 +242,61 @@ describe('paridad extracto completo', () => {
     expect(sumarPorTags(nuestro, 'ingreso')).toEqual(FM.sumarPorTags(nuestro, 'ingreso'));
   });
 });
+
+// El ancla se coloca en la fecha del último saldo real, no en la fecha pedida:
+// lo que pasó entre las dos ya no se pierde. Se comprueba en los dos motores.
+describe('paridad ancla en el último saldo conocido', () => {
+  const cuenta: StatementAccount[] = [
+    {
+      _id: 'default',
+      nombre: 'Cuenta',
+      activo: true,
+      esCuentaPrincipal: true,
+      saldoInicial: 1000,
+      fechaInicialSaldo: '2026-01-01',
+      interes: 0,
+      historicoSaldos: [{ fecha: '2026-07-26', saldo: 3813.75 }],
+    } as StatementAccount,
+  ];
+  const gastosIngresos: any[] = [
+    {
+      _id: 'i1',
+      activo: true,
+      concepto: 'Nómina',
+      cuantia: 2000,
+      tipo: 'ingreso',
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+      diaPago: 'dia:31',
+      fechaInicio: '2026-01-31',
+      tags: [],
+      cuenta: 'default',
+    },
+    {
+      _id: 'g1',
+      activo: true,
+      concepto: 'Alquiler',
+      cuantia: 500,
+      tipo: 'gasto',
+      tipoFrecuencia: 'mensual',
+      frecuencia: 1,
+      diaPago: 'dia:5',
+      fechaInicio: '2026-01-05',
+      tags: [],
+      cuenta: 'default',
+    },
+  ];
+  const conHueco = { ...config, dashboardStart: '2026-08-01', dashboardEnd: '2026-08-31', fechaReferencia: '2026-08-01' };
+
+  it('el ingreso del 31 de julio cuenta y el extracto sigue siendo el periodo', () => {
+    const ext = generarExtracto({ loans: [], expenses: gastosIngresos, accounts: cuenta, config: conHueco });
+    expect(ext.every((e) => e.fecha >= '2026-08-01')).toBe(true);
+    expect(ext.find((e) => e.sourceId === 'g1')?.saldoAcum).toBeCloseTo(5313.75, 6);
+  });
+
+  it('los dos motores dan lo mismo', () => {
+    expect(generarExtracto({ loans: [], expenses: gastosIngresos, accounts: cuenta, config: conHueco })).toEqual(
+      FM.generarExtracto([], gastosIngresos, cuenta, conHueco, null, [], []),
+    );
+  });
+});

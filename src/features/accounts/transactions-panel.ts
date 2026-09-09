@@ -8,7 +8,7 @@ import type { Ledger } from '@/accounting/ledger';
 import { compararIntervalo } from '@/accounting/comparativa';
 import type { Account, Expense, Loan, Nomina, Transaccion, TipoTransaccion } from '@/state/schema';
 import { confirmar, esc, eurColor, numero, onChange, onClick, tagChips, toast, valor } from '../accounting/dom';
-import { renderComparativaSvg } from './comparativa-chart';
+import { renderComparativaSvg, type MagnitudComparativa } from './comparativa-chart';
 
 const ETIQUETA_TIPO: Record<TipoTransaccion, string> = {
   gasto: 'Gasto',
@@ -58,6 +58,13 @@ export interface EstadoPanel {
    */
   intervaloDesde: ISODate;
   intervaloHasta: ISODate;
+  /**
+   * Qué se compara en esa gráfica. Arranca en el neto porque es la única
+   * cifra que no se descuadra cuando parte del gasto son traspasos entre
+   * cuentas propias sin marcar: el cargo cuenta como gasto y el abono de la
+   * otra cuenta lo compensa.
+   */
+  comparativa: MagnitudComparativa;
 }
 
 /** Estado inicial del panel: vista mensual del mes actual, con un periodo de
@@ -74,7 +81,14 @@ export function estadoPanelInicial(mesActual: string): EstadoPanel {
     detalleAbierto: new Set(),
     intervaloDesde: rangoMes(mesAntes(mesActual, 5)).desde,
     intervaloHasta: rangoMes(mesActual).hasta,
+    comparativa: 'neto',
   };
+}
+
+/** Botón de magnitud de la comparativa, con el aspecto de los demás selectores. */
+function botonMagnitud(magnitud: MagnitudComparativa, activa: MagnitudComparativa, etiqueta: string, titulo: string): string {
+  const seleccionado = magnitud === activa ? 'background:var(--accent);color:#04120c;border-color:var(--accent)' : '';
+  return `<button class="btn-secondary btn-sm" data-acc-comparativa="${magnitud}" title="${esc(titulo)}" style="${seleccionado}">${esc(etiqueta)}</button>`;
 }
 
 function rangoMes(mes: string): { desde: ISODate; hasta: ISODate } {
@@ -430,8 +444,15 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
                ${
                  intervalo
                    ? `<div class="divider"></div>
-                      <div class="card-title mb-8">Real frente a estimado — ${esc(desde)} → ${esc(hasta)}</div>
-                      ${renderComparativaSvg(datosComparativa)}`
+                      <div class="flex justify-between items-center flex-wrap mb-8" style="gap:8px">
+                        <div class="card-title" style="margin:0">Real frente a estimado — ${esc(desde)} → ${esc(hasta)}</div>
+                        <div class="flex gap-6">
+                          ${botonMagnitud('neto', estado.comparativa, 'Neto', 'Ingresos menos gastos: no se descuadra por un traspaso entre tus cuentas')}
+                          ${botonMagnitud('gasto', estado.comparativa, 'Gasto', 'Solo el gasto')}
+                          ${botonMagnitud('ingreso', estado.comparativa, 'Ingresos', 'Solo lo que entra')}
+                        </div>
+                      </div>
+                      ${renderComparativaSvg(datosComparativa, estado.comparativa)}`
                    : ''
                }`
         }
@@ -518,6 +539,10 @@ export function wireTransactionsPanel(
   });
   onChange(container, '#acc-periodo-hasta', (el) => {
     estado.periodoHasta = (el as HTMLInputElement).value || estado.periodoHasta;
+    refrescar();
+  });
+  onClick(container, '[data-acc-comparativa]', (el) => {
+    estado.comparativa = (el.getAttribute('data-acc-comparativa') as MagnitudComparativa) || 'neto';
     refrescar();
   });
   onChange(container, '#acc-intervalo-desde', (el) => {

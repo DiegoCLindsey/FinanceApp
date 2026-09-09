@@ -18,19 +18,38 @@ function mesCorto(mes: string): string {
   return nombreMes(mes).slice(0, 3);
 }
 
-export function renderComparativaSvg(datos: MesComparativa[]): string {
+/** Qué se compara: el gasto, el ingreso o el neto (ingresos − gastos). */
+export type MagnitudComparativa = 'gasto' | 'ingreso' | 'neto';
+
+const PARES: Record<MagnitudComparativa, (d: MesComparativa) => { estimado: number; real: number }> = {
+  gasto: (d) => ({ estimado: d.estimado, real: d.real }),
+  ingreso: (d) => ({ estimado: d.ingresosEstimados, real: d.ingresosReales }),
+  neto: (d) => ({ estimado: d.netoEstimado, real: d.netoReal }),
+};
+
+export function renderComparativaSvg(datos: MesComparativa[], magnitud: MagnitudComparativa = 'gasto'): string {
   if (datos.length === 0) {
     return '<div class="text-sm" style="color:var(--text3)">Sin meses que mostrar en este intervalo.</div>';
   }
 
+  const par = PARES[magnitud];
+  const valores = datos.flatMap((d) => [par(d).estimado, par(d).real]);
   const anchoUtil = ANCHO - PAD.left - PAD.right;
   const altoUtil = ALTO - PAD.top - PAD.bottom;
-  const maxValor = Math.max(1, ...datos.flatMap((d) => [d.estimado, d.real]));
+  // El neto puede ser negativo (un mes en el que se gasta más de lo que entra),
+  // así que la escala arranca en el mínimo y no en cero.
+  const maxValor = Math.max(1, ...valores);
+  const minValor = Math.min(0, ...valores);
+  const rango = maxValor - minValor || 1;
   const x = (i: number) => PAD.left + (datos.length === 1 ? anchoUtil / 2 : (i / (datos.length - 1)) * anchoUtil);
-  const y = (v: number) => PAD.top + altoUtil - (Math.max(0, v) / maxValor) * altoUtil;
+  const y = (v: number) => PAD.top + altoUtil - ((v - minValor) / rango) * altoUtil;
 
-  const puntosEstimado = datos.map((d, i) => `${x(i)},${y(d.estimado)}`).join(' ');
-  const puntosReal = datos.map((d, i) => `${x(i)},${y(d.real)}`).join(' ');
+  const puntosEstimado = datos.map((d, i) => `${x(i)},${y(par(d).estimado)}`).join(' ');
+  const puntosReal = datos.map((d, i) => `${x(i)},${y(par(d).real)}`).join(' ');
+  const lineaCero =
+    minValor < 0
+      ? `<line x1="${PAD.left}" y1="${y(0).toFixed(1)}" x2="${ANCHO - PAD.right}" y2="${y(0).toFixed(1)}" stroke="var(--border)" stroke-width="1" stroke-dasharray="2,3"/>`
+      : '';
 
   // La línea de "real" lleva un punto por mes: son observaciones concretas.
   // La de "estimado" es una proyección continua y NO lleva marcadores — un
@@ -38,7 +57,7 @@ export function renderComparativaSvg(datos: MesComparativa[]): string {
   const circulosReal = datos
     .map(
       (d, i) =>
-        `<circle cx="${x(i).toFixed(1)}" cy="${y(d.real).toFixed(1)}" r="3" fill="var(--accent)"><title>${esc(nombreMes(d.mes))}: ${esc(formatEUR(d.real))}</title></circle>`,
+        `<circle cx="${x(i).toFixed(1)}" cy="${y(par(d).real).toFixed(1)}" r="3" fill="var(--accent)"><title>${esc(nombreMes(d.mes))}: ${esc(formatEUR(par(d).real))}</title></circle>`,
     )
     .join('');
 
@@ -50,10 +69,11 @@ export function renderComparativaSvg(datos: MesComparativa[]): string {
     .join('');
 
   return `
-    <svg viewBox="0 0 ${ANCHO} ${ALTO}" style="width:100%;height:auto;max-height:220px" role="img" aria-label="Gasto real frente a estimado por mes">
+    <svg viewBox="0 0 ${ANCHO} ${ALTO}" style="width:100%;height:auto;max-height:220px" role="img" aria-label="Real frente a estimado por mes">
       <line x1="${PAD.left}" y1="${PAD.top}" x2="${PAD.left}" y2="${ALTO - PAD.bottom}" stroke="var(--border)" stroke-width="1"/>
       <line x1="${PAD.left}" y1="${ALTO - PAD.bottom}" x2="${ANCHO - PAD.right}" y2="${ALTO - PAD.bottom}" stroke="var(--border)" stroke-width="1"/>
       <text x="4" y="${PAD.top + 8}" font-size="9" fill="var(--text3)" font-family="var(--font-mono)">${esc(formatEUR(maxValor))}</text>
+      ${lineaCero}
       <polyline points="${puntosEstimado}" fill="none" stroke="var(--text3)" stroke-width="1.5" stroke-dasharray="4,3"/>
       <polyline points="${puntosReal}" fill="none" stroke="var(--accent)" stroke-width="2"/>
       ${circulosReal}

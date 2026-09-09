@@ -48,7 +48,9 @@ describe('compararIntervalo', () => {
     ledger.registrar({ fecha: '2026-07-10', cuentaId: 'default', importe: 130, concepto: 'Endesa', tipo: 'gasto' });
 
     const filas = compararIntervalo(ledger, store.get('expenses'), '2026-07-01', '2026-07-31');
-    expect(filas).toEqual([{ mes: '2026-07', estimado: 100, real: 130 }]);
+    expect(filas).toEqual([
+      { mes: '2026-07', estimado: 100, real: 130, ingresosEstimados: 0, ingresosReales: 0, netoEstimado: -100, netoReal: -130 },
+    ]);
   });
 
   it('varios meses, incluidos los que no tienen ningún movimiento real', () => {
@@ -57,14 +59,14 @@ describe('compararIntervalo', () => {
     ledger.registrar({ fecha: '2026-06-10', cuentaId: 'default', importe: 90, concepto: 'Endesa junio', tipo: 'gasto' });
 
     const filas = compararIntervalo(ledger, store.get('expenses'), '2026-06-01', '2026-08-15');
-    expect(filas).toEqual([
-      { mes: '2026-06', estimado: 100, real: 90 },
-      { mes: '2026-07', estimado: 100, real: 0 },
-      { mes: '2026-08', estimado: 100, real: 0 },
+    expect(filas.map((f) => [f.mes, f.estimado, f.real])).toEqual([
+      ['2026-06', 100, 90],
+      ['2026-07', 100, 0],
+      ['2026-08', 100, 0],
     ]);
   });
 
-  it('ignora ingresos, ajustes y transferencias: solo cuenta el gasto real', () => {
+  it('el gasto no se mezcla con ingresos ni traspasos, pero el ingreso se compara aparte', () => {
     const { store, ledger } = entorno();
     store.set('expenses', [estimacion({ cuantia: 100 })]);
     ledger.registrar({ fecha: '2026-07-10', cuentaId: 'default', importe: 130, concepto: 'Endesa', tipo: 'gasto' });
@@ -72,10 +74,11 @@ describe('compararIntervalo', () => {
     ledger.registrar({ fecha: '2026-07-12', cuentaId: 'default', importe: 300, concepto: 'Traspaso', tipo: 'transferencia' });
 
     const filas = compararIntervalo(ledger, store.get('expenses'), '2026-07-01', '2026-07-31');
-    expect(filas).toEqual([{ mes: '2026-07', estimado: 100, real: 130 }]);
+    // La transferencia no cuenta en ningún lado; el ingreso cuenta como ingreso.
+    expect(filas[0]).toMatchObject({ estimado: 100, real: 130, ingresosReales: 1800, netoReal: 1670 });
   });
 
-  it('ignora estimaciones inactivas o que no son de gasto', () => {
+  it('ignora las estimaciones inactivas y separa las de ingreso', () => {
     const { store, ledger } = entorno();
     store.set('expenses', [
       estimacion({ cuantia: 100 }),
@@ -84,6 +87,6 @@ describe('compararIntervalo', () => {
     ]);
 
     const filas = compararIntervalo(ledger, store.get('expenses'), '2026-07-01', '2026-07-31');
-    expect(filas).toEqual([{ mes: '2026-07', estimado: 100, real: 0 }]);
+    expect(filas[0]).toMatchObject({ estimado: 100, real: 0, ingresosEstimados: 999, netoEstimado: 899 });
   });
 });
