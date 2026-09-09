@@ -106,7 +106,8 @@ describe('cierre de mes', () => {
     montarEnCierre(registry);
 
     const txt = cierre().textContent ?? '';
-    expect(txt).toContain('Habías previsto');
+    expect(txt).toContain('Gasto');
+    expect(txt).toContain('previsto');
     expect(txt).toContain('Dónde te desviaste');
     expect(cierre().innerHTML).toContain('var(--red)'); // gastó de más
   });
@@ -129,7 +130,7 @@ describe('cierre de mes', () => {
     store.addItem('expenses', gasto({ concepto: 'Luz', cuantia: 100, tags: ['casa'] }));
     registrar(ledger, '2026-07-10', 100, 'Endesa', { tags: ['casa'] });
     montarEnCierre(registry);
-    expect(cierre().textContent).toContain('Todo el gasto del mes estaba previsto');
+    expect(cierre().textContent).toContain('Todo el gasto estaba previsto');
   });
 
   it('marca las estimaciones que no tuvieron ningún movimiento', () => {

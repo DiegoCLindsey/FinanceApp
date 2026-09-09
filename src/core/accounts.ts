@@ -51,6 +51,20 @@ export function saldoRealCuenta(acc: AccountLike): number {
  * usan los historicoSaldos tal cual (el ancla pertenece a una fecha posterior).
  */
 export function saldoEnFecha(acc: AccountLike, fecha: ISODate): number {
+  const entrada = entradaSaldo(acc, fecha);
+  if (entrada) return entrada.saldo;
+  return fecha >= (acc.fechaInicialSaldo || '') ? acc.saldoInicial || 0 : 0;
+}
+
+/**
+ * La misma búsqueda, pero devolviendo el punto usado (fecha incluida).
+ *
+ * La fecha importa: el saldo real de una cuenta no se conoce todos los días,
+ * solo en sus puntos de control. Anclar una simulación en una fecha posterior
+ * al último punto se come todo lo que pasó entre medias, así que quien ancla
+ * necesita saber DÓNDE está el dato, no solo cuánto vale.
+ */
+export function entradaSaldo(acc: AccountLike, fecha: ISODate): PuntoSaldo | null {
   const floor = acc.fechaInicialSaldo || '';
 
   if (!floor || fecha >= floor) {
@@ -69,11 +83,19 @@ export function saldoEnFecha(acc: AccountLike, fecha: ISODate): number {
       if (h.fecha >= floor) entries.push({ ...h, prioridad: i });
     });
     entries.sort((a, b) => b.fecha.localeCompare(a.fecha) || b.prioridad - a.prioridad);
-    const entry = entries.find((h) => h.fecha <= fecha);
-    return entry ? entry.saldo : acc.saldoInicial || 0;
+    return entries.find((h) => h.fecha <= fecha) ?? null;
   } else {
     const hist = [...(acc.historicoSaldos || [])].sort((a, b) => b.fecha.localeCompare(a.fecha));
-    const entry = hist.find((h) => h.fecha <= fecha);
-    return entry ? entry.saldo : 0;
+    return hist.find((h) => h.fecha <= fecha) ?? null;
   }
+}
+
+/** Fecha del último saldo real conocido en o antes de `fecha`, entre varias cuentas. '' si ninguna tiene dato. */
+export function fechaUltimoSaldoConocido(cuentas: AccountLike[], fecha: ISODate): ISODate | '' {
+  let ultima: ISODate | '' = '';
+  for (const a of cuentas) {
+    const e = entradaSaldo(a, fecha);
+    if (e && e.fecha > ultima) ultima = e.fecha;
+  }
+  return ultima;
 }

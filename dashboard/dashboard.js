@@ -1349,19 +1349,15 @@ const DashboardModule = (() => {
       const visibles = accounts.filter(a =>
         a.activo && (filtroAccounts.length === 0 || filtroAccounts.includes(a._id))
       );
-      // Recoger todas las fechas únicas; deduplicar por cuenta.
-      // saldoInicial at fechaInicialSaldo is the anchor — pre-floor entries are excluded.
+      // Fechas en las que hay dato real de alguna cuenta. El VALOR de cada fecha
+      // lo da FinanceMath.saldoEnFecha, el mismo que usa el motor para anclar la
+      // simulación: si esta serie usara su propia regla, la línea real y la
+      // estimada podrían no cuadrar aunque las dos estuvieran «bien».
       const allDates = new Set();
-      const dedupedHist = visibles.map(acc => {
-        const floor = acc.fechaInicialSaldo || '';
-        const byD = {};
-        if (floor) byD[floor] = acc.saldoInicial || 0;
-        for (const h of (acc.historicoSaldos || [])) {
-          if (!floor || h.fecha >= floor) byD[h.fecha] = h.saldo;
-        }
-        for (const d of Object.keys(byD)) allDates.add(d);
-        return byD;
-      });
+      for (const acc of visibles) {
+        if (acc.fechaInicialSaldo) allDates.add(acc.fechaInicialSaldo);
+        for (const h of (acc.historicoSaldos || [])) allDates.add(h.fecha);
+      }
       // Solo se dibuja lo que cae DENTRO de la ventana del periodo. Los puntos
       // anteriores siguen contando para el valor (el saldo de una fecha es el
       // último punto conocido hasta ella), pero no se pintan: si no, al acotar
@@ -1372,18 +1368,7 @@ const DashboardModule = (() => {
       const enVentana = (f) => f >= config.dashboardStart && f <= config.dashboardEnd;
       const byFecha = {};
       for (const fecha of [...allDates].filter(enVentana).sort()) {
-        let total = 0;
-        for (let ai = 0; ai < visibles.length; ai++) {
-          // Saldo más reciente de esta cuenta hasta `fecha`
-          const entries = Object.entries(dedupedHist[ai]).filter(([d]) => d <= fecha);
-          if (entries.length > 0) {
-            entries.sort(([a],[b]) => b.localeCompare(a));
-            total += entries[0][1];
-          } else {
-            total += visibles[ai].saldoInicial || 0;
-          }
-        }
-        byFecha[fecha] = total;
+        byFecha[fecha] = visibles.reduce((s, acc) => s + FinanceMath.saldoEnFecha(acc, fecha), 0);
       }
       const pts = Object.entries(byFecha)
         .sort(([a],[b]) => a.localeCompare(b))

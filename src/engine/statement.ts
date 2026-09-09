@@ -5,7 +5,7 @@
 // recomputarSaldoAcum. Dependencias inyectadas en lugar de State global.
 
 import { todayISO, type ISODate } from '@/core/dates';
-import { saldoEnFecha, saldoRealCuenta, type AccountLike } from '@/core/accounts';
+import { fechaUltimoSaldoConocido, saldoEnFecha, saldoRealCuenta, type AccountLike } from '@/core/accounts';
 import type { PeriodoInflacion } from '@/core/inflation';
 import type { Tramos } from '@/core/tax/irpf';
 import { proyectarGastos, type ExpenseLike } from './providers/expenses';
@@ -45,12 +45,33 @@ export interface StatementInput {
   resolverTramosGanancias?: TramosResolver;
 }
 
-// Núcleo bidireccional: retrocede desde fechaReferencia invirtiendo los
-// movimientos y proyecta hacia adelante con normalidad.
-function aplicarSaldoRef(sortedEvents: CashEvent[], cuentasActivas: AccountLike[], config: StatementConfig): CashEvent[] {
+/**
+ * Ancla de la simulación: dónde y con qué saldo se empieza a proyectar.
+ *
+ * La fecha pedida (`fechaReferencia`, recortada a la ventana) casi nunca cae en
+ * un punto de control: los saldos reales se conocen por semanas. Colgar el
+ * saldo del último punto de la fecha pedida perdía todo lo ocurrido entre las
+ * dos: no estaba en el saldo (el punto es anterior) ni se proyectaba (los
+ * eventos previos al inicio del periodo no se generan). Con la ventana
+ * empezando el 1 de agosto y el último punto el 26 de julio, la nómina del 31
+ * se esfumaba y la línea estimada arrancaba dos mil euros por debajo de la real.
+ *
+ * Por eso el ancla se coloca donde el saldo es DATO, y el hueco hasta la fecha
+ * pedida se cubre proyectando. Entre las dos fechas no hay ningún punto de
+ * control, así que el importe es el mismo: lo único que cambia es la fecha.
+ */
+export function anclaSaldo(cuentasActivas: AccountLike[], config: StatementConfig): { fecha: ISODate; saldo: number; pedida: ISODate } {
   const raw = config.fechaReferencia || config.dashboardStart;
-  const fechaRef = raw < config.dashboardStart ? config.dashboardStart : raw > config.dashboardEnd ? config.dashboardEnd : raw;
-  const saldoRef = cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, fechaRef), 0);
+  const pedida = raw < config.dashboardStart ? config.dashboardStart : raw > config.dashboardEnd ? config.dashboardEnd : raw;
+  const saldo = cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, pedida), 0);
+  const conocida = fechaUltimoSaldoConocido(cuentasActivas, pedida);
+  return { fecha: conocida && conocida < pedida ? conocida : pedida, saldo, pedida };
+}
+
+// Núcleo bidireccional: retrocede desde el ancla invirtiendo los movimientos y
+// proyecta hacia adelante con normalidad.
+function aplicarSaldoRef(sortedEvents: CashEvent[], cuentasActivas: AccountLike[], config: StatementConfig): CashEvent[] {
+  const { fecha: fechaRef, saldo: saldoRef } = anclaSaldo(cuentasActivas, config);
 
   const past = sortedEvents.filter((e) => e.fecha < fechaRef);
   const future = sortedEvents.filter((e) => e.fecha >= fechaRef);
@@ -96,7 +117,18 @@ export function generarExtracto(input: StatementInput): CashEvent[] {
   const filtroAccounts = input.filtroAccounts ?? null;
   const nominas = input.nominas ?? [];
   const inflacionPeriodos = input.inflacionPeriodos ?? [];
-  const range = { start: config.dashboardStart, end: config.dashboardEnd };
+  const cuentasActivas = accounts.filter(
+    (a) => a.activo && (!filtroAccounts || filtroAccounts.length === 0 || filtroAccounts.includes(a._id)),
+  );
+  // Se proyecta desde el ancla, que puede ser anterior al inicio del periodo:
+  // ese tramo cubre el hueco entre el último saldo real y la fecha desde la que
+  // se simula. Al final se recorta al periodo, así que lo que sale de aquí sigue
+  // siendo solo la ventana pedida.
+  const ancla = anclaSaldo(cuentasActivas, config);
+  const range = {
+    start: ancla.fecha < config.dashboardStart ? ancla.fecha : config.dashboardStart,
+    end: config.dashboardEnd,
+  };
 
   const gastos = expenses.filter((e) => e.tipo !== 'transferencia');
   const transferencias = expenses.filter((e) => e.tipo === 'transferencia');
@@ -126,10 +158,7 @@ export function generarExtracto(input: StatementInput): CashEvent[] {
     allEvents = allEvents.concat(proyectarPerdidaAhorro(saldoIni, inflacionPeriodos, range, principalId));
   }
   allEvents.sort((a, b) => a.fecha.localeCompare(b.fecha));
-  const cuentasActivas = accounts.filter(
-    (a) => a.activo && (!filtroAccounts || filtroAccounts.length === 0 || filtroAccounts.includes(a._id)),
-  );
-  return aplicarSaldoRef(allEvents, cuentasActivas, config);
+  return aplicarSaldoRef(allEvents, cuentasActivas, config).filter((e) => e.fecha >= config.dashboardStart);
 }
 
 /** Saldo a día de hoy según el extracto (o saldo real si no hay eventos pasados). */

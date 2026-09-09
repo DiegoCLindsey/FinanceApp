@@ -161,11 +161,11 @@ describe('cerrarMes', () => {
     expect(c.sinEstimacion).toEqual([]);
   });
 
-  it('ignora las estimaciones desactivadas y las que no son gasto', () => {
+  it('ignora las estimaciones desactivadas, pero los ingresos sí cuentan', () => {
     store.addItem('expenses', gasto({ concepto: 'Vieja', cuantia: 50, activo: false }));
     store.addItem('expenses', gasto({ concepto: 'Nómina', cuantia: 1800, tipo: 'ingreso' }));
     const c = cerrarMes(ledger, store.get('expenses'), '2026-07');
-    expect(c.filas).toHaveLength(0);
+    expect(c.filas.map((f) => [f.concepto, f.tipo])).toEqual([['Nómina', 'ingreso']]);
   });
 
   it('no mezcla meses', () => {
@@ -342,5 +342,68 @@ describe('cerrarPeriodo', () => {
     const porMes = cerrarMes(ledger, store.get('expenses'), '2026-07');
     const porRango = cerrarPeriodo(ledger, store.get('expenses'), '2026-07-01', '2026-07-31');
     expect(porRango).toEqual(porMes);
+  });
+});
+
+// Mirar solo los gastos daba una desviación enorme en cuanto había traspasos
+// entre cuentas propias sin marcar: el cargo cuenta como gasto y el abono de la
+// otra cuenta no lo compensaba en ninguna parte.
+describe('el cierre también compara los ingresos', () => {
+  let ledger: Ledger;
+  let store: ReturnType<typeof entorno>['store'];
+
+  beforeEach(() => {
+    const e = entorno();
+    ledger = e.ledger;
+    store = e.store;
+  });
+
+  const ingreso = (extra: Partial<Expense> = {}) =>
+    gasto({ tipo: 'ingreso', concepto: 'Nómina', cuantia: 2000, tags: ['nomina'], ...extra });
+
+  it('las estimaciones de ingreso salen como filas propias', () => {
+    store.addItem('expenses', ingreso());
+    ledger.registrar({ fecha: '2026-07-10', cuentaId: 'default', importe: 2100, concepto: 'NOMINA', tipo: 'ingreso', tags: ['nomina'] });
+
+    const c = cerrarMes(ledger, store.get('expenses'), '2026-07');
+    const fila = c.filas.find((f) => f.tipo === 'ingreso');
+    expect(fila?.real).toBe(2100);
+    expect(fila?.estimado).toBe(2000);
+    expect(c.ingresosEstimados).toBe(2000);
+    expect(c.desviacionIngresos).toBe(100);
+  });
+
+  it('el neto compensa el traspaso: sale gasto por un lado y entra por el otro', () => {
+    store.addItem('expenses', gasto({ concepto: 'Luz', cuantia: 100 }));
+    registrar(ledger, '2026-07-10', 100, 'ENDESA', { tags: ['casa'] });
+    // Traspaso a la otra cuenta sin marcar como transferencia: 300 fuera y 300 dentro.
+    registrar(ledger, '2026-07-12', 300, 'TRASPASO A CUENTA 2');
+    ledger.registrar({ fecha: '2026-07-12', cuentaId: 'default', importe: 300, concepto: 'TRASPASO DESDE CUENTA 1', tipo: 'ingreso' });
+
+    const c = cerrarMes(ledger, store.get('expenses'), '2026-07');
+    expect(c.real).toBe(400); // mirando solo el gasto, 300 de desviación
+    expect(c.desviacion).toBe(300);
+    expect(c.ingresosReales).toBe(300);
+    expect(c.netoReal).toBe(-100);
+    expect(c.netoEstimado).toBe(-100);
+    expect(c.desviacionNeta).toBe(0); // en neto, clavado
+  });
+
+  it('el ingreso que no preveía ninguna estimación se agrupa aparte', () => {
+    ledger.registrar({ fecha: '2026-07-12', cuentaId: 'default', importe: 300, concepto: 'BIZUM DE ANA', tipo: 'ingreso' });
+    ledger.registrar({ fecha: '2026-07-19', cuentaId: 'default', importe: 50, concepto: 'BIZUM DE ANA 2', tipo: 'ingreso' });
+
+    const c = cerrarMes(ledger, store.get('expenses'), '2026-07');
+    expect(c.ingresosSinPrever).toHaveLength(1);
+    expect(c.totalIngresosSinPrever).toBe(350);
+  });
+
+  it('una estimación de ingreso no se queda con un gasto por compartir etiqueta', () => {
+    store.addItem('expenses', ingreso({ tags: ['casa'] }));
+    registrar(ledger, '2026-07-10', 100, 'ENDESA', { tags: ['casa'] });
+
+    const c = cerrarMes(ledger, store.get('expenses'), '2026-07');
+    expect(c.filas.find((f) => f.tipo === 'ingreso')?.real).toBe(0);
+    expect(c.totalSinEstimacion).toBe(100);
   });
 });

@@ -594,9 +594,13 @@
       const activas = (State.get('accounts') || []).filter(a => a.activo);
       if (activas.length === 0) { el.textContent = ''; return; }
       const saldo = activas.reduce((s, a) => s + FinanceMath.saldoEnFecha(a, ref), 0);
-      el.textContent = ref === pedida
+      // El saldo real se conoce por puntos de control, no todos los días: se dice
+      // de qué fecha sale el número, que es donde el motor ancla la simulación.
+      const dato = FinanceMath.fechaUltimoSaldoConocido ? FinanceMath.fechaUltimoSaldoConocido(activas, ref) : '';
+      const origen = dato && dato < ref ? ` · último saldo real: ${dato}` : '';
+      el.textContent = (ref === pedida
         ? `· saldo ${FinanceMath.eur(saldo)}`
-        : `· fuera del periodo: se usa ${ref} (${FinanceMath.eur(saldo)})`;
+        : `· fuera del periodo: se usa ${ref} (${FinanceMath.eur(saldo)})`) + origen;
     }
     function apply() {
       const existing = State.get('config');
@@ -604,6 +608,10 @@
       const end   = document.getElementById('cfg-end')?.value   || existing.dashboardEnd;
       const sim   = document.getElementById('cfg-sim')?.value   || existing.fechaReferencia || hoyISO();
       State.set('config', { ...existing, dashboardStart: start, dashboardEnd: end, fechaReferencia: sim });
+      // El store nuevo tiene su propia copia de config en memoria: sin avisarle,
+      // las vistas de src/ (cierre por periodo, comparativa…) se quedan con la
+      // ventana anterior hasta que se recarga la página.
+      window.FinanceApp?.store?.patchConfig?.({ dashboardStart: start, dashboardEnd: end, fechaReferencia: sim });
       pintarAncla();
       Router.rerender();
     }

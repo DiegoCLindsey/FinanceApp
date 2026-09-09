@@ -93,7 +93,7 @@ export function renderCierrePanel(deps: CierrePanelDeps, estado: EstadoCierre): 
       ${botonModo('periodo', periodo, 'Periodo del header', 'Cierra el intervalo configurado arriba, aunque cruce varios meses o corte uno por la mitad')}
       ${
         periodo
-          ? `<span class="text-sm" style="color:var(--text2);font-family:var(--font-mono)">${esc(c.desde)} → ${esc(c.hasta)}</span>`
+          ? `<span class="text-sm" style="color:var(--text2);font-family:var(--font-mono);margin-left:4px">${esc(c.desde)} → ${esc(c.hasta)}</span>`
           : `<select class="form-select" id="cie-mes" style="width:auto;min-width:150px">
                ${opciones.map((m) => `<option value="${esc(m)}"${m === mes ? ' selected' : ''}>${esc(nombreMes(m))}</option>`).join('')}
              </select>`
@@ -115,7 +115,9 @@ export function renderCierrePanel(deps: CierrePanelDeps, estado: EstadoCierre): 
   }
 
   const signo = (n: number) => (n > 0 ? '+' : '');
-  const colorDesv = c.desviacion > 0 ? 'var(--red)' : c.desviacion < 0 ? 'var(--accent)' : 'var(--text2)';
+  // En neto, quedarse por debajo de lo previsto es lo malo (menos dinero del
+  // esperado), justo al revés que mirando solo el gasto.
+  const colorDesv = c.desviacionNeta < 0 ? 'var(--red)' : c.desviacionNeta > 0 ? 'var(--accent)' : 'var(--text2)';
 
   return `
     <div class="card">
@@ -126,27 +128,32 @@ export function renderCierrePanel(deps: CierrePanelDeps, estado: EstadoCierre): 
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px">
         <div class="stat-card" style="padding:12px">
-          <div class="stat-label">Habías previsto</div>
-          <div class="stat-value" style="font-size:1.15rem">${esc(formatEUR(c.estimado))}</div>
-        </div>
-        <div class="stat-card" style="padding:12px">
-          <div class="stat-label">Has gastado</div>
+          <div class="stat-label">Gasto</div>
           <div class="stat-value" style="font-size:1.15rem">${esc(formatEUR(c.real))}</div>
+          <div class="stat-sub">previsto ${esc(formatEUR(c.estimado))} · ${signo(c.desviacion)}${esc(formatEUR(c.desviacion))}</div>
         </div>
         <div class="stat-card" style="padding:12px">
-          <div class="stat-label">Desviación</div>
-          <div class="stat-value" style="font-size:1.15rem;color:${colorDesv}">${signo(c.desviacion)}${esc(formatEUR(c.desviacion))}</div>
-          <div class="stat-sub">${c.desviacion > 0 ? 'de más' : c.desviacion < 0 ? 'de menos' : 'clavado'}</div>
+          <div class="stat-label">Ingresos</div>
+          <div class="stat-value" style="font-size:1.15rem">${esc(formatEUR(c.ingresosReales))}</div>
+          <div class="stat-sub">previsto ${esc(formatEUR(c.ingresosEstimados))} · ${signo(c.desviacionIngresos)}${esc(formatEUR(c.desviacionIngresos))}</div>
+        </div>
+        <div class="stat-card" style="padding:12px">
+          <div class="stat-label">Desviación neta</div>
+          <div class="stat-value" style="font-size:1.15rem;color:${colorDesv}">${signo(c.desviacionNeta)}${esc(formatEUR(c.desviacionNeta))}</div>
+          <div class="stat-sub">neto real ${esc(formatEUR(c.netoReal))} · previsto ${esc(formatEUR(c.netoEstimado))}</div>
         </div>
         <div class="stat-card" style="padding:12px">
           <div class="stat-label">Sin prever</div>
           <div class="stat-value" style="font-size:1.15rem;color:${c.totalSinEstimacion > 0 ? 'var(--yellow)' : 'var(--text)'}">${esc(formatEUR(c.totalSinEstimacion))}</div>
-          <div class="stat-sub">${c.sinEstimacion.length} concepto${c.sinEstimacion.length !== 1 ? 's' : ''}</div>
+          <div class="stat-sub">${c.sinEstimacion.length} concepto${c.sinEstimacion.length !== 1 ? 's' : ''} de gasto${
+            c.totalIngresosSinPrever > 0 ? ` · ${esc(formatEUR(c.totalIngresosSinPrever))} de ingreso` : ''
+          }</div>
         </div>
       </div>
 
       ${tablaDesviaciones(c)}
       ${bloqueSinPrever(c)}
+      ${bloqueIngresosSinPrever(c)}
     </div>`;
 }
 
@@ -159,7 +166,7 @@ function tablaDesviaciones(c: CierreMes): string {
   const conSugerencia = conAlgo.filter((f) => f.sugerencia);
 
   return `
-    <div class="card-title mb-8">Dónde te desviaste</div>
+    <div class="card-title mb-8">Dónde te desviaste (gastos e ingresos)</div>
     <div class="table-wrap mb-12">
       <table style="min-width:460px">
         <thead><tr>
@@ -172,11 +179,14 @@ function tablaDesviaciones(c: CierreMes): string {
         <tbody>
           ${conAlgo
             .map((f) => {
-              const color = f.desviacion > 0 ? 'var(--red)' : f.desviacion < 0 ? 'var(--accent)' : 'var(--text2)';
+              // Gastar de más es rojo; cobrar de más, verde.
+              const malo = f.tipo === 'gasto' ? f.desviacion > 0 : f.desviacion < 0;
+              const color = f.desviacion === 0 ? 'var(--text2)' : malo ? 'var(--red)' : 'var(--accent)';
               const s = f.sugerencia;
               return `<tr>
                 <td style="font-size:12px">
                   ${esc(f.concepto)}
+                  ${f.tipo === 'ingreso' ? '<span class="badge" style="margin-left:6px">ingreso</span>' : ''}
                   ${f.sinMovimiento ? '<span class="badge badge-yellow" style="margin-left:6px">sin movimiento</span>' : ''}
                 </td>
                 <td style="text-align:right;font-family:var(--font-mono);font-size:12px">${esc(formatEUR(f.estimado))}</td>
@@ -217,7 +227,7 @@ function bloqueSinPrever(c: CierreMes): string {
     return `<div class="alert-card alert-info">
       <div class="alert-icon">✓</div>
       <div class="alert-body">
-        <div class="alert-title">Todo el gasto del mes estaba previsto</div>
+        <div class="alert-title">Todo el gasto estaba previsto</div>
         <div class="alert-sub">Ningún movimiento se queda fuera de tus estimaciones.</div>
       </div>
     </div>`;
@@ -250,6 +260,43 @@ function bloqueSinPrever(c: CierreMes): string {
       </table>
     </div>
     ${c.sinEstimacion.length > 10 ? `<div class="text-sm mt-8" style="color:var(--text3)">…y ${c.sinEstimacion.length - 10} concepto(s) más.</div>` : ''}`;
+}
+
+/**
+ * Ingresos que no preveía ninguna estimación. Suelen ser el otro lado de un
+ * traspaso entre cuentas propias: el cargo aparece como gasto y, si el abono no
+ * se cuenta en ninguna parte, la desviación se dispara sin motivo.
+ */
+function bloqueIngresosSinPrever(c: CierreMes): string {
+  if (c.ingresosSinPrever.length === 0) return '';
+  return `
+    <div class="card-title mb-8 mt-14">Ingresos que no tenías previstos</div>
+    <div class="text-sm mb-8" style="color:var(--text3)">
+      Si alguno es el otro lado de un traspaso entre tus cuentas, márcalo como transferencia en Movimientos
+      y dejará de contar en los dos sitios.
+    </div>
+    <div class="table-wrap">
+      <table style="min-width:320px">
+        <thead><tr>
+          <th style="cursor:default">Concepto</th>
+          <th style="cursor:default;text-align:right">Movimientos</th>
+          <th style="cursor:default;text-align:right">Total</th>
+        </tr></thead>
+        <tbody>
+          ${c.ingresosSinPrever
+            .slice(0, 10)
+            .map(
+              (g) => `<tr>
+                <td style="font-size:12px">${esc(g.concepto)}</td>
+                <td style="text-align:right;font-size:12px;color:var(--text3)">${g.movimientos}</td>
+                <td style="text-align:right;font-family:var(--font-mono);font-size:12px;color:var(--accent)">${esc(formatEUR(g.total))}</td>
+              </tr>`,
+            )
+            .join('')}
+        </tbody>
+      </table>
+    </div>
+    ${c.ingresosSinPrever.length > 10 ? `<div class="text-sm mt-8" style="color:var(--text3)">…y ${c.ingresosSinPrever.length - 10} concepto(s) más.</div>` : ''}`;
 }
 
 export function wireCierrePanel(raiz: HTMLElement, deps: CierrePanelDeps, estado: EstadoCierre, refrescar: () => void): void {
