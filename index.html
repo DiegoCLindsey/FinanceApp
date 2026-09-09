@@ -580,14 +580,23 @@
       pintarAncla();
     }
     // El saldo que el motor va a usar como ancla, para que no sea invisible.
+    // Se recorta a la ventana igual que hace el motor (_aplicarSaldoRef): una
+    // fecha de simulación fuera del periodo no se usa tal cual, así que
+    // enseñar el saldo de esa fecha sería enseñar un número que no manda.
     function pintarAncla() {
       const el = document.getElementById('cfg-sim-ancla');
       if (!el || typeof FinanceMath === 'undefined') return;
       const config = State.get('config');
-      const ref = document.getElementById('cfg-sim')?.value || config.fechaReferencia || hoyISO();
+      const inicio = document.getElementById('cfg-start')?.value || config.dashboardStart;
+      const fin    = document.getElementById('cfg-end')?.value   || config.dashboardEnd;
+      const pedida = document.getElementById('cfg-sim')?.value || config.fechaReferencia || hoyISO();
+      const ref = pedida < inicio ? inicio : pedida > fin ? fin : pedida;
       const activas = (State.get('accounts') || []).filter(a => a.activo);
+      if (activas.length === 0) { el.textContent = ''; return; }
       const saldo = activas.reduce((s, a) => s + FinanceMath.saldoEnFecha(a, ref), 0);
-      el.textContent = activas.length > 0 ? `· saldo ${FinanceMath.eur(saldo)}` : '';
+      el.textContent = ref === pedida
+        ? `· saldo ${FinanceMath.eur(saldo)}`
+        : `· fuera del periodo: se usa ${ref} (${FinanceMath.eur(saldo)})`;
     }
     function apply() {
       const existing = State.get('config');

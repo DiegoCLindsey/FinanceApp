@@ -1362,8 +1362,16 @@ const DashboardModule = (() => {
         for (const d of Object.keys(byD)) allDates.add(d);
         return byD;
       });
+      // Solo se dibuja lo que cae DENTRO de la ventana del periodo. Los puntos
+      // anteriores siguen contando para el valor (el saldo de una fecha es el
+      // último punto conocido hasta ella), pero no se pintan: si no, al acotar
+      // el periodo la serie real seguía enseñando todo el histórico y no cuadraba
+      // con la estimada, que sí empieza en `dashboardStart`. Antes pasaba
+      // desapercibido porque el histórico tenía cuatro puntos sueltos; con la
+      // curva semanal salta a la vista.
+      const enVentana = (f) => f >= config.dashboardStart && f <= config.dashboardEnd;
       const byFecha = {};
-      for (const fecha of [...allDates].sort()) {
+      for (const fecha of [...allDates].filter(enVentana).sort()) {
         let total = 0;
         for (let ai = 0; ai < visibles.length; ai++) {
           // Saldo más reciente de esta cuenta hasta `fecha`

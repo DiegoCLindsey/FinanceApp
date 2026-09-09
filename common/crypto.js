@@ -5,6 +5,24 @@ const CryptoService = (() => {
   // ── Primitivas base ───────────────────────────────────────────────────────────
   function generateSalt() { return crypto.getRandomValues(new Uint8Array(16)); }
 
+  // Base64 de un array de bytes, POR TROZOS.
+  //
+  // Lo natural sería `btoa(String.fromCharCode(...bytes))`, y así estaba: el
+  // spread pasa un argumento por byte, así que el número de argumentos crece
+  // con el tamaño del backup. Con una cuenta de ~800 movimientos el cifrado ya
+  // son cientos de miles de bytes y la llamada moría con "Maximum call stack
+  // size exceeded" — el backup no se podía subir, y solo fallaba cuando había
+  // datos de verdad. Troceando a 32 KB los argumentos se quedan muy por debajo
+  // del límite del motor sea cual sea el tamaño del backup.
+  function bytesABase64(bytes) {
+    const TROZO = 0x8000;
+    let binario = '';
+    for (let i = 0; i < bytes.length; i += TROZO) {
+      binario += String.fromCharCode(...bytes.subarray(i, i + TROZO));
+    }
+    return btoa(binario);
+  }
+
   async function deriveKey(password, salt) {
     const enc = new TextEncoder();
     const km  = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
@@ -26,7 +44,7 @@ const CryptoService = (() => {
       key,
       new TextEncoder().encode(JSON.stringify(data))
     );
-    return `${btoa(String.fromCharCode(...iv))}:${btoa(String.fromCharCode(...new Uint8Array(cipher)))}`;
+    return `${bytesABase64(iv)}:${bytesABase64(new Uint8Array(cipher))}`;
   }
 
   async function decrypt(key, payload) {
@@ -46,7 +64,7 @@ const CryptoService = (() => {
     const salt    = generateSalt();
     const key     = await deriveKey(passphrase, salt);
     const payload = await encrypt(key, data);                 // "iv:ct"
-    const saltB64 = btoa(String.fromCharCode(...salt));
+    const saltB64 = bytesABase64(salt);
     return `${saltB64}:${payload}`;                           // "salt:iv:ct"
   }
 
@@ -73,3 +91,9 @@ const CryptoService = (() => {
     createVerificationToken, verifyKey,
   };
 })();
+
+// Export dual, igual que finance-math.js: en el navegador este fichero es un
+// script clásico y `CryptoService` ya es visible globalmente; bajo Node
+// ("type":"module") se evalúa como ESM, así que lo publicamos en globalThis
+// para que los tests usen el código real.
+globalThis.CryptoService = CryptoService;
