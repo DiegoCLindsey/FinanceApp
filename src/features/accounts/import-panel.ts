@@ -261,11 +261,15 @@ function bloqueAnalisis(estado: EstadoImport, analisis: AnalisisCsv, mapeo: Mape
 export function wireImportPanel(raiz: HTMLElement, deps: ImportPanelDeps, estado: EstadoImport, refrescar: () => void): void {
   onClick(raiz, '[data-imp-sincronizar]', () => {
     const resultados = deps.ledger.sincronizarHistoricoImportado();
-    if (resultados.length === 0) return toast('Nada que sincronizar: ningún histórico manual coincide con lo importado');
+    if (resultados.length === 0) return toast('Nada que sincronizar: no hay movimientos importados todavía');
     const nombreCuenta = (id: string) => deps.accounts().find((a) => a._id === id)?.nombre ?? id;
-    const total = resultados.reduce((s, r) => s + r.eliminados, 0);
-    const detalle = resultados.map((r) => `${nombreCuenta(r.cuentaId)} (${r.eliminados})`).join(', ');
-    toast(`${total} punto${total !== 1 ? 's' : ''} de control sustituido${total !== 1 ? 's' : ''} · ${detalle}`);
+    const sustituidos = resultados.reduce((s, r) => s + r.eliminados, 0);
+    const semanales = resultados.reduce((s, r) => s + r.semanales, 0);
+    const detalle = resultados.map((r) => `${nombreCuenta(r.cuentaId)} (${r.semanales})`).join(', ');
+    toast(
+      `Histórico al día: ${semanales} punto${semanales !== 1 ? 's' : ''} semanal${semanales !== 1 ? 'es' : ''} · ${detalle}` +
+        (sustituidos > 0 ? ` · ${sustituidos} manual${sustituidos !== 1 ? 'es' : ''} sustituido${sustituidos !== 1 ? 's' : ''}` : ''),
+    );
     deps.onDatosCambiados();
     refrescar();
   });
@@ -347,9 +351,13 @@ export function wireImportPanel(raiz: HTMLElement, deps: ImportPanelDeps, estado
     // dentro de ese rango quedan obsoletos frente a los movimientos reales.
     const fechas = (aImportar.map((f) => f.fecha) as ISODate[]).sort();
     const puntosSustituidos = deps.ledger.eliminarPuntosControlEnRango(estado.cuentaId, fechas[0], fechas[fechas.length - 1]);
+    // Y con el extracto ya dentro se rehace la curva del histórico: un punto
+    // por semana, que es lo que dibuja la línea de histórico del dashboard.
+    const semanales = deps.ledger.generarPuntosSemanales(estado.cuentaId);
 
     toast(
       `${aImportar.length} movimiento${aImportar.length !== 1 ? 's' : ''} importado${aImportar.length !== 1 ? 's' : ''}` +
+        ` · histórico con ${semanales} punto${semanales !== 1 ? 's' : ''} semanal${semanales !== 1 ? 'es' : ''}` +
         (puntosSustituidos > 0
           ? ` · ${puntosSustituidos} punto${puntosSustituidos !== 1 ? 's' : ''} de control manual sustituido${puntosSustituidos !== 1 ? 's' : ''}`
           : ''),

@@ -447,6 +447,10 @@
           <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('10Y')">10Y</button>
         </div>
         <input class="form-input" type="date" id="cfg-end" style="width:138px" onchange="PeriodBar.apply()"/>
+        <span class="period-bar-label" style="margin-left:auto">Simulación desde</span>
+        <input class="form-input" type="date" id="cfg-sim" style="width:138px" onchange="PeriodBar.apply()"
+               title="Desde esta fecha se aplican las predicciones. Antes de ella manda lo que pasó de verdad, y el saldo se ancla en el último saldo real conocido."/>
+        <span id="cfg-sim-ancla" class="period-bar-label" style="text-transform:none;font-weight:400"></span>
       </div>
 
       <!-- View container -->
@@ -555,19 +559,43 @@
     if (e.target === document.getElementById('modal-overlay')) UI.closeModal();
   };
 
-  // Global period bar: saves start/end to config and rerenders the active view
+  // Global period bar: saves start/end/simulación to config and rerenders the
+  // active view.
+  //   · inicio y fin de PERIODO acotan la ventana que se dibuja;
+  //   · inicio de SIMULACIÓN (config.fechaReferencia) es desde dónde se aplican
+  //     las predicciones: el motor ancla ahí el saldo real conocido, reconstruye
+  //     hacia atrás lo que ya pasó y proyecta hacia adelante.
+  // Estaba solo en el panel de configuración del dashboard, así que en la
+  // práctica se quedaba congelada en la fecha de alta y el dashboard seguía
+  // anclando meses después en un saldo viejo.
   const PeriodBar = (() => {
+    function hoyISO() { return new Date().toISOString().slice(0, 10); }
     function init(config) {
       const s = document.getElementById('cfg-start');
       const e = document.getElementById('cfg-end');
+      const r = document.getElementById('cfg-sim');
       if (s) s.value = config.dashboardStart;
       if (e) e.value = config.dashboardEnd;
+      if (r) r.value = config.fechaReferencia || hoyISO();
+      pintarAncla();
+    }
+    // El saldo que el motor va a usar como ancla, para que no sea invisible.
+    function pintarAncla() {
+      const el = document.getElementById('cfg-sim-ancla');
+      if (!el || typeof FinanceMath === 'undefined') return;
+      const config = State.get('config');
+      const ref = document.getElementById('cfg-sim')?.value || config.fechaReferencia || hoyISO();
+      const activas = (State.get('accounts') || []).filter(a => a.activo);
+      const saldo = activas.reduce((s, a) => s + FinanceMath.saldoEnFecha(a, ref), 0);
+      el.textContent = activas.length > 0 ? `· saldo ${FinanceMath.eur(saldo)}` : '';
     }
     function apply() {
       const existing = State.get('config');
       const start = document.getElementById('cfg-start')?.value || existing.dashboardStart;
       const end   = document.getElementById('cfg-end')?.value   || existing.dashboardEnd;
-      State.set('config', { ...existing, dashboardStart: start, dashboardEnd: end });
+      const sim   = document.getElementById('cfg-sim')?.value   || existing.fechaReferencia || hoyISO();
+      State.set('config', { ...existing, dashboardStart: start, dashboardEnd: end, fechaReferencia: sim });
+      pintarAncla();
       Router.rerender();
     }
     function applyPreset(p) {

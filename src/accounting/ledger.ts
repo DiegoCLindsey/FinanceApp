@@ -13,7 +13,7 @@
 // que la vista de cuentas está portada (1.7) este ledger es el ÚNICO escritor
 // del campo; el puente se retira cuando el dashboard deje de leerlo.
 
-import { todayISO, type ISODate } from '@/core/dates';
+import { finDeSemana, sumarDias, todayISO, type ISODate } from '@/core/dates';
 import { fromCents, toCents } from '@/core/money';
 import type { AppState, PuntoControl, TipoTransaccion, Transaccion } from '@/state/schema';
 
@@ -137,6 +137,15 @@ export function createLedger(store: LedgerStoreLike) {
   }
 
   /**
+   * Los puntos que de verdad ANCLAN el saldo: los manuales (los dijo el banco).
+   * Los derivados son curva para el histórico, no una fuente de verdad — ver
+   * `PuntoControl.origen` y `generarPuntosSemanales`.
+   */
+  function anclas(cuentaId: string): PuntoControl[] {
+    return puntosControl(cuentaId).filter((p) => p.origen !== 'derivado');
+  }
+
+  /**
    * Registra un saldo real conocido. Reemplaza el punto de esa cuenta y fecha si
    * ya existía, para que no haya dos verdades el mismo día.
    */
@@ -153,7 +162,10 @@ export function createLedger(store: LedgerStoreLike) {
       'puntosControl',
       [...resto, punto].sort((a, b) => a.fecha.localeCompare(b.fecha)),
     );
-    sincronizarConLegacy(cuentaId);
+    // Un ancla nueva cambia el saldo de todas las semanas siguientes, así que
+    // la curva semanal se recalcula: si no, quedarían puntos derivados de un
+    // saldo que el banco acaba de desmentir.
+    generarPuntosSemanales(cuentaId);
     return punto;
   }
 
@@ -163,7 +175,9 @@ export function createLedger(store: LedgerStoreLike) {
       'puntosControl',
       store.get('puntosControl').filter((p) => p._id !== id),
     );
-    if (punto) sincronizarConLegacy(punto.cuentaId);
+    if (!punto) return;
+    if (punto.origen === 'derivado') sincronizarConLegacy(punto.cuentaId);
+    else generarPuntosSemanales(punto.cuentaId); // ya sincroniza con el legacy
   }
 
   /**
@@ -176,7 +190,7 @@ export function createLedger(store: LedgerStoreLike) {
    * posteriores) no se tocan. Devuelve cuántos se han borrado.
    */
   function eliminarPuntosControlEnRango(cuentaId: string, desde: ISODate, hasta: ISODate): number {
-    const enRango = (p: PuntoControl) => p.cuentaId === cuentaId && p.fecha >= desde && p.fecha <= hasta;
+    const enRango = (p: PuntoControl) => p.cuentaId === cuentaId && p.origen !== 'derivado' && p.fecha >= desde && p.fecha <= hasta;
     const afectados = store.get('puntosControl').filter(enRango).length;
     if (afectados === 0) return 0;
     store.set(
@@ -188,14 +202,98 @@ export function createLedger(store: LedgerStoreLike) {
   }
 
   /**
+   * Rellena el histórico de una cuenta con UN punto por semana, calculado del
+   * ledger: el saldo al cierre (domingo) de cada semana con datos.
+   *
+   * Por qué: `historicoSaldos` es lo que dibuja la línea de histórico del
+   * dashboard, y ahí cada entrada es un punto de la curva — sin sumar los
+   * movimientos posteriores (`saldoEnFecha` en core/accounts). Con un único
+   * punto (el último saldo real conocido) el pasado entero salía plano: la
+   * curva no existía. Un punto por semana da la forma real del saldo sin
+   * inflar el histórico con un punto por movimiento.
+   *
+   * Reglas:
+   *  · una semana con punto MANUAL ya tiene su punto — no se le añade otro
+   *    («un único punto por semana»), y el manual sigue mandando;
+   *  · se cubren TODAS las semanas entre el primer y el último MOVIMIENTO de
+   *    la cuenta, que son todas las que aportan algo: sin movimientos no hay
+   *    curva que reconstruir, solo saldos sueltos que el usuario ya tecleó;
+   *  · la última semana, si está a medias, se cierra en el último día con
+   *    datos en vez de en un domingo que aún no ha llegado;
+   *  · los derivados anteriores se reemplazan, así que llamar dos veces no
+   *    duplica nada y siempre refleja los movimientos de ahora mismo.
+   *
+   * Devuelve cuántos puntos semanales ha dejado escritos.
+   */
+  function generarPuntosSemanales(cuentaId: string): number {
+    const manuales = anclas(cuentaId);
+    const movimientos = store
+      .get('transacciones')
+      .filter((t) => t.cuentaId === cuentaId)
+      .sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+    const primera = movimientos[0]?.fecha;
+    const ultima = movimientos[movimientos.length - 1]?.fecha;
+
+    // Sin movimientos no hay curva que dibujar; se limpian los derivados de
+    // antes. El puente con el legacy se rehace SIEMPRE, también en este atajo:
+    // quien llama (registrar un punto manual, por ejemplo) cuenta con que al
+    // volver de aquí `historicoSaldos` ya está al día.
+    const sinDerivados = store.get('puntosControl').filter((p) => !(p.cuentaId === cuentaId && p.origen === 'derivado'));
+    if (!primera) {
+      store.set('puntosControl', sinDerivados);
+      sincronizarConLegacy(cuentaId);
+      return 0;
+    }
+
+    // Cierres de semana a cubrir: el domingo de cada semana desde la primera
+    // fecha con datos, sin pasarse de la última (la semana en curso se cierra
+    // en `ultima`).
+    const cierres: ISODate[] = [];
+    for (let f = finDeSemana(primera); f <= ultima; f = finDeSemana(sumarDias(f, 1))) cierres.push(f);
+    if (cierres[cierres.length - 1] !== ultima) cierres.push(ultima);
+
+    const semanasConManual = new Set(manuales.map((p) => finDeSemana(p.fecha)));
+
+    // Mismo cálculo que `saldoCuentaCts`, pero sobre los arrays ya leídos: el
+    // ancla manual más reciente hasta esa fecha más los movimientos de después.
+    // Todo se calcula ANTES de escribir, así ningún punto recién creado puede
+    // colarse como ancla del siguiente.
+    const saldoEn = (fecha: ISODate): number => {
+      const ancla = manuales.filter((p) => p.fecha <= fecha).pop();
+      return movimientos
+        .filter((t) => t.fecha <= fecha && (!ancla || t.fecha > ancla.fecha))
+        .reduce((s, t) => s + t.importeCts, ancla?.saldoCts ?? 0);
+    };
+
+    const nuevos: PuntoControl[] = cierres
+      .filter((cierre) => !semanasConManual.has(finDeSemana(cierre)))
+      .map((cierre) => ({ _id: uid('pcd'), fecha: cierre, cuentaId, saldoCts: saldoEn(cierre), origen: 'derivado' as const }));
+
+    store.set(
+      'puntosControl',
+      [...sinDerivados, ...nuevos].sort((a, b) => a.fecha.localeCompare(b.fecha)),
+    );
+    sincronizarConLegacy(cuentaId);
+    return nuevos.length;
+  }
+
+  /** `generarPuntosSemanales` para varias cuentas (todas, si se omite). */
+  function generarPuntosSemanalesTodas(cuentaIds?: string[]): number {
+    const ids = cuentaIds ?? [...new Set(store.get('transacciones').map((t) => t.cuentaId))];
+    return ids.reduce((s, id) => s + generarPuntosSemanales(id), 0);
+  }
+
+  /**
    * Repite el barrido de `eliminarPuntosControlEnRango` a mano, sobre el rango
    * real de fechas ya importadas de cada cuenta (o de una sola, si se indica),
    * sin tener que volver a subir el CSV. Sirve para limpiar históricos
    * manuales que se colaron después de importar (p.ej. un punto de control
    * tecleado por error, o datos importados antes de que este barrido
-   * existiera). Devuelve solo las cuentas donde de verdad se ha borrado algo.
+   * existiera). Deja además el histórico semanal al día en cada cuenta que
+   * toca. Devuelve una fila por cuenta con datos importados.
    */
-  function sincronizarHistoricoImportado(cuentaId?: string): { cuentaId: string; eliminados: number }[] {
+  function sincronizarHistoricoImportado(cuentaId?: string): { cuentaId: string; eliminados: number; semanales: number }[] {
     const importadas = store.get('transacciones').filter((t) => t.origen === 'importado' && (!cuentaId || t.cuentaId === cuentaId));
     const porCuenta = new Map<string, ISODate[]>();
     for (const t of importadas) {
@@ -203,11 +301,11 @@ export function createLedger(store: LedgerStoreLike) {
       if (fechas) fechas.push(t.fecha);
       else porCuenta.set(t.cuentaId, [t.fecha]);
     }
-    const resultados: { cuentaId: string; eliminados: number }[] = [];
+    const resultados: { cuentaId: string; eliminados: number; semanales: number }[] = [];
     for (const [cid, fechas] of porCuenta) {
       fechas.sort();
       const eliminados = eliminarPuntosControlEnRango(cid, fechas[0], fechas[fechas.length - 1]);
-      if (eliminados > 0) resultados.push({ cuentaId: cid, eliminados });
+      resultados.push({ cuentaId: cid, eliminados, semanales: generarPuntosSemanales(cid) });
     }
     return resultados;
   }
@@ -247,7 +345,7 @@ export function createLedger(store: LedgerStoreLike) {
    * Si no hay ningún punto de control previo, arranca de 0 y suma lo que haya.
    */
   function saldoCuentaCts(cuentaId: string, fecha: ISODate = todayISO()): number {
-    const punto = puntosControl(cuentaId)
+    const punto = anclas(cuentaId)
       .filter((p) => p.fecha <= fecha)
       .pop();
     const desde = punto?.fecha;
@@ -323,6 +421,8 @@ export function createLedger(store: LedgerStoreLike) {
     eliminarPuntoControl,
     eliminarPuntosControlEnRango,
     sincronizarHistoricoImportado,
+    generarPuntosSemanales,
+    generarPuntosSemanalesTodas,
     saldoCuenta,
     saldoCuentaCts,
     saldoTotal,

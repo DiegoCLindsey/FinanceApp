@@ -2132,7 +2132,12 @@ const DashboardModule = (() => {
       fechaReferencia: document.getElementById('cfg-ref')?.value || existing.fechaReferencia || _fechaLocal(new Date()),
       showHistorico:   document.getElementById('cfg-show-hist')?.checked??true,
     };
-    State.set('config',config); render();
+    State.set('config',config);
+    // La fecha de simulación también vive en la barra de periodo: si se cambia
+    // aquí hay que reflejarla allí, o quedan dos controles diciendo cosas
+    // distintas del mismo campo.
+    if (typeof PeriodBar !== 'undefined') PeriodBar.init(config);
+    render();
   }
   function applyPreset(preset) { PeriodBar.applyPreset(preset); }
   function setChartMode(m) {

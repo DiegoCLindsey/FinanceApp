@@ -1,6 +1,16 @@
 // Unit tests propios de core/dates y core/money (Fase 1, tarea 1.2).
 import { describe, it, expect } from 'vitest';
-import { clampedDate, diasEntre, formatLocalDate, lastDayOfMonth, parseLocalDate, resolverDiaEfectivo, todayISO } from '@/core/dates';
+import {
+  clampedDate,
+  diasEntre,
+  finDeSemana,
+  formatLocalDate,
+  lastDayOfMonth,
+  parseLocalDate,
+  resolverDiaEfectivo,
+  sumarDias,
+  todayISO,
+} from '@/core/dates';
 import { toCents, fromCents, roundMoney } from '@/core/money';
 
 describe('core/dates', () => {
@@ -97,5 +107,35 @@ describe('días de calendario', () => {
 
   it('un rango invertido da negativo', () => {
     expect(diasEntre(new Date(2026, 0, 31), new Date(2026, 0, 1))).toBe(-30);
+  });
+});
+
+describe('semanas', () => {
+  it('finDeSemana devuelve el domingo de la semana (lunes a domingo)', () => {
+    // 2026-06-01 es lunes; su semana cierra el domingo 07.
+    expect(finDeSemana('2026-06-01')).toBe('2026-06-07');
+    expect(finDeSemana('2026-06-03')).toBe('2026-06-07');
+    expect(finDeSemana('2026-06-06')).toBe('2026-06-07'); // sábado
+  });
+
+  it('un domingo cierra su propia semana, no la siguiente', () => {
+    expect(finDeSemana('2026-06-07')).toBe('2026-06-07');
+  });
+
+  it('cruza meses y años', () => {
+    expect(finDeSemana('2026-12-31')).toBe('2027-01-03'); // jueves → domingo
+  });
+
+  it('el cambio de hora no mueve el domingo', () => {
+    // 2026-03-29 (paso a horario de verano) es domingo.
+    expect(finDeSemana('2026-03-25')).toBe('2026-03-29');
+    expect(finDeSemana('2026-10-21')).toBe('2026-10-25');
+  });
+
+  it('sumarDias suma y resta días de calendario', () => {
+    expect(sumarDias('2026-06-07', 1)).toBe('2026-06-08');
+    expect(sumarDias('2026-06-30', 1)).toBe('2026-07-01');
+    expect(sumarDias('2026-01-01', -1)).toBe('2025-12-31');
+    expect(sumarDias('2026-03-28', 1)).toBe('2026-03-29'); // cambio de hora
   });
 });
