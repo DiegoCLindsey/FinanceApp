@@ -5,7 +5,7 @@
 // Paridad exacta con FinanceMath.proyectarTransferencias. Diferencia de diseño:
 // las cuentas, nóminas y resolvers de tramos se inyectan (el legacy lee State).
 
-import { formatLocalDate, parseLocalDate, resolverDiaEfectivo, type ISODate } from '@/core/dates';
+import { arranqueMensual, formatLocalDate, parseLocalDate, resolverDiaEfectivo, type ISODate } from '@/core/dates';
 import { modeloFondoDe, type AccountLike } from '@/core/accounts';
 import { calcFondoInversion, calcImpuestoPension, calcTipoMarginalPension, type NominaLike } from '@/core/tax/pension';
 import { TRAMOS_IRPF_DEFAULT, type Tramos } from '@/core/tax/irpf';
@@ -141,8 +141,8 @@ export function proyectarTransferencias(
       if (dI >= dS && dI <= dE && dI <= dF) pushPair(exp.fechaInicio!);
     } else if (exp.tipoFrecuencia === 'mensual') {
       const freq = Math.max(1, exp.frecuencia || 1);
-      let year = dI.getFullYear();
-      let month = dI.getMonth();
+      // Se arranca en la ventana, no en fechaInicio (ver `arranqueMensual`).
+      let { year, month } = arranqueMensual(dI, dS, freq);
       const maxIter = Math.ceil(240 / freq) + 2;
       for (let i = 0; i < maxIter; i++) {
         const fe =

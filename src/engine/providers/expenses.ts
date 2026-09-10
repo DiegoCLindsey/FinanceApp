@@ -2,7 +2,7 @@
 // Proyección de gastos/ingresos recurrentes (no transferencias).
 // Paridad exacta con FinanceMath.proyectarGastos (tests/core/engine.test.ts).
 
-import { formatLocalDate, parseLocalDate, resolverDiaEfectivo, type DiaPago, type ISODate } from '@/core/dates';
+import { arranqueMensual, formatLocalDate, parseLocalDate, resolverDiaEfectivo, type DiaPago, type ISODate } from '@/core/dates';
 import type { AccountFilter, CashEvent, DateRange } from '../types';
 
 export interface ExpenseLike {
@@ -46,9 +46,11 @@ export function proyectarGastos(expenses: ExpenseLike[], range: DateRange, filtr
       if (dI >= dS && dI <= dE && dI <= dF) push(exp.fechaInicio!);
     } else if (exp.tipoFrecuencia === 'mensual') {
       const freq = Math.max(1, exp.frecuencia || 1);
-      let year = dI.getFullYear();
-      let month = dI.getMonth();
-      const maxIter = Math.ceil(240 / freq) + 2; // límite de seguridad: 20 años
+      // Se arranca en la ventana, no en fechaInicio: con el tope de iteraciones
+      // contando desde el inicio, un gasto domiciliado hace más de 20 años no
+      // proyectaba nada en absoluto (ver `arranqueMensual`).
+      let { year, month } = arranqueMensual(dI, dS, freq);
+      const maxIter = Math.ceil(240 / freq) + 2; // límite de seguridad: 20 años de ventana
       for (let iter = 0; iter < maxIter; iter++) {
         const fechaEfectiva =
           resolverDiaEfectivo(year, month, exp.diaPago || '') ||
