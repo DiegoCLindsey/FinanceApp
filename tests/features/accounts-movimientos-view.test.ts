@@ -427,3 +427,76 @@ describe('vista fusionada — pestaña Cierre y precisión (panel de precisión)
     expect(expenses.filter((e) => e.ajustadaDesdeId)).toHaveLength(2);
   });
 });
+
+// Un extracto importado son cientos de movimientos, y cada fila lleva dos
+// desplegables con todas las previsiones: pintarlos todos tarda y deja una
+// página imposible de recorrer.
+describe('vista fusionada — paginado de movimientos', () => {
+  beforeEach(() => montarShell());
+
+  /** 120 movimientos en mayo de 2026, más de dos páginas. */
+  function conMuchos() {
+    const env = entorno();
+    for (let i = 0; i < 120; i++) {
+      env.ledger.registrar({
+        fecha: `2026-05-${String((i % 28) + 1).padStart(2, '0')}`,
+        cuentaId: 'default',
+        importe: 10 + i,
+        concepto: `COMPRA ${i}`,
+        tipo: 'gasto',
+      });
+    }
+    env.registry.mount('accounts');
+    irAPestana('movimientos');
+    const mes = contenedor().querySelector<HTMLInputElement>('#acc-mes') as HTMLInputElement;
+    mes.value = '2026-05';
+    mes.dispatchEvent(new Event('change', { bubbles: true }));
+    return env;
+  }
+
+  const filas = () => contenedor().querySelectorAll('[data-tx]').length;
+  const pulsar = (sel: string) => (contenedor().querySelector(sel) as HTMLElement).click();
+
+  it('solo pinta la primera página y dice cuántos hay en total', () => {
+    conMuchos();
+    expect(filas()).toBe(50);
+    expect(contenedor().textContent).toContain('1–50 de 120 movimientos');
+    expect(contenedor().textContent).toContain('página 1 de 3');
+  });
+
+  it('«siguiente» avanza y la última página va corta', () => {
+    conMuchos();
+    pulsar('[data-acc-pagina="2"]');
+    expect(contenedor().textContent).toContain('51–100 de 120');
+    pulsar('[data-acc-pagina="3"]');
+    expect(filas()).toBe(20);
+    expect(contenedor().textContent).toContain('101–120 de 120');
+  });
+
+  it('los totales son los de todo el filtro, no los de la página', () => {
+    const { ledger } = conMuchos();
+    const total = ledger.transacciones({ desde: '2026-05-01', hasta: '2026-05-31' }).reduce((s, t) => s + Math.abs(t.importeCts), 0);
+    // 120 gastos de 10..129 € → 8340 €
+    expect(total).toBe(834000);
+    expect(contenedor().textContent).toContain('8340,00');
+  });
+
+  it('se puede pedir verlos todos', () => {
+    conMuchos();
+    const select = contenedor().querySelector('[data-acc-por-pagina]') as HTMLSelectElement;
+    select.value = '0';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(filas()).toBe(120);
+  });
+
+  it('cambiar de filtro vuelve a la primera página', () => {
+    conMuchos();
+    pulsar('[data-acc-pagina="3"]');
+    const mes = contenedor().querySelector<HTMLInputElement>('#acc-mes') as HTMLInputElement;
+    mes.value = '2026-06';
+    mes.dispatchEvent(new Event('change', { bubbles: true }));
+    mes.value = '2026-05';
+    mes.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(contenedor().textContent).toContain('1–50 de 120');
+  });
+});

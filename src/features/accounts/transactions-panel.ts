@@ -65,7 +65,19 @@ export interface EstadoPanel {
    * otra cuenta lo compensa.
    */
   comparativa: MagnitudComparativa;
+  /**
+   * Paginado de la lista. Un extracto importado son cientos o miles de
+   * movimientos, y cada fila lleva dos desplegables con todas las previsiones:
+   * pintarlos todos de golpe tarda segundos y deja una página imposible de
+   * recorrer. Se pinta solo la página actual; los totales y el saldo siguen
+   * siendo los de TODO el filtro, no los de la página.
+   */
+  pagina: number;
+  porPagina: number;
 }
+
+/** Tamaños de página: el último, 0, significa «todos». */
+export const TAMANOS_PAGINA = [25, 50, 100, 250, 0];
 
 /** Estado inicial del panel: vista mensual del mes actual, con un periodo de
  * seis meses hacia atrás ya listo por si se cambia a la vista agrupada o de
@@ -82,7 +94,71 @@ export function estadoPanelInicial(mesActual: string): EstadoPanel {
     intervaloDesde: rangoMes(mesAntes(mesActual, 5)).desde,
     intervaloHasta: rangoMes(mesActual).hasta,
     comparativa: 'neto',
+    pagina: 1,
+    porPagina: 50,
   };
+}
+
+export interface Paginado<T> {
+  /** Solo los elementos de la página actual: lo único que se pinta. */
+  pagina: T[];
+  /** Página efectiva (1..paginas), ya acotada. */
+  actual: number;
+  paginas: number;
+  total: number;
+  /** Índices 1-based del primero y el último de la página, para el rótulo. */
+  desde: number;
+  hasta: number;
+}
+
+/**
+ * Corta una lista en la página pedida, acotando la página a lo que existe: al
+ * cambiar de filtro la página guardada puede quedarse más allá del final, y es
+ * mejor enseñar la última que una tabla vacía.
+ */
+export function paginar<T>(items: T[], pagina: number, porPagina: number): Paginado<T> {
+  const total = items.length;
+  if (porPagina <= 0) return { pagina: items, actual: 1, paginas: 1, total, desde: total > 0 ? 1 : 0, hasta: total };
+  const paginas = Math.max(1, Math.ceil(total / porPagina));
+  const actual = Math.min(Math.max(1, pagina), paginas);
+  const inicio = (actual - 1) * porPagina;
+  return {
+    pagina: items.slice(inicio, inicio + porPagina),
+    actual,
+    paginas,
+    total,
+    desde: total > 0 ? inicio + 1 : 0,
+    hasta: Math.min(inicio + porPagina, total),
+  };
+}
+
+/**
+ * Barra de paginado. Se pinta arriba y abajo de la tabla: con cincuenta filas,
+ * volver al principio para pasar de página es justo el paseo que se quería
+ * ahorrar.
+ */
+function barraPaginado(p: Paginado<unknown>, porPagina: number, nombre: string): string {
+  if (p.total === 0) return '';
+  const boton = (destino: number, etiqueta: string, activo: boolean, titulo: string) =>
+    `<button class="btn-secondary btn-sm" data-acc-pagina="${destino}" ${activo ? '' : 'disabled'} title="${esc(titulo)}"
+             style="padding:2px 9px;font-size:11px${activo ? '' : ';opacity:0.4;cursor:default'}">${etiqueta}</button>`;
+  const opciones = TAMANOS_PAGINA.map(
+    (n) => `<option value="${n}"${n === porPagina ? ' selected' : ''}>${n === 0 ? 'todos' : `${n} por página`}</option>`,
+  ).join('');
+
+  return `
+    <div class="flex justify-between items-center flex-wrap" style="gap:8px;margin:8px 0">
+      <div class="text-sm" style="color:var(--text3)">
+        ${p.desde}–${p.hasta} de ${p.total} ${esc(nombre)}${p.paginas > 1 ? ` · página ${p.actual} de ${p.paginas}` : ''}
+      </div>
+      <div class="flex gap-6 items-center">
+        ${boton(1, '«', p.actual > 1, 'Primera')}
+        ${boton(p.actual - 1, '‹ Anterior', p.actual > 1, 'Página anterior')}
+        ${boton(p.actual + 1, 'Siguiente ›', p.actual < p.paginas, 'Página siguiente')}
+        ${boton(p.paginas, '»', p.actual < p.paginas, 'Última')}
+        <select class="form-select" data-acc-por-pagina style="font-size:11px;padding:2px 6px;width:auto">${opciones}</select>
+      </div>
+    </div>`;
 }
 
 /** Botón de magnitud de la comparativa, con el aspecto de los demás selectores. */
@@ -248,14 +324,18 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
       .map((t) => `<option value="${t}"${t === seleccionado ? ' selected' : ''}>${ETIQUETA_TIPO[t]}</option>`)
       .join('');
 
-  const filas = movimientos
+  // Los totales de arriba y el saldo se calculan sobre TODO el filtro; aquí
+  // solo se recorta lo que se pinta.
+  const pagMovimientos = paginar(movimientos, estado.pagina, estado.porPagina);
+  const nombreCuentaDe = new Map(deps.accounts().map((a) => [a._id, a.nombre]));
+  const filas = pagMovimientos.pagina
     .map(
       (t) => `
       <tr data-tx="${esc(t._id)}" style="border-bottom:1px solid var(--border)${t.tipo === 'transferencia' ? ';opacity:0.7' : ''}">
         <td style="padding:7px 8px;font-family:var(--font-mono);font-size:12px;color:var(--text2);white-space:nowrap">${esc(t.fecha)}</td>
         <td style="padding:7px 8px;font-size:13px">${esc(t.concepto)}</td>
         <td style="padding:7px 8px">${tagChips(t.tags)}</td>
-        <td style="padding:7px 8px;font-size:12px;color:var(--text2)">${esc(deps.accounts().find((a) => a._id === t.cuentaId)?.nombre ?? t.cuentaId)}</td>
+        <td style="padding:7px 8px;font-size:12px;color:var(--text2)">${esc(nombreCuentaDe.get(t.cuentaId) ?? t.cuentaId)}</td>
         <td style="padding:7px 8px">
           <select class="form-input" data-tx-tipo="${esc(t._id)}" style="font-size:11px;padding:3px 6px" title="Una transferencia entre tus cuentas no cuenta como gasto ni ingreso">${opcionesTipo(t.tipo)}</select>
         </td>
@@ -282,7 +362,8 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
   const movimientosDelPeriodo = agrupado ? ledger.transacciones({ desde, hasta }) : [];
 
   const grupos = agrupado ? agruparPorConcepto(movimientos) : [];
-  const filasGrupo = grupos
+  const pagGrupos = paginar(grupos, estado.pagina, estado.porPagina);
+  const filasGrupo = pagGrupos.pagina
     .map((g) => {
       const abierto = estado.detalleAbierto.has(g.concepto);
       const configGrupo = abierto
@@ -406,7 +487,8 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
         ${
           agrupado
             ? `<div class="text-sm mb-8" style="color:var(--text3)">Conceptos idénticos repetidos entre ${esc(estado.periodoDesde)} y ${esc(estado.periodoHasta)}. Cambia la estimación de la fila para asignarla a todos los movimientos del grupo a la vez.</div>
-               <div style="overflow-x:auto">
+               ${barraPaginado(pagGrupos, estado.porPagina, 'conceptos')}
+               <div style="overflow-x:auto" data-acc-tabla>
                  <table style="width:100%;border-collapse:collapse">
                    <thead>
                      <tr style="background:var(--bg3)">
@@ -421,8 +503,10 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
                      ${filasGrupo || `<tr><td colspan="5" style="padding:18px;text-align:center;color:var(--text2);font-size:13px">Ningún concepto se repite en este periodo.</td></tr>`}
                    </tbody>
                  </table>
-               </div>`
-            : `<div style="overflow-x:auto">
+               </div>
+               ${barraPaginado(pagGrupos, estado.porPagina, 'conceptos')}`
+            : `${barraPaginado(pagMovimientos, estado.porPagina, 'movimientos')}
+               <div style="overflow-x:auto" data-acc-tabla>
                  <table style="width:100%;border-collapse:collapse">
                    <thead>
                      <tr style="background:var(--bg3)">
@@ -441,6 +525,7 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
                    </tbody>
                  </table>
                </div>
+               ${barraPaginado(pagMovimientos, estado.porPagina, 'movimientos')}
                ${
                  intervalo
                    ? `<div class="divider"></div>
@@ -521,24 +606,46 @@ export function wireTransactionsPanel(
 ): void {
   const { ledger } = deps;
 
+  // Cambiar de filtro devuelve a la primera página: seguir en la 7 de una lista
+  // que ahora tiene dos deja la tabla vacía sin motivo aparente.
+  const refiltrar = () => {
+    estado.pagina = 1;
+    refrescar();
+  };
+
   onChange(container, '#acc-cuenta', (el) => {
     estado.cuentaId = (el as HTMLSelectElement).value;
-    refrescar();
+    refiltrar();
   });
   onChange(container, '#acc-mes', (el) => {
     estado.mes = (el as HTMLInputElement).value || estado.mes;
-    refrescar();
+    refiltrar();
   });
   onClick(container, '[data-acc-vista]', (el) => {
     estado.vista = (el.getAttribute('data-acc-vista') as EstadoPanel['vista']) || 'mensual';
-    refrescar();
+    refiltrar();
   });
   onChange(container, '#acc-periodo-desde', (el) => {
     estado.periodoDesde = (el as HTMLInputElement).value || estado.periodoDesde;
-    refrescar();
+    refiltrar();
   });
   onChange(container, '#acc-periodo-hasta', (el) => {
     estado.periodoHasta = (el as HTMLInputElement).value || estado.periodoHasta;
+    refiltrar();
+  });
+  onClick(container, '[data-acc-pagina]', (el) => {
+    if ((el as HTMLButtonElement).disabled) return;
+    estado.pagina = Number(el.getAttribute('data-acc-pagina')) || 1;
+    refrescar();
+    // Al pasar de página se vuelve arriba de la tabla; si no, se aterriza en
+    // mitad de la lista nueva.
+    container.querySelector('[data-acc-tabla]')?.scrollIntoView({ block: 'start' });
+  });
+  onChange(container, '[data-acc-por-pagina]', (el) => {
+    // Ojo con `|| 50`: «todos» vale 0, que es falsy y se colaba como 50.
+    const pedido = Number((el as HTMLSelectElement).value);
+    estado.porPagina = Number.isFinite(pedido) && pedido >= 0 ? pedido : 50;
+    estado.pagina = 1;
     refrescar();
   });
   onClick(container, '[data-acc-comparativa]', (el) => {
@@ -547,11 +654,11 @@ export function wireTransactionsPanel(
   });
   onChange(container, '#acc-intervalo-desde', (el) => {
     estado.intervaloDesde = (el as HTMLInputElement).value || estado.intervaloDesde;
-    refrescar();
+    refiltrar();
   });
   onChange(container, '#acc-intervalo-hasta', (el) => {
     estado.intervaloHasta = (el as HTMLInputElement).value || estado.intervaloHasta;
-    refrescar();
+    refiltrar();
   });
   onClick(container, '[data-grp-detalle]', (el) => {
     const concepto = el.getAttribute('data-grp-detalle') as string;
@@ -610,7 +717,16 @@ export function wireTransactionsPanel(
     // Se filtra en cliente: no hace falta debounce agresivo, pero se evita
     // re-renderizar en cada tecla con un microretardo.
     clearTimeout((buscar as HTMLInputElement & { _t?: number })._t);
-    (buscar as HTMLInputElement & { _t?: number })._t = window.setTimeout(refrescar, 200);
+    (buscar as HTMLInputElement & { _t?: number })._t = window.setTimeout(() => {
+      refiltrar();
+      // El repintado rehace la vista entera, así que el buscador que había en
+      // pantalla ya no existe: sin devolverle el foco, escribir la segunda
+      // palabra de una búsqueda obligaba a volver a hacer clic en la caja.
+      const nuevo = document.getElementById('acc-buscar') as HTMLInputElement | null;
+      if (!nuevo) return;
+      nuevo.focus();
+      nuevo.setSelectionRange(nuevo.value.length, nuevo.value.length);
+    }, 200);
   });
 
   onClick(container, '#nt-guardar', () => {

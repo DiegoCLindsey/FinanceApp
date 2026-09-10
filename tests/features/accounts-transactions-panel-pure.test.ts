@@ -1,7 +1,7 @@
 // Funciones puras de transactions-panel.ts: agrupar por concepto y conciliar
 // un grupo de transferencias con el gasto real que cubre.
 import { describe, it, expect } from 'vitest';
-import { agruparPorConcepto, reconciliarGrupo } from '@/features/accounts/transactions-panel';
+import { agruparPorConcepto, paginar, reconciliarGrupo } from '@/features/accounts/transactions-panel';
 import type { Transaccion } from '@/state/schema';
 
 const tx = (over: Partial<Transaccion> & { _id: string; fecha: string; importeCts: number; concepto: string }): Transaccion => ({
@@ -111,5 +111,38 @@ describe('reconciliarGrupo', () => {
     const [grupo] = agruparPorConcepto([traspaso1, traspaso2]);
     const rec = reconciliarGrupo(grupo, [traspaso1, traspaso2, ingreso, otraTransferencia]);
     expect(rec?.gastadoCts).toBe(0);
+  });
+});
+
+describe('paginar', () => {
+  const items = Array.from({ length: 120 }, (_, i) => i + 1);
+
+  it('corta la página pedida y dice de dónde a dónde va', () => {
+    const p = paginar(items, 2, 50);
+    expect(p.pagina).toHaveLength(50);
+    expect(p.pagina[0]).toBe(51);
+    expect(p).toMatchObject({ actual: 2, paginas: 3, total: 120, desde: 51, hasta: 100 });
+  });
+
+  it('la última página puede ir corta', () => {
+    const p = paginar(items, 3, 50);
+    expect(p.pagina).toHaveLength(20);
+    expect(p).toMatchObject({ desde: 101, hasta: 120 });
+  });
+
+  it('una página fuera de rango se acota, no deja la tabla vacía', () => {
+    expect(paginar(items, 99, 50).actual).toBe(3);
+    expect(paginar(items, 0, 50).actual).toBe(1);
+    expect(paginar(items, -3, 50).pagina[0]).toBe(1);
+  });
+
+  it('porPagina 0 significa todos', () => {
+    const p = paginar(items, 5, 0);
+    expect(p.pagina).toHaveLength(120);
+    expect(p).toMatchObject({ actual: 1, paginas: 1, desde: 1, hasta: 120 });
+  });
+
+  it('sin elementos no hay ni primera ni última', () => {
+    expect(paginar([], 1, 50)).toMatchObject({ total: 0, paginas: 1, desde: 0, hasta: 0 });
   });
 });
