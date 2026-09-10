@@ -20,6 +20,7 @@ const analisis = (meses: MesComparado[], extra: Partial<PrecisionEstimacion> = {
   desviacionTotal: 0,
   precision: null,
   mediaRealReciente: null,
+  factorReciente: null,
   infraestimada: false,
   ...extra,
 });

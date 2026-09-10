@@ -542,3 +542,50 @@ describe('duración del periodo y gasto por etiqueta', () => {
     expect(porTag['sin etiqueta']).toMatchObject({ real: 20 });
   });
 });
+
+// Cada estimación se proyecta con SU periodicidad, y solo cuenta en los
+// periodos en los que estaba viva.
+describe('periodicidad y vigencia en el cierre', () => {
+  let ledger: Ledger;
+  let store: ReturnType<typeof entorno>['store'];
+
+  beforeEach(() => {
+    const e = entorno();
+    ledger = e.ledger;
+    store = e.store;
+  });
+
+  it('una estimación semanal prevé todos los pagos del mes, no su cuantía', () => {
+    store.addItem(
+      'expenses',
+      gasto({ concepto: 'Súper', cuantia: 20, tipoFrecuencia: 'diaria', frecuencia: 7, fechaInicio: '2026-07-02' }),
+    );
+    const c = cerrarMes(ledger, store.get('expenses'), '2026-07');
+    // Julio de 2026: pagos el 2, 9, 16, 23 y 30 → 5 × 20 €
+    expect(c.filas[0]).toMatchObject({ estimado: 100, periodicidad: 'cada semana' });
+  });
+
+  it('una trimestral solo prevé el mes que le toca', () => {
+    store.addItem(
+      'expenses',
+      gasto({ concepto: 'Seguro', cuantia: 300, tipoFrecuencia: 'mensual', frecuencia: 3, fechaInicio: '2026-01-15' }),
+    );
+    expect(cerrarMes(ledger, store.get('expenses'), '2026-07').filas[0]).toMatchObject({ estimado: 300, periodicidad: 'cada trimestre' });
+    expect(cerrarMes(ledger, store.get('expenses'), '2026-08').filas[0]).toMatchObject({ estimado: 0 });
+  });
+
+  it('una estimación de alta posterior no sale con «previsto 0 €» contra el gasto de antes', () => {
+    store.addItem('expenses', gasto({ concepto: 'Gimnasio', cuantia: 40, tags: ['gym'], fechaInicio: '2026-08-10' }));
+    registrar(ledger, '2026-07-05', 40, 'GIMNASIO', { tags: ['gym'] });
+
+    const c = cerrarMes(ledger, store.get('expenses'), '2026-07');
+    expect(c.filas).toEqual([]); // en julio esa estimación todavía no existía
+    expect(c.sinEstimacion.map((g) => g.concepto)).toEqual(['GIMNASIO']);
+  });
+
+  it('una estimación dada de baja deja de contar después', () => {
+    store.addItem('expenses', gasto({ concepto: 'Netflix', cuantia: 15, fechaFin: '2026-06-30' }));
+    expect(cerrarMes(ledger, store.get('expenses'), '2026-06').filas).toHaveLength(1);
+    expect(cerrarMes(ledger, store.get('expenses'), '2026-07').filas).toEqual([]);
+  });
+});
