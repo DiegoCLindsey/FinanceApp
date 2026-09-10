@@ -16,7 +16,7 @@
 // Puro: entran datos, salen números. Sin DOM.
 
 import { roundMoney } from '@/core/money';
-import { parseLocalDate, type ISODate } from '@/core/dates';
+import { etiquetaPeriodicidad, parseLocalDate, vigenteEnRango, type ISODate } from '@/core/dates';
 import { proyectarNominas, type TramosResolver } from '@/engine/providers/salaries';
 import { proyectarPrestamos } from '@/engine/providers/loans';
 import type { Expense, Loan, Nomina, Transaccion } from '@/state/schema';
@@ -31,6 +31,8 @@ export interface FilaCierre {
   tipo: 'gasto' | 'ingreso';
   /** De dónde sale lo previsto: una estimación, una nómina o la cuota de un préstamo. */
   origen: OrigenPrevision;
+  /** Cada cuánto se paga («cada semana», «cada trimestre»), tal cual se enseña. */
+  periodicidad: string;
   tags: string[];
   estimado: number;
   real: number;
@@ -77,7 +79,9 @@ export interface Prevision {
   tags: string[];
   estimado: number;
   origen: OrigenPrevision;
-  /** Cuantía nominal; solo las estimaciones se pueden ajustar. */
+  /** Cada cuánto toca pagar, en palabras. */
+  periodicidad: string;
+  /** Cuantía nominal de CADA pago; solo las estimaciones se pueden ajustar. */
   cuantia?: number;
 }
 
@@ -233,7 +237,13 @@ export interface OpcionesCierre {
 
 /** Lo previsto en el periodo, viniendo de estimaciones, nóminas y préstamos. */
 export function previsionesDelPeriodo(estimaciones: Expense[], desde: ISODate, hasta: ISODate, opciones: OpcionesCierre = {}): Prevision[] {
-  const activas = estimaciones.filter((e) => e.tipo !== 'transferencia' && e.activo !== false);
+  // Solo lo que estaba vivo en el periodo: una estimación dada de alta después
+  // no «preveía 0 €», es que no le tocaba. Si se cuela, se lleva por etiqueta el
+  // gasto real de meses en los que no existía y sale una fila de 0 € previstos
+  // contra cientos de euros reales.
+  const activas = estimaciones.filter(
+    (e) => e.tipo !== 'transferencia' && e.activo !== false && vigenteEnRango(e.fechaInicio, e.fechaFin, desde, hasta),
+  );
   const previsiones: Prevision[] = activas.map((e) => ({
     _id: e._id,
     concepto: e.concepto,
@@ -241,6 +251,7 @@ export function previsionesDelPeriodo(estimaciones: Expense[], desde: ISODate, h
     tags: e.tags ?? [],
     estimado: roundMoney(estimadoEnRango(e, desde, hasta)),
     origen: 'estimacion',
+    periodicidad: etiquetaPeriodicidad(e.tipoFrecuencia, e.frecuencia),
     cuantia: e.cuantia,
   }));
 
@@ -248,7 +259,7 @@ export function previsionesDelPeriodo(estimaciones: Expense[], desde: ISODate, h
   // nómina esté en representación detallada (bruto como ingreso y SS/IRPF como
   // gastos): esos dos gastos no son movimientos reales, así que se restan aquí
   // en vez de aparecer como previsiones de gasto que nunca se cumplen.
-  const nominas = (opciones.nominas ?? []).filter((n) => n.activo !== false);
+  const nominas = (opciones.nominas ?? []).filter((n) => n.activo !== false && vigenteEnRango(n.fechaInicio, n.fechaFin, desde, hasta));
   if (nominas.length > 0) {
     const eventos = proyectarNominas(nominas, { start: desde, end: hasta }, null, [], opciones.resolverTramosIRPF);
     for (const nom of nominas) {
@@ -261,6 +272,7 @@ export function previsionesDelPeriodo(estimaciones: Expense[], desde: ISODate, h
         tags: nom.tags ?? [],
         estimado: roundMoney(neto),
         origen: 'nomina',
+        periodicidad: `${nom.nPagas} pagas al año`,
       });
     }
   }
@@ -278,6 +290,7 @@ export function previsionesDelPeriodo(estimaciones: Expense[], desde: ISODate, h
         tags: loan.tags ?? [],
         estimado: roundMoney(suyos.reduce((s, e) => s + Math.abs(e.cuantia), 0)),
         origen: 'prestamo',
+        periodicidad: 'cuota mensual',
       });
     }
   }
@@ -349,6 +362,7 @@ export function cerrarPeriodo(
       concepto: prev.concepto,
       tipo: prev.tipo,
       origen: prev.origen,
+      periodicidad: prev.periodicidad,
       tags: prev.tags,
       estimado: prev.estimado,
       real,

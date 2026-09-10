@@ -231,7 +231,7 @@ describe('sugerencia de ajuste', () => {
     const s = sugerirAjuste(a, 100);
     expect(s?.cuantiaSugerida).toBe(40);
     expect(s?.diferencia).toBe(-60);
-    expect(s?.motivo).toContain('inferior');
+    expect(s?.motivo).toContain('por debajo');
   });
 });
 
@@ -476,5 +476,97 @@ describe('precisión limitada a un intervalo', () => {
   it('sin intervalo se sigue mirando todo el histórico', () => {
     const a = env.precision.analizarEstimacion(estimacion(), { hoy: HOY_ISO });
     expect(a.meses.map((m) => m.mes)).toEqual(['2026-03', '2026-04', '2026-05', '2026-06']);
+  });
+});
+
+// `cuantia` es el importe de CADA pago y la periodicidad la pone la estimación.
+// El ajuste copiaba la media MENSUAL del gasto real en ese campo, así que en
+// una estimación semanal proponía cobrarse cuatro veces de más.
+describe('el ajuste respeta la periodicidad de la estimación', () => {
+  const semanal = (over: Partial<Expense> = {}): Expense =>
+    estimacion({ _id: 'e1', concepto: 'Súper', cuantia: 20, tipoFrecuencia: 'diaria', frecuencia: 7, fechaInicio: '2026-01-02', ...over });
+
+  function conGastoSemanal(importe: number) {
+    const env = entorno([semanal()]);
+    for (let d = new Date(2026, 0, 2); d < new Date(2026, 6, 1); d.setDate(d.getDate() + 7)) {
+      const fecha = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      env.ledger.registrar({ fecha, cuentaId: 'default', importe, concepto: 'MERCADONA', tipo: 'gasto', estimacionId: 'e1' });
+    }
+    return env;
+  }
+
+  it('propone el importe POR PAGO, no la media del mes', () => {
+    const env = conGastoSemanal(35);
+    const a = env.precision.analizarEstimacion(semanal(), { hoy: HOY_ISO });
+    // Se gasta 1,75 veces lo previsto: 20 € × 1,75 = 35 € por pago.
+    expect(a.factorReciente).toBeCloseTo(1.75, 6);
+    expect(sugerirAjuste(a, 20)?.cuantiaSugerida).toBe(35);
+    // La media mensual (unos 150 €) era lo que se proponía antes.
+    expect(a.mediaRealReciente).toBeGreaterThan(140);
+  });
+
+  it('si se gasta lo previsto no propone nada, aunque el mes sume mucho más que la cuantía', () => {
+    const env = conGastoSemanal(20);
+    const a = env.precision.analizarEstimacion(semanal(), { hoy: HOY_ISO });
+    expect(a.precision).toBeCloseTo(100, 6);
+    expect(sugerirAjuste(a, 20)).toBeNull();
+  });
+
+  it('en una mensual el factor da lo mismo que la media de siempre', () => {
+    const env = entorno();
+    for (const mes of ['04', '05', '06']) {
+      env.ledger.registrar({
+        fecha: `2026-${mes}-10`,
+        cuentaId: 'default',
+        importe: 150,
+        concepto: 'Luz',
+        tipo: 'gasto',
+        estimacionId: 'e1',
+      });
+    }
+    const a = env.precision.analizarEstimacion(estimacion(), { hoy: HOY_ISO });
+    expect(sugerirAjuste(a, 100)?.cuantiaSugerida).toBe(150);
+  });
+
+  it('una trimestral se ajusta sobre el importe del recibo, no sobre el mes', () => {
+    const trimestral = estimacion({ cuantia: 300, tipoFrecuencia: 'mensual', frecuencia: 3, fechaInicio: '2026-01-15' });
+    const env = entorno([trimestral]);
+    env.ledger.registrar({ fecha: '2026-01-15', cuentaId: 'default', importe: 450, concepto: 'Seguro', tipo: 'gasto', estimacionId: 'e1' });
+    env.ledger.registrar({ fecha: '2026-04-15', cuentaId: 'default', importe: 450, concepto: 'Seguro', tipo: 'gasto', estimacionId: 'e1' });
+    const a = env.precision.analizarEstimacion(trimestral, { hoy: HOY_ISO });
+    expect(sugerirAjuste(a, 300)?.cuantiaSugerida).toBe(450);
+  });
+
+  it('sin nada previsto con lo que comparar no se inventa un importe', () => {
+    const env = entorno();
+    // Estimación de alta hoy: los meses anteriores no son suyos.
+    const reciente = estimacion({ fechaInicio: '2026-07-29' });
+    env.ledger.registrar({ fecha: '2026-06-10', cuentaId: 'default', importe: 400, concepto: 'Luz', tipo: 'gasto', estimacionId: 'e1' });
+    const a = env.precision.analizarEstimacion(reciente, { hoy: HOY_ISO });
+    expect(a.meses).toEqual([]);
+    expect(a.factorReciente).toBeNull();
+    expect(sugerirAjuste(a, 100)).toBeNull();
+  });
+});
+
+describe('vigencia: solo se comparan los meses de la estimación', () => {
+  it('los meses anteriores al alta no cuentan como 0 % de precisión', () => {
+    const env = entorno();
+    for (const mes of ['04', '05', '06']) {
+      env.ledger.registrar({ fecha: `2026-${mes}-10`, cuentaId: 'default', importe: 100, concepto: 'Luz', tipo: 'gasto', tags: ['casa'] });
+    }
+    const desdeMayo = estimacion({ fechaInicio: '2026-05-01' });
+    const a = env.precision.analizarEstimacion(desdeMayo, { hoy: HOY_ISO });
+    expect(a.meses.map((m) => m.mes)).toEqual(['2026-05', '2026-06']);
+    expect(a.precision).toBeCloseTo(100, 6);
+  });
+
+  it('tampoco los posteriores a la baja', () => {
+    const env = entorno();
+    for (const mes of ['04', '05', '06']) {
+      env.ledger.registrar({ fecha: `2026-${mes}-10`, cuentaId: 'default', importe: 100, concepto: 'Luz', tipo: 'gasto', tags: ['casa'] });
+    }
+    const hastaAbril = estimacion({ fechaFin: '2026-04-30' });
+    expect(env.precision.analizarEstimacion(hastaAbril, { hoy: HOY_ISO }).meses.map((m) => m.mes)).toEqual(['2026-04']);
   });
 });

@@ -14,7 +14,7 @@
 //   · La precisión agregada pondera por el importe estimado, de modo que un mes
 //     de 500 € pesa más que uno de 5 € (evita que un mes marginal domine).
 
-import { parseLocalDate, todayISO, type ISODate } from '@/core/dates';
+import { parseLocalDate, todayISO, vigenteEnRango, type ISODate } from '@/core/dates';
 import { roundMoney } from '@/core/money';
 import { proyectarGastos, type ExpenseLike } from '@/engine/providers/expenses';
 import type { Expense } from '@/state/schema';
@@ -39,8 +39,17 @@ export interface PrecisionEstimacion {
   desviacionTotal: number;
   /** Precisión ponderada por importe estimado, 0..100. `null` si no hay datos. */
   precision: number | null;
-  /** Media real mensual de los últimos meses comparables (base del ajuste). */
+  /** Media real mensual de los últimos meses comparables. */
   mediaRealReciente: number | null;
+  /**
+   * Cuánto se ha desviado el gasto real respecto a lo previsto en los últimos
+   * meses comparables: real ÷ estimado. Es la base del ajuste, y no la media
+   * mensual, porque `cuantia` es el importe DE CADA PAGO, no el del mes: en una
+   * estimación semanal, meter la media mensual en `cuantia` la multiplicaba por
+   * cuatro. Un factor no depende de la periodicidad. `null` si no hay nada
+   * previsto con lo que comparar.
+   */
+  factorReciente: number | null;
   /** true si el real supera sistemáticamente al estimado. */
   infraestimada: boolean;
 }
@@ -144,6 +153,20 @@ export function estimadoEnRango(exp: Expense, desde: ISODate, hasta: ISODate): n
   return eventos.reduce((s, e) => s + Math.abs(e.cuantia), 0);
 }
 
+/**
+ * ¿Estaba viva la estimación en ese mes?
+ *
+ * Un mes anterior al alta no es un 0 % de precisión: es un mes que no le tocaba
+ * a esta estimación. Comparar ahí la ponía en 0 % y, peor, dejaba el ajuste
+ * calculando sobre un previsto de cero. Pasa siempre que se ajusta una
+ * estimación: la continuación empieza hoy y hereda las etiquetas, así que se
+ * comería todo el gasto real anterior a su propia existencia.
+ */
+function vigenteEn(exp: Expense, mes: string): boolean {
+  const { inicio, fin } = rangoMes(mes);
+  return vigenteEnRango(exp.fechaInicio, exp.fechaFin, inicio, fin);
+}
+
 export function createPrecisionAnalyzer(ledger: Ledger) {
   /**
    * Compara una estimación con sus transacciones reales relacionadas. Se
@@ -181,6 +204,7 @@ export function createPrecisionAnalyzer(ledger: Ledger) {
     for (const mes of aComparar) {
       const real = realPorMes.get(mes);
       if (real === undefined) continue; // sin dato real: no es un fallo, es un hueco
+      if (!vigenteEn(exp, mes)) continue; // el mes es anterior al alta (o posterior a la baja)
       const rango = rangos.get(mes) as { inicio: ISODate; fin: ISODate };
       const estimado = roundMoney(estimadoEnRango(exp, rango.inicio, rango.fin));
       meses.push({
@@ -205,6 +229,9 @@ export function createPrecisionAnalyzer(ledger: Ledger) {
 
     const recientes = meses.slice(-mesesMedia);
     const mediaRealReciente = recientes.length > 0 ? roundMoney(recientes.reduce((s, m) => s + m.real, 0) / recientes.length) : null;
+    const estimadoReciente = recientes.reduce((s, m) => s + m.estimado, 0);
+    const realReciente = recientes.reduce((s, m) => s + m.real, 0);
+    const factorReciente = estimadoReciente > 0 ? realReciente / estimadoReciente : null;
 
     return {
       estimacionId: exp._id,
@@ -216,6 +243,7 @@ export function createPrecisionAnalyzer(ledger: Ledger) {
       desviacionTotal: roundMoney(realTotal - estimadoTotal),
       precision,
       mediaRealReciente,
+      factorReciente,
       infraestimada: realTotal > estimadoTotal,
     };
   }

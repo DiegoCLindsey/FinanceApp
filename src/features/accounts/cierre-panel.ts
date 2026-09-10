@@ -263,6 +263,7 @@ function tablaDesviaciones(c: CierreMes): string {
                   ${esc(f.concepto)}
                   ${f.tipo === 'ingreso' ? '<span class="badge" style="margin-left:6px">ingreso</span>' : ''}
                   ${f.sinMovimiento ? '<span class="badge badge-yellow" style="margin-left:6px">sin movimiento</span>' : ''}
+                  <div style="font-size:10px;color:var(--text3)">${esc(f.periodicidad)}</div>
                 </td>
                 <td style="text-align:right;font-family:var(--font-mono);font-size:12px">${esc(formatEUR(f.estimado))}</td>
                 <td style="text-align:right;font-family:var(--font-mono);font-size:12px">${esc(formatEUR(f.real))}</td>
@@ -273,8 +274,8 @@ function tablaDesviaciones(c: CierreMes): string {
                   ${
                     s
                       ? `<button class="btn-secondary btn-sm" data-cie-ajustar="${esc(f.estimacionId)}"
-                           title="Pasar la estimación de ${esc(formatEUR(s.cuantiaActual))} a ${esc(formatEUR(s.cuantiaSugerida))}"
-                           style="font-size:11px;padding:2px 9px">→ ${esc(formatEUR(s.cuantiaSugerida))}</button>`
+                           title="Pasar el importe de cada pago (${esc(f.periodicidad)}) de ${esc(formatEUR(s.cuantiaActual))} a ${esc(formatEUR(s.cuantiaSugerida))} · ${esc(s.motivo)}"
+                           style="font-size:11px;padding:2px 9px">→ ${esc(formatEUR(s.cuantiaSugerida))}/pago</button>`
                       : ''
                   }
                 </td>
@@ -288,8 +289,9 @@ function tablaDesviaciones(c: CierreMes): string {
       conSugerencia.length > 0
         ? `<div class="flex justify-between items-center mb-12" style="gap:10px;flex-wrap:wrap">
              <div class="text-sm" style="color:var(--text2)">
-               ${conSugerencia.length} estimación${conSugerencia.length !== 1 ? 'es' : ''} se desvía${conSugerencia.length !== 1 ? 'n' : ''}
-               de forma sistemática. Ajustarla cierra la estimación de hoy y abre una nueva con el importe corregido.
+               ${conSugerencia.length === 1 ? '1 estimación se desvía' : `${conSugerencia.length} estimaciones se desvían`}
+               de forma sistemática. El importe propuesto es el de CADA pago, con la periodicidad de la estimación:
+               ajustarla cierra la de hoy y abre una nueva con ese importe corregido.
              </div>
              <button class="btn-primary btn-sm" data-cie-ajustar-todas>Ajustar todas</button>
            </div>`
@@ -469,7 +471,7 @@ export function wireCierrePanel(raiz: HTMLElement, deps: CierrePanelDeps, estado
     if (sugerencias.length === 0) return;
     const { aplicadas, errores } = deps.adjuster.aplicarTodas(sugerencias, { hoy: (deps.hoy ?? todayISO)() });
     toast(
-      `${aplicadas.length} estimación${aplicadas.length !== 1 ? 'es' : ''} ajustada${aplicadas.length !== 1 ? 's' : ''}` +
+      (aplicadas.length === 1 ? '1 estimación ajustada' : `${aplicadas.length} estimaciones ajustadas`) +
         (errores.length > 0 ? ` · ${errores.length} con error` : ''),
     );
     deps.onDatosCambiados();

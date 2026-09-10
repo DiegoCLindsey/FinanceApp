@@ -53,14 +53,23 @@ export interface OpcionesAjuste {
  * Sugerencia de ajuste a partir de un análisis de precisión. Devuelve `null`
  * cuando no hay datos suficientes, la precisión ya es buena o el cambio sería
  * insignificante — no se sugiere ruido.
+ *
+ * La cuantía nueva sale de ESCALAR la actual por lo que se ha desviado el gasto
+ * real de lo previsto (real ÷ estimado de los últimos meses), no de copiar la
+ * media mensual. `cuantia` es el importe de CADA PAGO y la periodicidad la pone
+ * la estimación: en una de «cada 7 días · 20 €» cuyo gasto real fueron 140 € al
+ * mes, la media mensual escrita en `cuantia` significaba 140 € CADA SEMANA, y
+ * el ajuste multiplicaba el gasto por cuatro en vez de corregirlo. Con el
+ * factor (140 ÷ 80 = 1,75) salen los 35 € por pago que de verdad se gastan, y
+ * el mismo cálculo vale para mensual, trimestral o cada diez días.
  */
 export function sugerirAjuste(analisis: PrecisionEstimacion, cuantiaActual: number, opciones: OpcionesAjuste = {}): Sugerencia | null {
   const { umbralPrecision = 90, variacionMinimaPct = 5 } = opciones;
-  if (analisis.precision === null || analisis.mediaRealReciente === null) return null;
+  if (analisis.precision === null || analisis.factorReciente === null) return null;
   if (analisis.meses.length === 0) return null;
   if (analisis.precision >= umbralPrecision) return null;
 
-  const sugerida = roundMoney(analisis.mediaRealReciente);
+  const sugerida = roundMoney(cuantiaActual * analisis.factorReciente);
   const diferencia = roundMoney(sugerida - cuantiaActual);
   const variacionPct = cuantiaActual !== 0 ? (diferencia / Math.abs(cuantiaActual)) * 100 : sugerida !== 0 ? 100 : 0;
   if (Math.abs(variacionPct) < variacionMinimaPct) return null;
@@ -77,8 +86,8 @@ export function sugerirAjuste(analisis: PrecisionEstimacion, cuantiaActual: numb
     mesesConsiderados: n,
     motivo:
       diferencia > 0
-        ? `El gasto real de los últimos ${n} meses supera lo estimado`
-        : `El gasto real de los últimos ${n} meses es inferior a lo estimado`,
+        ? `El gasto real de los últimos ${n} meses supera lo previsto en un ${Math.round((analisis.factorReciente - 1) * 100)} %`
+        : `El gasto real de los últimos ${n} meses se queda un ${Math.round((1 - analisis.factorReciente) * 100)} % por debajo de lo previsto`,
   };
 }
 

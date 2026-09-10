@@ -158,3 +158,43 @@ export function arranqueMensual(inicio: Date, ventana: Date, freq: number): { ye
   const total = month + Math.floor(meses / paso) * paso;
   return { year: year + Math.floor(total / 12), month: total % 12 };
 }
+
+/**
+ * ¿Estaba viva una cosa con vigencia [inicio, fin] durante [desde, hasta]?
+ *
+ * `inicio`/`fin` vacíos significan «desde siempre» y «para siempre». Se usa
+ * para no comparar una estimación con meses en los que todavía no existía: eso
+ * no es un fallo de precisión, es un mes que no le tocaba.
+ */
+export function vigenteEnRango(
+  inicio: ISODate | null | undefined,
+  fin: ISODate | null | undefined,
+  desde: ISODate,
+  hasta: ISODate,
+): boolean {
+  if (inicio && inicio > hasta) return false;
+  if (fin && fin < desde) return false;
+  return true;
+}
+
+/**
+ * Cómo se dice una periodicidad en una línea: «cada semana», «cada trimestre»…
+ *
+ * La cuantía de una estimación es la de CADA PAGO, así que un previsto de 80 €
+ * con una cuantía de 20 € solo se entiende si al lado pone «cada 7 días».
+ */
+export function etiquetaPeriodicidad(tipoFrecuencia: string, frecuencia?: number): string {
+  const n = Math.max(1, Math.round(frecuencia ?? 1));
+  if (tipoFrecuencia === 'extraordinario') return 'una vez';
+  if (tipoFrecuencia === 'diaria') {
+    if (n === 1) return 'cada día';
+    if (n === 7) return 'cada semana';
+    if (n === 14) return 'cada 2 semanas';
+    return `cada ${n} días`;
+  }
+  if (n === 1) return 'cada mes';
+  if (n === 3) return 'cada trimestre';
+  if (n === 6) return 'cada semestre';
+  if (n === 12) return 'cada año';
+  return `cada ${n} meses`;
+}
