@@ -271,3 +271,34 @@ describe('utilidades', () => {
     expect(m.get('sin_tag')).toBeUndefined(); // tags:[] no itera → no cae en sin_tag
   });
 });
+
+// Regresión de la línea Histórico aplanada (PR #93): «↻ Actualizar saldo base»
+// mueve fechaInicialSaldo/saldoInicial de todas las cuentas a hoy. Los puntos
+// de control anteriores a esa ancla siguen siendo el saldo real de su fecha; si
+// se descartaran, toda la serie pasada se sustituiría por el saldo de hoy
+// repetido y la curva real saldría plana.
+describe('saldoEnFecha: mover el ancla a hoy no borra el histórico anterior', () => {
+  const cuenta = {
+    activo: true,
+    saldoInicial: 5000,          // saldo de hoy, escrito por «actualizar saldo base»
+    fechaInicialSaldo: '2026-09-01',
+    historicoSaldos: [
+      { fecha: '2026-06-07', saldo: 3000 },
+      { fecha: '2026-07-05', saldo: 3500 },
+    ],
+  };
+
+  it('cada fecha pasada conserva su punto, no el saldo de hoy', () => {
+    expect(FM.saldoEnFecha(cuenta, '2026-06-30')).toBe(3000);
+    expect(FM.saldoEnFecha(cuenta, '2026-07-20')).toBe(3500);
+  });
+
+  it('desde el ancla en adelante manda el saldo nuevo', () => {
+    expect(FM.saldoEnFecha(cuenta, '2026-09-01')).toBe(5000);
+    expect(FM.saldoEnFecha(cuenta, '2026-09-30')).toBe(5000);
+  });
+
+  it('antes del primer punto no se inventa el saldo de hoy', () => {
+    expect(FM.saldoEnFecha(cuenta, '2026-01-01')).toBe(0);
+  });
+});
