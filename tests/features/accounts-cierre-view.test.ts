@@ -106,7 +106,8 @@ describe('cierre de mes', () => {
     montarEnCierre(registry);
 
     const txt = cierre().textContent ?? '';
-    expect(txt).toContain('Habías previsto');
+    expect(txt).toContain('Gasto');
+    expect(txt).toContain('previsto');
     expect(txt).toContain('Dónde te desviaste');
     expect(cierre().innerHTML).toContain('var(--red)'); // gastó de más
   });
@@ -129,7 +130,7 @@ describe('cierre de mes', () => {
     store.addItem('expenses', gasto({ concepto: 'Luz', cuantia: 100, tags: ['casa'] }));
     registrar(ledger, '2026-07-10', 100, 'Endesa', { tags: ['casa'] });
     montarEnCierre(registry);
-    expect(cierre().textContent).toContain('Todo el gasto del mes estaba previsto');
+    expect(cierre().textContent).toContain('Todo el gasto estaba previsto');
   });
 
   it('marca las estimaciones que no tuvieron ningún movimiento', () => {
@@ -197,5 +198,172 @@ describe('cierre de mes', () => {
     registrar(ledger, '2026-07-10', 101, 'Endesa', { estimacionId: luz._id });
     montarEnCierre(registry);
     expect(cierre().innerHTML).not.toContain('data-cie-ajustar-todas');
+  });
+});
+
+// El intervalo de la cabecera del dashboard puede cruzar varios meses o cortar
+// uno por la mitad; el cierre tiene que poder calcularse sobre él tal cual.
+describe('cierre sobre el periodo de la cabecera', () => {
+  beforeEach(() => montarShell());
+
+  /** Entorno con el intervalo de la cabecera puesto y tres recibos mensuales. */
+  function conPeriodo(desde: string, hasta: string) {
+    const env = entorno();
+    env.store.set('config', { ...env.store.get('config'), dashboardStart: desde, dashboardEnd: hasta });
+    env.store.addItem('expenses', gasto()); // 100 €/mes, día 10
+    registrar(env.ledger, '2026-04-10', 90, 'ABRIL', { tags: ['casa'] });
+    registrar(env.ledger, '2026-05-10', 110, 'MAYO', { tags: ['casa'] });
+    registrar(env.ledger, '2026-06-10', 100, 'JUNIO', { tags: ['casa'] });
+    return env;
+  }
+
+  const precision = () => document.getElementById('acc-precision') as HTMLElement;
+
+  it('arranca en modo mes, con su selector', () => {
+    const { registry } = conPeriodo('2026-04-15', '2026-06-20');
+    montarEnCierre(registry);
+    expect(cierre().textContent).toContain('Cierre de mes');
+    expect(cierre().querySelector('#cie-mes')).not.toBeNull();
+  });
+
+  it('al elegir el periodo cierra el intervalo entero y enseña sus fechas', () => {
+    const { registry } = conPeriodo('2026-04-15', '2026-06-20');
+    montarEnCierre(registry);
+    clic('[data-cie-modo="periodo"]');
+
+    const txt = cierre().textContent ?? '';
+    expect(txt).toContain('Cierre del periodo');
+    expect(txt).toContain('2026-04-15');
+    expect(txt).toContain('2026-06-20');
+    // Mayo (110) y junio (100); el recibo del 10 de abril queda fuera.
+    expect(txt).toContain('210');
+    expect(cierre().querySelector('#cie-mes')).toBeNull();
+  });
+
+  it('el estimado se recorta al intervalo, no cuenta meses enteros', () => {
+    const { registry } = conPeriodo('2026-04-15', '2026-06-20');
+    montarEnCierre(registry);
+    clic('[data-cie-modo="periodo"]');
+    // Dos pagos proyectados dentro del rango (mayo y junio), no tres.
+    expect(cierre().textContent).toContain('200');
+  });
+
+  it('la tabla de precisión de debajo sigue el mismo periodo', () => {
+    const { registry } = conPeriodo('2026-04-15', '2026-06-20');
+    montarEnCierre(registry);
+    expect(precision().textContent).toContain('Se comparan solo los meses ya cerrados');
+
+    clic('[data-cie-modo="periodo"]');
+    expect(precision().textContent).toContain('Limitado al periodo de la cabecera');
+  });
+
+  it('se puede volver al cierre por meses', () => {
+    const { registry } = conPeriodo('2026-04-15', '2026-06-20');
+    montarEnCierre(registry);
+    clic('[data-cie-modo="periodo"]');
+    clic('[data-cie-modo="mes"]');
+    expect(cierre().textContent).toContain('Cierre de mes');
+    expect(cierre().querySelector('#cie-mes')).not.toBeNull();
+  });
+
+  it('un periodo sin movimientos lo dice en vez de enseñar ceros', () => {
+    const { registry } = conPeriodo('2026-01-01', '2026-02-28');
+    montarEnCierre(registry);
+    clic('[data-cie-modo="periodo"]');
+    expect(cierre().textContent).toContain('No hay movimientos registrados');
+  });
+});
+
+// Lo previsto no vive solo en `expenses`, y la lista de imprevistos ahora tiene
+// salida: asignar el grupo entero u omitirlo.
+describe('previsión completa e imprevistos accionables', () => {
+  beforeEach(() => montarShell());
+
+  const nomina = {
+    nombre: 'Sueldo',
+    bruto: 30000,
+    nPagas: 12,
+    irpfModo: 'manual' as const,
+    irpfPct: 15,
+    representacion: 'simplificado' as const,
+    fechaInicio: '2025-01-05',
+    fechaFin: null,
+    cuenta: 'default',
+    activo: true,
+    tags: ['nomina'],
+    grupoNomina: '',
+  };
+
+  it('la nómina cuenta como ingreso previsto', () => {
+    const { store, ledger, registry } = entorno();
+    store.addItem('nominas', nomina);
+    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 1966.25, concepto: 'NOMINA', tipo: 'ingreso', tags: ['nomina'] });
+    montarEnCierre(registry);
+
+    const txt = cierre().textContent ?? '';
+    expect(txt).toContain('Ingresos');
+    expect(txt).toContain('1966,25'); // previsto y real coinciden
+    expect(txt).not.toContain('previsto 0,00 € ·');
+  });
+
+  it('omitir un concepto lo saca del cierre y se puede restaurar', () => {
+    const { store, ledger, registry } = entorno();
+    registrar(ledger, '2026-07-12', 300, 'TRASPASO A CUENTA 2');
+    registrar(ledger, '2026-07-15', 40, 'BAR PEPE');
+    montarEnCierre(registry);
+
+    (cierre().querySelector('[data-cie-omitir="traspaso a cuenta"]') as HTMLElement).click();
+    expect(store.get('config').cierreOmitidos).toEqual(['traspaso a cuenta']);
+    const txt = cierre().textContent ?? '';
+    expect(txt).toContain('No se cuentan');
+    expect(txt).toContain('300,00');
+
+    (cierre().querySelector('[data-cie-restaurar="traspaso a cuenta"]') as HTMLElement).click();
+    expect(store.get('config').cierreOmitidos).toEqual([]);
+  });
+
+  it('asignar un grupo de imprevistos lo mete en su estimación', () => {
+    const { store, ledger, registry } = entorno();
+    const luz = store.addItem('expenses', gasto({ concepto: 'Luz', cuantia: 100, tags: [] }));
+    const a = registrar(ledger, '2026-07-10', 60, 'ENDESA JULIO');
+    const b = registrar(ledger, '2026-07-20', 70, 'ENDESA JULIO 2');
+    montarEnCierre(registry);
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const select = cierre().querySelector('[data-cie-asignar]') as HTMLSelectElement;
+    select.value = luz._id;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const tx = ledger.transacciones({ estimacionId: luz._id }).map((t) => t._id);
+    expect(tx.sort()).toEqual([a._id, b._id].sort());
+    expect(cierre().textContent).toContain('Todo el gasto estaba previsto');
+  });
+
+  it('enseña el total y la media mensual del periodo', () => {
+    const { store, ledger, registry } = entorno();
+    store.set('config', { ...store.get('config'), dashboardStart: '2026-05-01', dashboardEnd: '2026-06-30' });
+    registrar(ledger, '2026-05-10', 100, 'ENDESA');
+    registrar(ledger, '2026-06-10', 300, 'ENDESA');
+    montarEnCierre(registry);
+    clic('[data-cie-modo="periodo"]');
+
+    const txt = (cierre().textContent ?? '').replace(/\s+/g, ' ');
+    expect(txt).toContain('400,00'); // total
+    expect(txt).toContain('200,00 €/mes'); // dos meses exactos
+    expect(txt).toContain('2,0 meses');
+  });
+
+  it('pinta un anillo por etiqueta con lo real frente a lo previsto', () => {
+    const { store, ledger, registry } = entorno();
+    store.addItem('expenses', gasto({ concepto: 'Luz', cuantia: 100, tags: ['casa'] }));
+    registrar(ledger, '2026-07-10', 130, 'ENDESA', { tags: ['casa'] });
+    registrar(ledger, '2026-07-12', 60, 'BAR', { tags: ['ocio'] });
+    montarEnCierre(registry);
+
+    const svgs = cierre().querySelectorAll('svg[role="img"]');
+    expect(svgs.length).toBe(2);
+    const titulos = [...cierre().querySelectorAll('svg title')].map((t) => t.textContent ?? '');
+    expect(titulos.some((t) => t.startsWith('casa: real 130,00'))).toBe(true);
+    expect(titulos.some((t) => t.startsWith('ocio: real 60,00'))).toBe(true);
   });
 });

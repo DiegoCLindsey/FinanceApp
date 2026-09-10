@@ -433,3 +433,48 @@ describe('servicio de etiquetas compartido', () => {
     expect(() => env2.tags.renombrar('casa', '   ')).toThrow(/vacío/);
   });
 });
+
+// El panel de precisión vive debajo del cierre y sigue su modo: cuando se
+// cierra el intervalo de la cabecera, la comparación se limita a ese intervalo.
+describe('precisión limitada a un intervalo', () => {
+  let env: ReturnType<typeof entorno>;
+  beforeEach(() => {
+    env = entorno();
+    const { ledger } = env;
+    for (const [fecha, importe] of [
+      ['2026-03-10', 90],
+      ['2026-04-10', 100],
+      ['2026-05-10', 120],
+      ['2026-06-10', 130],
+    ] as const) {
+      ledger.registrar({ fecha, cuentaId: 'default', importe, concepto: 'Luz', tipo: 'gasto', estimacionId: 'e1' });
+    }
+  });
+
+  it('solo compara los meses que caen dentro', () => {
+    const a = env.precision.analizarEstimacion(estimacion(), { hoy: HOY_ISO, desde: '2026-04-01', hasta: '2026-05-31' });
+    expect(a.meses.map((m) => m.mes)).toEqual(['2026-04', '2026-05']);
+    expect(a.realTotal).toBe(220);
+    expect(a.estimadoTotal).toBe(200);
+  });
+
+  it('recorta el mes de los extremos: real y estimado miden el mismo trozo', () => {
+    // Del 15 de abril en adelante: el recibo del 10 de abril queda fuera, y el
+    // estimado de abril baja a 0 en vez de contar un pago que no toca.
+    const a = env.precision.analizarEstimacion(estimacion(), { hoy: HOY_ISO, desde: '2026-04-15', hasta: '2026-06-30' });
+    expect(a.meses.map((m) => m.mes)).toEqual(['2026-05', '2026-06']);
+    expect(a.realTotal).toBe(250);
+    expect(a.estimadoTotal).toBe(200);
+  });
+
+  it('el mes en curso sigue fuera aunque el intervalo llegue hasta hoy', () => {
+    env.ledger.registrar({ fecha: '2026-07-10', cuentaId: 'default', importe: 999, concepto: 'Luz', tipo: 'gasto', estimacionId: 'e1' });
+    const a = env.precision.analizarEstimacion(estimacion(), { hoy: HOY_ISO, desde: '2026-06-01', hasta: '2026-07-31' });
+    expect(a.meses.map((m) => m.mes)).toEqual(['2026-06']);
+  });
+
+  it('sin intervalo se sigue mirando todo el histórico', () => {
+    const a = env.precision.analizarEstimacion(estimacion(), { hoy: HOY_ISO });
+    expect(a.meses.map((m) => m.mes)).toEqual(['2026-03', '2026-04', '2026-05', '2026-06']);
+  });
+});

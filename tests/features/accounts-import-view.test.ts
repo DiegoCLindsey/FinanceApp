@@ -82,6 +82,30 @@ describe('importación de extractos', () => {
     expect(vista().querySelector('#imp-fichero')).toBeNull();
   });
 
+  it('el botón de sincronizar históricos vuelve a barrer lo ya importado sin subir nada', () => {
+    const { ledger, registry, onDatosCambiados } = entorno();
+    ledger.registrarPuntoControl('default', '2026-07-02', 2000, 'a ojo'); // dentro de lo ya importado más abajo
+    ledger.registrar({ fecha: '2026-07-01', cuentaId: 'default', importe: 10, concepto: 'x', tipo: 'gasto', origen: 'importado' });
+    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 20, concepto: 'y', tipo: 'gasto', origen: 'importado' });
+    montarEnImportar(registry);
+
+    expect(vista().innerHTML).toContain('data-imp-sincronizar');
+    clic('[data-imp-sincronizar]');
+
+    const puntos = ledger.puntosControl('default');
+    // El punto tecleado a ojo se va y en su lugar queda la curva semanal.
+    expect(puntos.filter((p) => p.origen !== 'derivado')).toHaveLength(0);
+    expect(puntos.filter((p) => p.origen === 'derivado').map((p) => p.fecha)).toEqual(['2026-07-05']);
+    expect(onDatosCambiados).toHaveBeenCalled();
+  });
+
+  it('el botón de sincronizar históricos avisa cuando no hay nada que barrer', () => {
+    const { registry } = entorno();
+    montarEnImportar(registry);
+    clic('[data-imp-sincronizar]');
+    expect(vista().querySelector('#imp-fichero')).toBeNull(); // no ha abierto el panel de importar
+  });
+
   it('al abrir con una sola cuenta la elige sola', () => {
     montarEnImportar(entorno().registry);
     clic('[data-imp-abrir]');
@@ -126,6 +150,45 @@ describe('importación de extractos', () => {
     expect(tx[0]).toMatchObject({ fecha: '2026-07-01', concepto: 'COMPRA SUPERMERCADO', importeCts: -4520, origen: 'importado' });
     expect(tx[1]).toMatchObject({ fecha: '2026-07-03', importeCts: 180000, tipo: 'ingreso' });
     expect(onDatosCambiados).toHaveBeenCalled();
+  });
+
+  it('sustituye los puntos de control manuales de la cuenta dentro del periodo importado', async () => {
+    const { ledger, registry } = entorno();
+    // Dentro del rango del CSV (01/07 → 03/07): checkpoint manual que queda obsoleto.
+    ledger.registrarPuntoControl('default', '2026-07-02', 2000, 'a ojo');
+    // Fuera del rango: no se toca.
+    ledger.registrarPuntoControl('default', '2026-06-01', 1500, 'extracto junio');
+
+    montarEnImportar(registry);
+    clic('[data-imp-abrir]');
+    await cargar(CSV);
+    clic('[data-imp-confirmar]');
+
+    const manuales = ledger.puntosControl('default').filter((p) => p.origen !== 'derivado');
+    expect(manuales.map((p) => p.fecha)).toEqual(['2026-06-01']);
+  });
+
+  it('deja el histórico con un punto semanal por cada semana importada', async () => {
+    const { ledger, registry } = entorno();
+    montarEnImportar(registry);
+    clic('[data-imp-abrir]');
+    await cargar(CSV);
+    clic('[data-imp-confirmar]');
+
+    // El CSV va del 01/07 al 03/07 (misma semana): un solo punto, cerrado en
+    // el último día con datos, con el saldo que dejan los dos movimientos.
+    const derivados = ledger.puntosControl('default').filter((p) => p.origen === 'derivado');
+    expect(derivados.map((p) => [p.fecha, p.saldoCts])).toEqual([['2026-07-03', 175480]]);
+  });
+
+  it('no toca los puntos de control manuales de fuera del periodo importado', async () => {
+    const { ledger, registry } = entorno();
+    ledger.registrarPuntoControl('default', '2026-06-01', 1500);
+    montarEnImportar(registry);
+    clic('[data-imp-abrir]');
+    await cargar(CSV);
+    clic('[data-imp-confirmar]');
+    expect(ledger.puntosControl('default').filter((p) => p.origen !== 'derivado')).toHaveLength(1);
   });
 
   it('el panel se cierra tras importar', async () => {

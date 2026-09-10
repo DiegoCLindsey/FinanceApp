@@ -14,6 +14,17 @@
 //  · Las filas con error no se importan nunca, pero no impiden importar el
 //    resto: un extracto con una línea de totales al final no debe bloquear las
 //    doscientas buenas.
+//  · Los movimientos importados son la verdad para su periodo: al confirmar
+//    se borran los puntos de control MANUALES de la cuenta destino que caigan
+//    dentro del rango de fechas importado (ver `eliminarPuntosControlEnRango`
+//    en el ledger). Sin esto, un checkpoint tecleado a ojo antes de tener el
+//    extracto seguiría mandando sobre el saldo calculado y el extracto real
+//    se ignoraría en silencio para esas fechas.
+//  · Ese barrido también se puede lanzar A MANO, sin repetir la importación
+//    (botón "Sincronizar históricos"): cubre el extracto ya importado antes
+//    de que este barrido existiera, o un punto de control añadido después por
+//    error. Recorre TODAS las cuentas con movimientos importados, no solo la
+//    que se estaba subiendo.
 
 import { formatEUR, fromCents } from '@/core/money';
 import type { ISODate } from '@/core/dates';
@@ -85,7 +96,10 @@ export function renderImportPanel(deps: ImportPanelDeps, estado: EstadoImport): 
               Sube el CSV que descargas del banco en vez de teclear los movimientos.
             </div>
           </div>
-          <button class="btn-secondary btn-sm" data-imp-abrir>Importar CSV</button>
+          <div class="flex gap-8">
+            <button class="btn-secondary btn-sm" data-imp-sincronizar title="Vuelve a borrar los históricos manuales dentro del rango ya importado de cada cuenta, sin subir nada nuevo">↻ Sincronizar históricos</button>
+            <button class="btn-secondary btn-sm" data-imp-abrir>Importar CSV</button>
+          </div>
         </div>
       </div>`;
   }
@@ -245,6 +259,21 @@ function bloqueAnalisis(estado: EstadoImport, analisis: AnalisisCsv, mapeo: Mape
 }
 
 export function wireImportPanel(raiz: HTMLElement, deps: ImportPanelDeps, estado: EstadoImport, refrescar: () => void): void {
+  onClick(raiz, '[data-imp-sincronizar]', () => {
+    const resultados = deps.ledger.sincronizarHistoricoImportado();
+    if (resultados.length === 0) return toast('Nada que sincronizar: no hay movimientos importados todavía');
+    const nombreCuenta = (id: string) => deps.accounts().find((a) => a._id === id)?.nombre ?? id;
+    const sustituidos = resultados.reduce((s, r) => s + r.eliminados, 0);
+    const semanales = resultados.reduce((s, r) => s + r.semanales, 0);
+    const detalle = resultados.map((r) => `${nombreCuenta(r.cuentaId)} (${r.semanales})`).join(', ');
+    toast(
+      `Histórico al día: ${semanales} punto${semanales !== 1 ? 's' : ''} semanal${semanales !== 1 ? 'es' : ''} · ${detalle}` +
+        (sustituidos > 0 ? ` · ${sustituidos} manual${sustituidos !== 1 ? 'es' : ''} sustituido${sustituidos !== 1 ? 's' : ''}` : ''),
+    );
+    deps.onDatosCambiados();
+    refrescar();
+  });
+
   onClick(raiz, '[data-imp-abrir]', () => {
     const cuentas = deps.accounts().filter((a) => a.activo);
     Object.assign(estado, estadoImportInicial(), {
@@ -318,7 +347,21 @@ export function wireImportPanel(raiz: HTMLElement, deps: ImportPanelDeps, estado
       });
     }
 
-    toast(`${aImportar.length} movimiento${aImportar.length !== 1 ? 's' : ''} importado${aImportar.length !== 1 ? 's' : ''}`);
+    // El extracto manda sobre su periodo: los checkpoints manuales que caigan
+    // dentro de ese rango quedan obsoletos frente a los movimientos reales.
+    const fechas = (aImportar.map((f) => f.fecha) as ISODate[]).sort();
+    const puntosSustituidos = deps.ledger.eliminarPuntosControlEnRango(estado.cuentaId, fechas[0], fechas[fechas.length - 1]);
+    // Y con el extracto ya dentro se rehace la curva del histórico: un punto
+    // por semana, que es lo que dibuja la línea de histórico del dashboard.
+    const semanales = deps.ledger.generarPuntosSemanales(estado.cuentaId);
+
+    toast(
+      `${aImportar.length} movimiento${aImportar.length !== 1 ? 's' : ''} importado${aImportar.length !== 1 ? 's' : ''}` +
+        ` · histórico con ${semanales} punto${semanales !== 1 ? 's' : ''} semanal${semanales !== 1 ? 'es' : ''}` +
+        (puntosSustituidos > 0
+          ? ` · ${puntosSustituidos} punto${puntosSustituidos !== 1 ? 's' : ''} de control manual sustituido${puntosSustituidos !== 1 ? 's' : ''}`
+          : ''),
+    );
     Object.assign(estado, estadoImportInicial());
     deps.onDatosCambiados();
     refrescar();

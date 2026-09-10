@@ -111,3 +111,24 @@ export function diasEntre(desde: Date, hasta: Date): number {
   const b = Date.UTC(hasta.getFullYear(), hasta.getMonth(), hasta.getDate());
   return Math.round((b - a) / 86400000);
 }
+
+/**
+ * Domingo de la semana de `fecha` (semana de lunes a domingo, como el
+ * calendario español). Es el día que representa a la semana entera cuando algo
+ * se agrupa por semanas: el cierre.
+ */
+export function finDeSemana(fecha: ISODate): ISODate {
+  const d = parseLocalDate(fecha);
+  // getDay(): 0 = domingo. Con semana de lunes a domingo, al domingo no le
+  // faltan días para acabar la suya; al resto le faltan 7 − getDay().
+  const faltan = d.getDay() === 0 ? 0 : 7 - d.getDay();
+  d.setDate(d.getDate() + faltan);
+  return formatLocalDate(d);
+}
+
+/** Suma (o resta, con `dias` negativo) días de calendario a una fecha ISO. */
+export function sumarDias(fecha: ISODate, dias: number): ISODate {
+  const d = parseLocalDate(fecha);
+  d.setDate(d.getDate() + dias);
+  return formatLocalDate(d);
+}

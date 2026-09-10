@@ -16,15 +16,21 @@
 // Puro: entran datos, salen números. Sin DOM.
 
 import { roundMoney } from '@/core/money';
-import type { ISODate } from '@/core/dates';
-import type { Expense, Transaccion } from '@/state/schema';
+import { parseLocalDate, type ISODate } from '@/core/dates';
+import { proyectarNominas, type TramosResolver } from '@/engine/providers/salaries';
+import { proyectarPrestamos } from '@/engine/providers/loans';
+import type { Expense, Loan, Nomina, Transaccion } from '@/state/schema';
 import type { Ledger } from './ledger';
-import { estimadoDelMes, type PrecisionEstimacion } from './precision';
+import { estimadoEnRango, type PrecisionEstimacion } from './precision';
 import { sugerirAjuste, type Sugerencia } from './adjust';
 
 export interface FilaCierre {
   estimacionId: string;
   concepto: string;
+  /** Qué se está comparando: lo que se preveía gastar o lo que se preveía cobrar. */
+  tipo: 'gasto' | 'ingreso';
+  /** De dónde sale lo previsto: una estimación, una nómina o la cuota de un préstamo. */
+  origen: OrigenPrevision;
   tags: string[];
   estimado: number;
   real: number;
@@ -38,24 +44,109 @@ export interface FilaCierre {
 
 export interface GrupoSinEstimacion {
   concepto: string;
+  /** Concepto normalizado: identifica al grupo para omitirlo o asignarlo entero. */
+  clave: string;
   total: number;
   movimientos: number;
+  /** Ids de los movimientos del grupo, para asignarlos de una vez. */
+  ids: string[];
+}
+
+/** Gasto real y previsto de una etiqueta dentro del periodo. */
+export interface TagCierre {
+  tag: string;
+  estimado: number;
+  real: number;
+  desviacion: number;
+}
+
+export type OrigenPrevision = 'estimacion' | 'nomina' | 'prestamo';
+
+/**
+ * Algo previsible con un importe esperado en el periodo, venga de donde venga.
+ *
+ * No todo lo previsible es una «estimación»: la nómina vive en su colección y
+ * la cuota del préstamo se deriva de su cuadro de amortización. Mientras el
+ * cierre solo miraba `expenses`, lo previsto salía a cero por el lado de los
+ * ingresos y la hipoteca aparecía como gasto imprevisto todos los meses.
+ */
+export interface Prevision {
+  _id: string;
+  concepto: string;
+  tipo: 'gasto' | 'ingreso';
+  tags: string[];
+  estimado: number;
+  origen: OrigenPrevision;
+  /** Cuantía nominal; solo las estimaciones se pueden ajustar. */
+  cuantia?: number;
 }
 
 export interface CierreMes {
+  /** Mes del inicio del periodo. Con un cierre de mes, ese mes. */
   mes: string; // 'YYYY-MM'
+  desde: ISODate;
+  hasta: ISODate;
   /** Gasto previsto para el mes, sumando todas las estimaciones. */
   estimado: number;
   /** Gasto real del mes. */
   real: number;
   desviacion: number;
+  /** Ingreso previsto para el periodo, sumando las estimaciones de ingreso. */
+  ingresosEstimados: number;
   ingresosReales: number;
+  /** real − previsto en los ingresos (positivo = ha entrado más de lo previsto). */
+  desviacionIngresos: number;
+  /** Ingresos menos gastos, previstos y reales, y su desviación. */
+  netoEstimado: number;
+  netoReal: number;
+  desviacionNeta: number;
+  /** Filas de gasto y de ingreso, ordenadas por lo que más se desvía. */
   filas: FilaCierre[];
   /** Gasto real que no cuadra con ninguna estimación, agrupado por concepto. */
   sinEstimacion: GrupoSinEstimacion[];
   totalSinEstimacion: number;
+  /** Ingreso real que no cuadra con ninguna estimación (el otro lado de un traspaso, típicamente). */
+  ingresosSinPrever: GrupoSinEstimacion[];
+  totalIngresosSinPrever: number;
+  /** Gasto previsto y real por etiqueta, para comparar de un vistazo. */
+  porTag: TagCierre[];
+  /**
+   * Duración del periodo en meses (con decimales: medio mes vale 0,5). Los
+   * totales de un intervalo largo no dicen nada por sí solos — 21.000 € es
+   * mucho o poco según si son de un mes o de cinco—, así que la vista divide
+   * por aquí para enseñar también la media mensual.
+   */
+  meses: number;
+  /** Conceptos que el usuario ha marcado para no contar, y lo que suman. */
+  omitidos: GrupoSinEstimacion[];
+  totalOmitido: number;
   /** El mes no tiene ni un movimiento registrado. */
   vacio: boolean;
+}
+
+/**
+ * Duración del periodo en meses, contando los trozos de mes por separado: un
+ * intervalo del 15 de abril al 30 de junio son 0,5 + 1 + 1 = 2,5 meses, no
+ * «tres meses» ni «77 días / 30».
+ */
+export function mesesDelPeriodo(desde: ISODate, hasta: ISODate): number {
+  if (hasta < desde) return 0;
+  let meses = 0;
+  let [y, m] = desde.slice(0, 7).split('-').map(Number);
+  while (`${y}-${String(m).padStart(2, '0')}` <= hasta.slice(0, 7)) {
+    const diasMes = new Date(y, m, 0).getDate();
+    const primero = `${y}-${String(m).padStart(2, '0')}-01`;
+    const ultimo = `${y}-${String(m).padStart(2, '0')}-${String(diasMes).padStart(2, '0')}`;
+    const ini = desde > primero ? desde : primero;
+    const fin = hasta < ultimo ? hasta : ultimo;
+    const dias = (parseLocalDate(fin).getTime() - parseLocalDate(ini).getTime()) / 86400000 + 1;
+    meses += dias / diasMes;
+    if (++m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+  return meses;
 }
 
 /** Primer y último día del mes, en ISO. */
@@ -95,7 +186,11 @@ function claveConcepto(concepto: string): string {
  * Una estimación que ya tiene movimientos asignados a mano no compite por
  * etiqueta: se entiende que el usuario la lleva de forma explícita.
  */
-function repartir(gastos: Transaccion[], deGasto: Expense[], tieneAsignadas: (id: string) => boolean): Map<string, Transaccion[]> {
+function repartir<T extends { _id: string; tags?: string[] }>(
+  gastos: Transaccion[],
+  deGasto: T[],
+  tieneAsignadas: (id: string) => boolean,
+): Map<string, Transaccion[]> {
   const porEstimacion = new Map<string, Transaccion[]>(deGasto.map((e) => [e._id, []]));
   const candidatas = deGasto.filter((e) => !tieneAsignadas(e._id) && (e.tags?.length ?? 0) > 0);
 
@@ -106,7 +201,7 @@ function repartir(gastos: Transaccion[], deGasto: Expense[], tieneAsignadas: (id
     }
     if (t.estimacionId) continue; // asignada a una estimación que aquí no cuenta
 
-    let mejor: Expense | null = null;
+    let mejor: T | null = null;
     let mejorComunes = 0;
     for (const e of candidatas) {
       const comunes = (e.tags ?? []).filter((tag) => t.tags.includes(tag)).length;
@@ -126,6 +221,68 @@ export interface OpcionesCierre {
   /** Análisis de precisión ya calculado, para no repetirlo. */
   analisis?: PrecisionEstimacion[];
   hoy?: ISODate;
+  /** Nóminas activas: lo previsto por el lado de los ingresos vive aquí. */
+  nominas?: Nomina[];
+  /** Préstamos activos: la cuota es lo más previsible que hay. */
+  loans?: Loan[];
+  /** Tramos de IRPF por año, para calcular el neto de las nóminas. */
+  resolverTramosIRPF?: TramosResolver;
+  /** Claves de concepto que el usuario ha decidido no contar en el cierre. */
+  omitidos?: string[];
+}
+
+/** Lo previsto en el periodo, viniendo de estimaciones, nóminas y préstamos. */
+export function previsionesDelPeriodo(estimaciones: Expense[], desde: ISODate, hasta: ISODate, opciones: OpcionesCierre = {}): Prevision[] {
+  const activas = estimaciones.filter((e) => e.tipo !== 'transferencia' && e.activo !== false);
+  const previsiones: Prevision[] = activas.map((e) => ({
+    _id: e._id,
+    concepto: e.concepto,
+    tipo: e.tipo === 'ingreso' ? 'ingreso' : 'gasto',
+    tags: e.tags ?? [],
+    estimado: roundMoney(estimadoEnRango(e, desde, hasta)),
+    origen: 'estimacion',
+    cuantia: e.cuantia,
+  }));
+
+  // Nóminas: se cuenta el NETO, que es lo que llega al banco. Da igual que la
+  // nómina esté en representación detallada (bruto como ingreso y SS/IRPF como
+  // gastos): esos dos gastos no son movimientos reales, así que se restan aquí
+  // en vez de aparecer como previsiones de gasto que nunca se cumplen.
+  const nominas = (opciones.nominas ?? []).filter((n) => n.activo !== false);
+  if (nominas.length > 0) {
+    const eventos = proyectarNominas(nominas, { start: desde, end: hasta }, null, [], opciones.resolverTramosIRPF);
+    for (const nom of nominas) {
+      const suyos = eventos.filter((e) => e.sourceId === nom._id || e.sourceId.startsWith(`${nom._id}_`));
+      const neto = suyos.reduce((s, e) => s + (e.tipo === 'ingreso' ? Math.abs(e.cuantia) : -Math.abs(e.cuantia)), 0);
+      previsiones.push({
+        _id: nom._id,
+        concepto: nom.nombre,
+        tipo: 'ingreso',
+        tags: nom.tags ?? [],
+        estimado: roundMoney(neto),
+        origen: 'nomina',
+      });
+    }
+  }
+
+  const loans = (opciones.loans ?? []).filter((l) => l.activo !== false);
+  if (loans.length > 0) {
+    const eventos = proyectarPrestamos(loans, { start: desde, end: hasta });
+    for (const loan of loans) {
+      const suyos = eventos.filter((e) => e.sourceId === loan._id);
+      if (suyos.length === 0) continue;
+      previsiones.push({
+        _id: loan._id,
+        concepto: `Cuota ${loan.nombre}`,
+        tipo: 'gasto',
+        tags: loan.tags ?? [],
+        estimado: roundMoney(suyos.reduce((s, e) => s + Math.abs(e.cuantia), 0)),
+        origen: 'prestamo',
+      });
+    }
+  }
+
+  return previsiones;
 }
 
 /**
@@ -136,68 +293,162 @@ export interface OpcionesCierre {
  */
 export function cerrarMes(ledger: Ledger, estimaciones: Expense[], mes: string, opciones: OpcionesCierre = {}): CierreMes {
   const { desde, hasta } = rangoDelMes(mes);
+  return { ...cerrarPeriodo(ledger, estimaciones, desde, hasta, opciones), mes };
+}
+
+/**
+ * Lo mismo sobre un intervalo cualquiera, que puede cruzar varios meses o
+ * cortar uno por la mitad — el periodo que esté configurado en la cabecera,
+ * sin obligar a cerrar mes a mes.
+ *
+ * El estimado NO se calcula sumando meses enteros: se le pide al motor la
+ * proyección del rango exacto (`estimadoEnRango`), así que un intervalo que
+ * empiece a mitad de mes no se lleva el gasto previsto de los días anteriores
+ * y lo estimado sigue siendo comparable con lo real.
+ */
+export function cerrarPeriodo(
+  ledger: Ledger,
+  estimaciones: Expense[],
+  desde: ISODate,
+  hasta: ISODate,
+  opciones: OpcionesCierre = {},
+): CierreMes {
   const delMes = ledger.transacciones({ desde, hasta });
+  const omitidos = new Set(opciones.omitidos ?? []);
 
-  const gastos = delMes.filter((t) => t.importeCts < 0);
-  const ingresos = delMes.filter((t) => t.importeCts > 0);
+  // Las transferencias entre cuentas propias no son gasto ni ingreso real: el
+  // dinero solo ha cambiado de cuenta, así que contarlas aquí duplicaría la
+  // compra real que se paga luego desde la cuenta de destino. Lo omitido a mano
+  // se trata igual: el usuario ya ha dicho que eso no es gasto suyo.
+  const cuenta = (t: Transaccion) => t.tipo !== 'transferencia' && !omitidos.has(claveConcepto(t.concepto));
+  const gastos = delMes.filter((t) => cuenta(t) && t.importeCts < 0);
+  const ingresos = delMes.filter((t) => cuenta(t) && t.importeCts > 0);
+  const fuera = delMes.filter((t) => t.tipo !== 'transferencia' && omitidos.has(claveConcepto(t.concepto)));
 
-  const deGasto = estimaciones.filter((e) => e.tipo === 'gasto' && e.activo !== false);
   const porId = new Map((opciones.analisis ?? []).map((a) => [a.estimacionId, a]));
+  const previsiones = previsionesDelPeriodo(estimaciones, desde, hasta, opciones);
+  const conAsignadas = (lista: Prevision[]) =>
+    new Set(lista.filter((p) => ledger.transacciones({ estimacionId: p._id }).length > 0).map((p) => p._id));
 
-  const conAsignadas = new Set(deGasto.filter((e) => ledger.transacciones({ estimacionId: e._id }).length > 0).map((e) => e._id));
-  const reparto = repartir(gastos, deGasto, (id) => conAsignadas.has(id));
+  const deGasto = previsiones.filter((p) => p.tipo === 'gasto');
+  const deIngreso = previsiones.filter((p) => p.tipo === 'ingreso');
+  // Cada lado se reparte contra los movimientos de su signo: una nómina no debe
+  // quedarse con un recibo por compartir etiqueta.
+  const repartoGasto = repartir(gastos, deGasto, (id) => conAsignadas(deGasto).has(id));
+  const repartoIngreso = repartir(ingresos, deIngreso, (id) => conAsignadas(deIngreso).has(id));
 
-  const yaContadas = new Set<string>();
+  const contadasGasto = new Set<string>();
+  const contadasIngreso = new Set<string>();
 
-  const filas: FilaCierre[] = deGasto.map((exp) => {
-    const suyas = reparto.get(exp._id) ?? [];
-    for (const t of suyas) yaContadas.add(t._id);
-
+  const filaDe = (prev: Prevision, suyas: Transaccion[], marcar: Set<string>): FilaCierre => {
+    for (const t of suyas) marcar.add(t._id);
     const real = roundMoney(suyas.reduce((s, t) => s + Math.abs(t.importeCts) / 100, 0));
-    const estimado = roundMoney(estimadoDelMes(exp, mes));
-    const analisis = porId.get(exp._id);
-
+    const analisis = prev.origen === 'estimacion' ? porId.get(prev._id) : undefined;
     return {
-      estimacionId: exp._id,
-      concepto: exp.concepto,
-      tags: exp.tags ?? [],
-      estimado,
+      estimacionId: prev._id,
+      concepto: prev.concepto,
+      tipo: prev.tipo,
+      origen: prev.origen,
+      tags: prev.tags,
+      estimado: prev.estimado,
       real,
-      desviacion: roundMoney(real - estimado),
+      desviacion: roundMoney(real - prev.estimado),
       sinMovimiento: suyas.length === 0,
-      sugerencia: analisis ? sugerirAjuste(analisis, exp.cuantia, { hoy: opciones.hoy }) : null,
+      // Solo se ajustan las estimaciones: la cuota de un préstamo la manda el
+      // cuadro de amortización y la nómina, el contrato.
+      sugerencia: analisis ? sugerirAjuste(analisis, prev.cuantia ?? 0, { hoy: opciones.hoy }) : null,
     };
-  });
+  };
 
-  // Lo que se gastó sin que ninguna estimación lo previera. Se agrupa por
+  const filasGasto = deGasto.map((p) => filaDe(p, repartoGasto.get(p._id) ?? [], contadasGasto));
+  const filasIngreso = deIngreso.map((p) => filaDe(p, repartoIngreso.get(p._id) ?? [], contadasIngreso));
+
+  // Lo que se movió sin que ninguna previsión lo cubriera. Se agrupa por
   // concepto normalizado para que veinte compras del súper no salgan de una en
   // una, que es lo que hace ilegible una lista así.
-  const grupos = new Map<string, GrupoSinEstimacion>();
-  for (const t of gastos) {
-    if (yaContadas.has(t._id)) continue;
-    const k = claveConcepto(t.concepto);
-    const g = grupos.get(k) ?? { concepto: t.concepto, total: 0, movimientos: 0 };
-    g.total = roundMoney(g.total + Math.abs(t.importeCts) / 100);
-    g.movimientos += 1;
-    grupos.set(k, g);
-  }
-  const sinEstimacion = [...grupos.values()].sort((a, b) => b.total - a.total);
+  const agrupar = (movimientos: Transaccion[], contadas: Set<string>): GrupoSinEstimacion[] => {
+    const grupos = new Map<string, GrupoSinEstimacion>();
+    for (const t of movimientos) {
+      if (contadas.has(t._id)) continue;
+      const clave = claveConcepto(t.concepto);
+      const g = grupos.get(clave) ?? { concepto: t.concepto, clave, total: 0, movimientos: 0, ids: [] };
+      g.total = roundMoney(g.total + Math.abs(t.importeCts) / 100);
+      g.movimientos += 1;
+      g.ids.push(t._id);
+      grupos.set(clave, g);
+    }
+    return [...grupos.values()].sort((a, b) => b.total - a.total);
+  };
+  const sinEstimacion = agrupar(gastos, contadasGasto);
+  const ingresosSinPrever = agrupar(ingresos, contadasIngreso);
+  const listaOmitidos = agrupar(fuera, new Set());
 
-  const estimado = roundMoney(filas.reduce((s, f) => s + f.estimado, 0));
+  const estimado = roundMoney(filasGasto.reduce((s, f) => s + f.estimado, 0));
   const real = roundMoney(gastos.reduce((s, t) => s + Math.abs(t.importeCts) / 100, 0));
+  const ingresosEstimados = roundMoney(filasIngreso.reduce((s, f) => s + f.estimado, 0));
+  const ingresosReales = roundMoney(ingresos.reduce((s, t) => s + t.importeCts / 100, 0));
 
   return {
-    mes,
+    mes: desde.slice(0, 7),
+    desde,
+    hasta,
     estimado,
     real,
     desviacion: roundMoney(real - estimado),
-    ingresosReales: roundMoney(ingresos.reduce((s, t) => s + t.importeCts / 100, 0)),
+    ingresosEstimados,
+    ingresosReales,
+    desviacionIngresos: roundMoney(ingresosReales - ingresosEstimados),
+    // El neto es la cifra honesta cuando parte del gasto es un traspaso entre
+    // cuentas propias sin marcar: el cargo sale como gasto y el abono vuelve
+    // como ingreso, así que mirando solo los gastos la desviación se dispara.
+    netoEstimado: roundMoney(ingresosEstimados - estimado),
+    netoReal: roundMoney(ingresosReales - real),
+    desviacionNeta: roundMoney(ingresosReales - real - (ingresosEstimados - estimado)),
     // Lo que más duele primero: la desviación mayor en valor absoluto.
-    filas: filas.sort((a, b) => Math.abs(b.desviacion) - Math.abs(a.desviacion)),
+    filas: [...filasGasto, ...filasIngreso].sort((a, b) => Math.abs(b.desviacion) - Math.abs(a.desviacion)),
     sinEstimacion,
     totalSinEstimacion: roundMoney(sinEstimacion.reduce((s, g) => s + g.total, 0)),
+    ingresosSinPrever,
+    totalIngresosSinPrever: roundMoney(ingresosSinPrever.reduce((s, g) => s + g.total, 0)),
+    porTag: gastoPorTag(deGasto, gastos),
+    meses: mesesDelPeriodo(desde, hasta),
+    omitidos: listaOmitidos,
+    totalOmitido: roundMoney(listaOmitidos.reduce((s, g) => s + g.total, 0)),
     vacio: delMes.length === 0,
   };
+}
+
+/**
+ * Gasto previsto y real por etiqueta.
+ *
+ * Se calcula sobre los movimientos, no sobre las filas, para que el gasto que
+ * ninguna previsión cubría también aparezca: una etiqueta con 400 € reales y
+ * 0 € previstos es exactamente lo que hay que ver. Un movimiento con varias
+ * etiquetas cuenta entero en cada una (como en el análisis por etiqueta), así
+ * que la suma de los anillos puede pasarse del total: cada anillo responde
+ * «¿cuánto me he desviado en ESTA etiqueta?», no «¿qué parte del total es?».
+ */
+function gastoPorTag(previsiones: Prevision[], gastos: Transaccion[]): TagCierre[] {
+  const acc = new Map<string, { estimado: number; real: number }>();
+  const suma = (tags: string[], campo: 'estimado' | 'real', importe: number) => {
+    for (const tag of tags.length > 0 ? tags : ['sin etiqueta']) {
+      const v = acc.get(tag) ?? { estimado: 0, real: 0 };
+      v[campo] += importe;
+      acc.set(tag, v);
+    }
+  };
+  for (const p of previsiones) suma(p.tags, 'estimado', p.estimado);
+  for (const t of gastos) suma(t.tags, 'real', Math.abs(t.importeCts) / 100);
+
+  return [...acc.entries()]
+    .map(([tag, v]) => ({
+      tag,
+      estimado: roundMoney(v.estimado),
+      real: roundMoney(v.real),
+      desviacion: roundMoney(v.real - v.estimado),
+    }))
+    .filter((t) => t.estimado > 0 || t.real > 0)
+    .sort((a, b) => b.real - a.real || b.estimado - a.estimado);
 }
 
 /** Meses con movimientos registrados, del más reciente al más antiguo. */

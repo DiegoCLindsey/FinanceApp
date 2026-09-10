@@ -645,6 +645,15 @@ const FinanceMath = (() => {
   // that a recently-set saldoInicial (e.g. today's balance) is not wrongly projected
   // back as the starting balance for older dashboardStart dates.
   function saldoEnFecha(acc, fecha) {
+    const e = _entradaSaldo(acc, fecha);
+    return e ? e.saldo : (fecha >= (acc.fechaInicialSaldo || '') ? (acc.saldoInicial || 0) : 0);
+  }
+
+  // La MISMA búsqueda, pero devolviendo también la fecha del dato usado.
+  // Hace falta saberla: el saldo de una cuenta no se conoce todos los días, solo
+  // en los puntos de control, y anclar la simulación en una fecha posterior al
+  // último punto se come todo lo que pasó entre medias (ver _anclaSaldo).
+  function _entradaSaldo(acc, fecha) {
     const floor = acc.fechaInicialSaldo || '';
 
     if (!floor || fecha >= floor) {
@@ -662,24 +671,58 @@ const FinanceMath = (() => {
         if (h.fecha >= floor) entries.push({ ...h, prioridad: i });
       });
       entries.sort((a,b) => b.fecha.localeCompare(a.fecha) || b.prioridad - a.prioridad);
-      const entry = entries.find(h => h.fecha <= fecha);
-      return entry ? entry.saldo : (acc.saldoInicial || 0);
+      return entries.find(h => h.fecha <= fecha) || null;
     } else {
       // Before anchor: use historicoSaldos as-is — saldoInicial belongs to a later date
       const hist = [...(acc.historicoSaldos||[])].sort((a,b) => b.fecha.localeCompare(a.fecha));
-      const entry = hist.find(h => h.fecha <= fecha);
-      return entry ? entry.saldo : 0;
+      return hist.find(h => h.fecha <= fecha) || null;
     }
+  }
+
+  // Fecha del último saldo REAL conocido en o antes de `fecha`, mirando todas las
+  // cuentas. '' si ninguna tiene dato.
+  function fechaUltimoSaldoConocido(cuentas, fecha) {
+    let ultima = '';
+    for (const a of cuentas) {
+      const e = _entradaSaldo(a, fecha);
+      if (e && e.fecha > ultima) ultima = e.fecha;
+    }
+    return ultima;
+  }
+
+  // Ancla de la simulación: DÓNDE y CON QUÉ saldo se empieza a proyectar.
+  //
+  // La fecha pedida (fechaReferencia, recortada a la ventana) casi nunca cae en
+  // un punto de control: los saldos reales se conocen por semanas. Antes se
+  // cogía el saldo del último punto y se colgaba de la fecha pedida, y todo lo
+  // que hubiera pasado entre el punto y esa fecha desaparecía: ni estaba en el
+  // saldo (el punto es anterior) ni se proyectaba (los eventos previos al inicio
+  // del periodo no se generan). Con la ventana empezando el 1 de agosto y el
+  // último punto el 26 de julio, una nómina del 31 se esfumaba y la línea
+  // estimada arrancaba dos mil euros por debajo de la real.
+  //
+  // Así que el ancla es la fecha donde el saldo es DATO, y el hueco hasta la
+  // fecha pedida se cubre proyectando (que es justo lo que hace el motor con
+  // cualquier otro tramo sin datos reales).
+  function _anclaSaldo(cuentasActivas, config) {
+    const raw = config.fechaReferencia || config.dashboardStart;
+    const pedida = raw < config.dashboardStart ? config.dashboardStart
+      : raw > config.dashboardEnd   ? config.dashboardEnd : raw;
+    const saldo = cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, pedida), 0);
+    const conocida = fechaUltimoSaldoConocido(cuentasActivas, pedida);
+    // Entre `conocida` y `pedida` no hay ningún punto de control (`conocida` es
+    // el último), así que el saldo es el mismo en las dos fechas: solo se mueve
+    // el ancla a donde el dato es real.
+    return { fecha: conocida && conocida < pedida ? conocida : pedida, saldo, pedida };
   }
 
   // Núcleo bidireccional: retrocede desde fechaReferencia hacia dashboardStart invirtiendo
   // los movimientos, y proyecta hacia adelante desde fechaReferencia con normalidad.
   // fechaReferencia es el ancla donde el saldo real es conocido (saldoEnFecha).
   function _aplicarSaldoRef(sortedEvents, cuentasActivas, config) {
-    const raw = config.fechaReferencia || config.dashboardStart;
-    const fechaRef = raw < config.dashboardStart ? config.dashboardStart
-      : raw > config.dashboardEnd   ? config.dashboardEnd : raw;
-    const saldoRef = cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, fechaRef), 0);
+    const ancla = _anclaSaldo(cuentasActivas, config);
+    const fechaRef = ancla.fecha;
+    const saldoRef = ancla.saldo;
 
     const past   = sortedEvents.filter(e => e.fecha <  fechaRef);
     const future = sortedEvents.filter(e => e.fecha >= fechaRef);
@@ -975,26 +1018,33 @@ const FinanceMath = (() => {
   function generarExtracto(loans, expenses, accounts, config, filtroAccounts=null, nominas=[], inflacionPeriodos=[]) {
     const gastos = expenses.filter(e=>e.tipo!=='transferencia');
     const transferencias = expenses.filter(e=>e.tipo==='transferencia');
+    const cuentasActivas = accounts.filter(a => a.activo && (!filtroAccounts || filtroAccounts.length===0 || filtroAccounts.includes(a._id)));
+    // Se proyecta desde el ancla, que puede ser anterior al inicio del periodo:
+    // ese tramo es el que cubre el hueco entre el último saldo real y la fecha
+    // desde la que se simula. Al final se recorta al periodo, así que el
+    // extracto que sale de aquí sigue conteniendo solo la ventana pedida.
+    const ancla  = _anclaSaldo(cuentasActivas, config);
+    const desde  = ancla.fecha < config.dashboardStart ? ancla.fecha : config.dashboardStart;
+    const hasta  = config.dashboardEnd;
     let allEvents = [];
-    allEvents = allEvents.concat(proyectarGastos(gastos, config.dashboardStart, config.dashboardEnd, filtroAccounts));
-    allEvents = allEvents.concat(proyectarPrestamos(loans, config.dashboardStart, config.dashboardEnd, filtroAccounts));
-    allEvents = allEvents.concat(proyectarTransferencias(transferencias, config.dashboardStart, config.dashboardEnd, filtroAccounts));
-    allEvents = allEvents.concat(proyectarAportaciones(accounts, config.dashboardStart, config.dashboardEnd, filtroAccounts));
-    const intereses = proyectarInteresesCuentas(accounts, config.dashboardStart, config.dashboardEnd, filtroAccounts, allEvents);
+    allEvents = allEvents.concat(proyectarGastos(gastos, desde, hasta, filtroAccounts));
+    allEvents = allEvents.concat(proyectarPrestamos(loans, desde, hasta, filtroAccounts));
+    allEvents = allEvents.concat(proyectarTransferencias(transferencias, desde, hasta, filtroAccounts));
+    allEvents = allEvents.concat(proyectarAportaciones(accounts, desde, hasta, filtroAccounts));
+    const intereses = proyectarInteresesCuentas(accounts, desde, hasta, filtroAccounts, allEvents);
     allEvents = allEvents.concat(intereses);
-    allEvents = allEvents.concat(proyectarRetencionesFiscales(expenses, config, config.dashboardStart, config.dashboardEnd, filtroAccounts));
-    allEvents = allEvents.concat(proyectarNominas(nominas, config, config.dashboardStart, config.dashboardEnd, filtroAccounts, inflacionPeriodos));
+    allEvents = allEvents.concat(proyectarRetencionesFiscales(expenses, config, desde, hasta, filtroAccounts));
+    allEvents = allEvents.concat(proyectarNominas(nominas, config, desde, hasta, filtroAccounts, inflacionPeriodos));
     // When inflation module is active, add cost-of-living increase and savings erosion events
     if (config.usarInflacion && inflacionPeriodos.length > 0) {
       const principalId = (accounts.find(a => a.activo && a.esCuentaPrincipal) || accounts.find(a => a.activo) || {_id:'default'})._id;
-      allEvents = allEvents.concat(proyectarInflacionGastos(gastos, inflacionPeriodos, config.dashboardStart, config.dashboardEnd, filtroAccounts, principalId));
-      const cuentasAct = accounts.filter(a => a.activo && (!filtroAccounts || filtroAccounts.length===0 || filtroAccounts.includes(a._id)));
-      const saldoIni   = cuentasAct.reduce((s, a) => s + saldoEnFecha(a, config.dashboardStart), 0);
-      allEvents = allEvents.concat(proyectarPerdidaAhorro(saldoIni, inflacionPeriodos, config.dashboardStart, config.dashboardEnd, principalId));
+      allEvents = allEvents.concat(proyectarInflacionGastos(gastos, inflacionPeriodos, desde, hasta, filtroAccounts, principalId));
+      const saldoIni = cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, config.dashboardStart), 0);
+      allEvents = allEvents.concat(proyectarPerdidaAhorro(saldoIni, inflacionPeriodos, desde, hasta, principalId));
     }
     allEvents.sort((a,b) => a.fecha.localeCompare(b.fecha));
-    const cuentasActivas = accounts.filter(a => a.activo && (!filtroAccounts || filtroAccounts.length===0 || filtroAccounts.includes(a._id)));
-    return _aplicarSaldoRef(allEvents, cuentasActivas, config);
+    return _aplicarSaldoRef(allEvents, cuentasActivas, config)
+      .filter(e => e.fecha >= config.dashboardStart);
   }
 
   function saldoHoy(extracto, accounts, filtroAccounts=null) {
@@ -1661,7 +1711,7 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, ajustarPrecioReal, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, fechaUltimoSaldoConocido, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, ajustarPrecioReal, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 
 

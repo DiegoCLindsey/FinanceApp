@@ -170,7 +170,16 @@ export interface TablaFiscalAnual {
 
 // ── Contabilidad real (F4) ────────────────────────────────────────────────────
 
-export type TipoTransaccion = 'gasto' | 'ingreso' | 'ajuste';
+/**
+ * 'transferencia' = movimiento entre cuentas propias: el dinero no se ha
+ * gastado ni ganado, solo ha cambiado de sitio (p.ej. un traspaso a la cuenta
+ * donde luego se paga la compra real). Cuenta para el saldo de la cuenta como
+ * cualquier otro movimiento, pero se excluye del gasto/ingreso real en el
+ * cierre de mes y en los totales del panel — si no, la misma compra aparece
+ * dos veces: una como traspaso "sin estimación" y otra como el gasto de
+ * verdad en la cuenta de destino.
+ */
+export type TipoTransaccion = 'gasto' | 'ingreso' | 'ajuste' | 'transferencia';
 
 /**
  * Movimiento REAL de una cuenta. Los importes van en céntimos enteros con
@@ -204,6 +213,16 @@ export interface PuntoControl {
   cuentaId: string;
   saldoCts: number;
   nota?: string;
+  /**
+   * 'derivado' = punto CALCULADO por el ledger (uno por semana, ver
+   * `generarPuntosSemanales`), no un saldo que haya dicho el banco. Existe
+   * para que el histórico tenga curva: el dashboard dibuja un punto por
+   * entrada de `historicoSaldos` y con un solo punto el pasado sale plano.
+   * Nunca ancla el cálculo del saldo — si lo hiciera, un punto calculado con
+   * datos viejos congelaría un saldo equivocado en cuanto se editara un
+   * movimiento. Ausente = manual (los datos anteriores a este campo lo son).
+   */
+  origen?: 'manual' | 'derivado';
 }
 
 /** Flags de funcionalidades activas por usuario (F2). */
@@ -232,6 +251,12 @@ export interface AppConfig {
   histCuenta: string;
   analisisCollapsed: boolean;
   activeTagsFilter: string[];
+  /**
+   * Conceptos (normalizados) que el cierre no cuenta: traspasos internos,
+   * movimientos de una cuenta que se lleva aparte… Se omiten enteros, igual que
+   * las transferencias, en vez de aparecer como gasto imprevisto cada mes.
+   */
+  cierreOmitidos?: string[];
   // tagCategorias + tagGrupos se unifican en 1.9 (docs/03, B3)
   tagCategorias: string[];
   tagGrupos: string[];
@@ -339,6 +364,7 @@ export function defaultConfig(hoyISO: ISODate, finISO: ISODate): AppConfig {
     histCuenta: '',
     analisisCollapsed: false,
     activeTagsFilter: [],
+    cierreOmitidos: [],
     tagCategorias: [],
     tagGrupos: [],
     saludUmbralAhorroVerde: 20,

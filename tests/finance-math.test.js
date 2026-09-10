@@ -208,6 +208,52 @@ describe('generarExtracto (integración)', () => {
   });
 });
 
+// Regresión: el dinero que se perdía en el hueco entre el último saldo real y
+// la fecha desde la que se simula. Los saldos reales se conocen por semanas; si
+// la ventana empieza un día que no es un punto de control, lo que pasó entre el
+// punto y ese día no estaba ni en el saldo ni en la proyección, y la línea
+// estimada arrancaba muy por debajo de la real.
+describe('generarExtracto: el ancla es la fecha del último saldo real', () => {
+  // Punto de control el domingo 26 de julio; la ventana empieza el 1 de agosto.
+  const accounts = [{ _id: 'default', nombre: 'Cuenta', activo: true, esCuentaPrincipal: true,
+    saldoInicial: 1000, fechaInicialSaldo: '2026-01-01', interes: 0,
+    historicoSaldos: [{ fecha: '2026-07-26', saldo: 3813.75 }] }];
+  // Nómina del día 31: cae en el hueco entre el punto y el inicio de la ventana.
+  const expenses = [
+    { _id: 'i1', activo: true, concepto: 'Nómina', cuantia: 2000, tipo: 'ingreso', tipoFrecuencia: 'mensual',
+      frecuencia: 1, diaPago: 'dia:31', fechaInicio: '2026-01-31', tags: [], cuenta: 'default' },
+    { _id: 'g1', activo: true, concepto: 'Alquiler', cuantia: 500, tipo: 'gasto', tipoFrecuencia: 'mensual',
+      frecuencia: 1, diaPago: 'dia:5', fechaInicio: '2026-01-05', tags: [], cuenta: 'default' },
+  ];
+  const config = { dashboardStart: '2026-08-01', dashboardEnd: '2026-08-31', fechaReferencia: '2026-08-01' };
+
+  it('la nómina del 31 de julio cuenta, aunque sea anterior al periodo', () => {
+    const ext = FM.generarExtracto([], expenses, accounts, config, null, []);
+    const alquiler = ext.find(e => e.sourceId === 'g1');
+    // 3813,75 (26 de julio) + 2000 (nómina del 31) − 500 (alquiler del 5) = 5313,75
+    expect(alquiler.saldoAcum).toBeCloseTo(5313.75, 6);
+  });
+
+  it('el extracto sigue siendo solo el periodo pedido', () => {
+    const ext = FM.generarExtracto([], expenses, accounts, config, null, []);
+    expect(ext.every(e => e.fecha >= '2026-08-01' && e.fecha <= '2026-08-31')).toBe(true);
+  });
+
+  it('sin hueco (la fecha pedida es un punto de control) el resultado no cambia', () => {
+    const enPunto = { ...config, dashboardStart: '2026-07-26', fechaReferencia: '2026-07-26' };
+    const ext = FM.generarExtracto([], expenses, accounts, enPunto, null, []);
+    const primero = ext[0];
+    expect(primero.fecha).toBe('2026-07-31');
+    expect(primero.saldoAcum).toBeCloseTo(5813.75, 6);
+  });
+
+  it('fechaUltimoSaldoConocido devuelve la fecha del dato, no la pedida', () => {
+    expect(FM.fechaUltimoSaldoConocido(accounts, '2026-08-01')).toBe('2026-07-26');
+    expect(FM.fechaUltimoSaldoConocido(accounts, '2026-07-01')).toBe('2026-01-01'); // el ancla saldoInicial
+    expect(FM.fechaUltimoSaldoConocido([], '2026-08-01')).toBe('');
+  });
+});
+
 describe('utilidades', () => {
   it('eur formatea en es-ES', () => {
     // Normaliza espacios (Intl usa NBSP/NNBSP segun version de ICU)
@@ -223,5 +269,36 @@ describe('utilidades', () => {
     ], 'gasto');
     expect(m.get('a')).toBe(10);
     expect(m.get('sin_tag')).toBeUndefined(); // tags:[] no itera → no cae en sin_tag
+  });
+});
+
+// Regresión de la línea Histórico aplanada (PR #93): «↻ Actualizar saldo base»
+// mueve fechaInicialSaldo/saldoInicial de todas las cuentas a hoy. Los puntos
+// de control anteriores a esa ancla siguen siendo el saldo real de su fecha; si
+// se descartaran, toda la serie pasada se sustituiría por el saldo de hoy
+// repetido y la curva real saldría plana.
+describe('saldoEnFecha: mover el ancla a hoy no borra el histórico anterior', () => {
+  const cuenta = {
+    activo: true,
+    saldoInicial: 5000,          // saldo de hoy, escrito por «actualizar saldo base»
+    fechaInicialSaldo: '2026-09-01',
+    historicoSaldos: [
+      { fecha: '2026-06-07', saldo: 3000 },
+      { fecha: '2026-07-05', saldo: 3500 },
+    ],
+  };
+
+  it('cada fecha pasada conserva su punto, no el saldo de hoy', () => {
+    expect(FM.saldoEnFecha(cuenta, '2026-06-30')).toBe(3000);
+    expect(FM.saldoEnFecha(cuenta, '2026-07-20')).toBe(3500);
+  });
+
+  it('desde el ancla en adelante manda el saldo nuevo', () => {
+    expect(FM.saldoEnFecha(cuenta, '2026-09-01')).toBe(5000);
+    expect(FM.saldoEnFecha(cuenta, '2026-09-30')).toBe(5000);
+  });
+
+  it('antes del primer punto no se inventa el saldo de hoy', () => {
+    expect(FM.saldoEnFecha(cuenta, '2026-01-01')).toBe(0);
   });
 });

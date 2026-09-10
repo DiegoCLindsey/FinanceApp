@@ -351,7 +351,7 @@
       </div>
       <button id="btn-dbx-help-close" class="btn-primary full-width">Entendido</button>
     </div>
-  </div
+  </div>
 
   <!-- ── Main shell ── -->
   <div id="main-shell" class="main-shell hidden">
@@ -447,6 +447,10 @@
           <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('10Y')">10Y</button>
         </div>
         <input class="form-input" type="date" id="cfg-end" style="width:138px" onchange="PeriodBar.apply()"/>
+        <span class="period-bar-label" style="margin-left:auto">Simulación desde</span>
+        <input class="form-input" type="date" id="cfg-sim" style="width:138px" onchange="PeriodBar.apply()"
+               title="Desde esta fecha se aplican las predicciones. Antes de ella manda lo que pasó de verdad, y el saldo se ancla en el último saldo real conocido."/>
+        <span id="cfg-sim-ancla" class="period-bar-label" style="text-transform:none;font-weight:400"></span>
       </div>
 
       <!-- View container -->
@@ -555,19 +559,60 @@
     if (e.target === document.getElementById('modal-overlay')) UI.closeModal();
   };
 
-  // Global period bar: saves start/end to config and rerenders the active view
+  // Global period bar: saves start/end/simulación to config and rerenders the
+  // active view.
+  //   · inicio y fin de PERIODO acotan la ventana que se dibuja;
+  //   · inicio de SIMULACIÓN (config.fechaReferencia) es desde dónde se aplican
+  //     las predicciones: el motor ancla ahí el saldo real conocido, reconstruye
+  //     hacia atrás lo que ya pasó y proyecta hacia adelante.
+  // Estaba solo en el panel de configuración del dashboard, así que en la
+  // práctica se quedaba congelada en la fecha de alta y el dashboard seguía
+  // anclando meses después en un saldo viejo.
   const PeriodBar = (() => {
+    function hoyISO() { return new Date().toISOString().slice(0, 10); }
     function init(config) {
       const s = document.getElementById('cfg-start');
       const e = document.getElementById('cfg-end');
+      const r = document.getElementById('cfg-sim');
       if (s) s.value = config.dashboardStart;
       if (e) e.value = config.dashboardEnd;
+      if (r) r.value = config.fechaReferencia || hoyISO();
+      pintarAncla();
+    }
+    // El saldo que el motor va a usar como ancla, para que no sea invisible.
+    // Se recorta a la ventana igual que hace el motor (_aplicarSaldoRef): una
+    // fecha de simulación fuera del periodo no se usa tal cual, así que
+    // enseñar el saldo de esa fecha sería enseñar un número que no manda.
+    function pintarAncla() {
+      const el = document.getElementById('cfg-sim-ancla');
+      if (!el || typeof FinanceMath === 'undefined') return;
+      const config = State.get('config');
+      const inicio = document.getElementById('cfg-start')?.value || config.dashboardStart;
+      const fin    = document.getElementById('cfg-end')?.value   || config.dashboardEnd;
+      const pedida = document.getElementById('cfg-sim')?.value || config.fechaReferencia || hoyISO();
+      const ref = pedida < inicio ? inicio : pedida > fin ? fin : pedida;
+      const activas = (State.get('accounts') || []).filter(a => a.activo);
+      if (activas.length === 0) { el.textContent = ''; return; }
+      const saldo = activas.reduce((s, a) => s + FinanceMath.saldoEnFecha(a, ref), 0);
+      // El saldo real se conoce por puntos de control, no todos los días: se dice
+      // de qué fecha sale el número, que es donde el motor ancla la simulación.
+      const dato = FinanceMath.fechaUltimoSaldoConocido ? FinanceMath.fechaUltimoSaldoConocido(activas, ref) : '';
+      const origen = dato && dato < ref ? ` · último saldo real: ${dato}` : '';
+      el.textContent = (ref === pedida
+        ? `· saldo ${FinanceMath.eur(saldo)}`
+        : `· fuera del periodo: se usa ${ref} (${FinanceMath.eur(saldo)})`) + origen;
     }
     function apply() {
       const existing = State.get('config');
       const start = document.getElementById('cfg-start')?.value || existing.dashboardStart;
       const end   = document.getElementById('cfg-end')?.value   || existing.dashboardEnd;
-      State.set('config', { ...existing, dashboardStart: start, dashboardEnd: end });
+      const sim   = document.getElementById('cfg-sim')?.value   || existing.fechaReferencia || hoyISO();
+      State.set('config', { ...existing, dashboardStart: start, dashboardEnd: end, fechaReferencia: sim });
+      // El store nuevo tiene su propia copia de config en memoria: sin avisarle,
+      // las vistas de src/ (cierre por periodo, comparativa…) se quedan con la
+      // ventana anterior hasta que se recarga la página.
+      window.FinanceApp?.store?.patchConfig?.({ dashboardStart: start, dashboardEnd: end, fechaReferencia: sim });
+      pintarAncla();
       Router.rerender();
     }
     function applyPreset(p) {

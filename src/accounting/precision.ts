@@ -61,6 +61,15 @@ export interface OpcionesPrecision {
   mesesMedia?: number;
   /** Hoy (inyectable para tests). */
   hoy?: ISODate;
+  /**
+   * Limita la comparación a un intervalo concreto (el de la cabecera). Si se
+   * indican los dos, se ignora `mesesHistorial` y solo se comparan los meses
+   * que caen dentro, RECORTADOS al intervalo: un intervalo que empieza el 15
+   * de abril compara del 15 al 30, no abril entero, así que lo estimado sigue
+   * siendo comparable con lo real.
+   */
+  desde?: ISODate;
+  hasta?: ISODate;
 }
 
 /** Precisión de un mes: 100 − error relativo, acotada a [0, 100]. */
@@ -82,6 +91,28 @@ function mesesCerrados(hoyISO: ISODate, cuantos: number): string[] {
   return meses.reverse();
 }
 
+/**
+ * Meses cerrados que tocan el intervalo, del más antiguo al más reciente.
+ *
+ * El mes en curso sigue quedándose fuera aunque el intervalo lo incluya:
+ * comparar medio mes vivido contra la estimación del mes entero no mide la
+ * precisión, mide el día que es hoy.
+ */
+function mesesDelIntervalo(desde: ISODate, hasta: ISODate, hoyISO: ISODate): string[] {
+  const ultimoCerrado = mesesCerrados(hoyISO, 1)[0];
+  const fin = hasta.slice(0, 7) < ultimoCerrado ? hasta.slice(0, 7) : ultimoCerrado;
+  const meses: string[] = [];
+  let [y, m] = desde.slice(0, 7).split('-').map(Number);
+  while (`${y}-${String(m).padStart(2, '0')}` <= fin) {
+    meses.push(`${y}-${String(m).padStart(2, '0')}`);
+    if (++m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+  return meses;
+}
+
 function rangoMes(mes: string): { inicio: ISODate; fin: ISODate } {
   const [y, m] = mes.split('-').map(Number);
   const fin = new Date(y, m, 0);
@@ -99,7 +130,17 @@ function rangoMes(mes: string): { inicio: ISODate; fin: ISODate } {
  */
 export function estimadoDelMes(exp: Expense, mes: string): number {
   const { inicio, fin } = rangoMes(mes);
-  const eventos = proyectarGastos([exp as ExpenseLike], { start: inicio, end: fin });
+  return estimadoEnRango(exp, inicio, fin);
+}
+
+/**
+ * Lo mismo pero entre dos fechas cualesquiera, que pueden cruzar varios meses
+ * o cortar uno por la mitad. No es sumar meses enteros: se le pide al motor la
+ * proyección de ESE rango, así que un cierre del 15 de abril al 20 de junio
+ * cuenta solo los pagos que caen dentro, no abril y junio completos.
+ */
+export function estimadoEnRango(exp: Expense, desde: ISODate, hasta: ISODate): number {
+  const eventos = proyectarGastos([exp as ExpenseLike], { start: desde, end: hasta });
   return eventos.reduce((s, e) => s + Math.abs(e.cuantia), 0);
 }
 
@@ -112,23 +153,36 @@ export function createPrecisionAnalyzer(ledger: Ledger) {
    * usuario espera cuando etiqueta sin asignar).
    */
   function analizarEstimacion(exp: Expense, opciones: OpcionesPrecision = {}): PrecisionEstimacion {
-    const { mesesHistorial = 12, mesesMedia = 3, hoy = todayISO() } = opciones;
+    const { mesesHistorial = 12, mesesMedia = 3, hoy = todayISO(), desde, hasta } = opciones;
 
     const asignadas = ledger.transacciones({ estimacionId: exp._id });
     const usarTags = asignadas.length === 0 && (exp.tags?.length ?? 0) > 0;
     const relacionadas = usarTags ? ledger.transacciones({ tags: exp.tags }) : asignadas;
 
+    // Cada mes se compara sobre su trozo dentro del intervalo (el mes entero
+    // cuando no hay intervalo), para que real y estimado midan lo mismo.
+    const aComparar = desde && hasta ? mesesDelIntervalo(desde, hasta, hoy) : mesesCerrados(hoy, mesesHistorial);
+    const rangos = new Map(
+      aComparar.map((mes) => {
+        const { inicio, fin } = rangoMes(mes);
+        return [mes, { inicio: desde && desde > inicio ? desde : inicio, fin: hasta && hasta < fin ? hasta : fin }] as const;
+      }),
+    );
+
     const realPorMes = new Map<string, number>();
     for (const t of relacionadas) {
+      const rango = rangos.get(t.fecha.slice(0, 7));
+      if (!rango || t.fecha < rango.inicio || t.fecha > rango.fin) continue;
       const mes = t.fecha.slice(0, 7);
       realPorMes.set(mes, (realPorMes.get(mes) ?? 0) + Math.abs(t.importeCts) / 100);
     }
 
     const meses: MesComparado[] = [];
-    for (const mes of mesesCerrados(hoy, mesesHistorial)) {
+    for (const mes of aComparar) {
       const real = realPorMes.get(mes);
       if (real === undefined) continue; // sin dato real: no es un fallo, es un hueco
-      const estimado = roundMoney(estimadoDelMes(exp, mes));
+      const rango = rangos.get(mes) as { inicio: ISODate; fin: ISODate };
+      const estimado = roundMoney(estimadoEnRango(exp, rango.inicio, rango.fin));
       meses.push({
         mes,
         estimado,

@@ -1349,38 +1349,26 @@ const DashboardModule = (() => {
       const visibles = accounts.filter(a =>
         a.activo && (filtroAccounts.length === 0 || filtroAccounts.includes(a._id))
       );
-      // Recoger todas las fechas únicas; deduplicar por cuenta.
-      // saldoInicial en fechaInicialSaldo es solo el ancla de arranque del
-      // extracto proyectado — no debe pisar puntos de control reales
-      // anteriores. "↻ Actualizar saldo base" mueve esa ancla a hoy en todas
-      // las cuentas a la vez; si esos puntos previos se descartaban aquí, el
-      // fallback de más abajo (saldoInicial constante) rellenaba TODAS las
-      // fechas anteriores con el saldo de hoy y aplanaba la serie entera.
+      // Fechas en las que hay dato real de alguna cuenta. El VALOR de cada fecha
+      // lo da FinanceMath.saldoEnFecha, el mismo que usa el motor para anclar la
+      // simulación: si esta serie usara su propia regla, la línea real y la
+      // estimada podrían no cuadrar aunque las dos estuvieran «bien».
       const allDates = new Set();
-      const dedupedHist = visibles.map(acc => {
-        const byD = {};
-        for (const h of (acc.historicoSaldos || [])) {
-          byD[h.fecha] = h.saldo;
-        }
-        const floor = acc.fechaInicialSaldo || '';
-        if (floor && !(floor in byD)) byD[floor] = acc.saldoInicial || 0;
-        for (const d of Object.keys(byD)) allDates.add(d);
-        return byD;
-      });
+      for (const acc of visibles) {
+        if (acc.fechaInicialSaldo) allDates.add(acc.fechaInicialSaldo);
+        for (const h of (acc.historicoSaldos || [])) allDates.add(h.fecha);
+      }
+      // Solo se dibuja lo que cae DENTRO de la ventana del periodo. Los puntos
+      // anteriores siguen contando para el valor (el saldo de una fecha es el
+      // último punto conocido hasta ella), pero no se pintan: si no, al acotar
+      // el periodo la serie real seguía enseñando todo el histórico y no cuadraba
+      // con la estimada, que sí empieza en `dashboardStart`. Antes pasaba
+      // desapercibido porque el histórico tenía cuatro puntos sueltos; con la
+      // curva semanal salta a la vista.
+      const enVentana = (f) => f >= config.dashboardStart && f <= config.dashboardEnd;
       const byFecha = {};
-      for (const fecha of [...allDates].sort()) {
-        let total = 0;
-        for (let ai = 0; ai < visibles.length; ai++) {
-          // Saldo más reciente de esta cuenta hasta `fecha`
-          const entries = Object.entries(dedupedHist[ai]).filter(([d]) => d <= fecha);
-          if (entries.length > 0) {
-            entries.sort(([a],[b]) => b.localeCompare(a));
-            total += entries[0][1];
-          } else {
-            total += visibles[ai].saldoInicial || 0;
-          }
-        }
-        byFecha[fecha] = total;
+      for (const fecha of [...allDates].filter(enVentana).sort()) {
+        byFecha[fecha] = visibles.reduce((s, acc) => s + FinanceMath.saldoEnFecha(acc, fecha), 0);
       }
       const pts = Object.entries(byFecha)
         .sort(([a],[b]) => a.localeCompare(b))
@@ -2137,7 +2125,12 @@ const DashboardModule = (() => {
       fechaReferencia: document.getElementById('cfg-ref')?.value || existing.fechaReferencia || _fechaLocal(new Date()),
       showHistorico:   document.getElementById('cfg-show-hist')?.checked??true,
     };
-    State.set('config',config); render();
+    State.set('config',config);
+    // La fecha de simulación también vive en la barra de periodo: si se cambia
+    // aquí hay que reflejarla allí, o quedan dos controles diciendo cosas
+    // distintas del mismo campo.
+    if (typeof PeriodBar !== 'undefined') PeriodBar.init(config);
+    render();
   }
   function applyPreset(preset) { PeriodBar.applyPreset(preset); }
   function setChartMode(m) {

@@ -47,7 +47,7 @@ import { construirCuenta, formularioCuenta, wireFormularioCuenta } from './form'
 import { historicoDeCuenta, historicoHtml } from './historico';
 import { createTramosGananciasModal } from './tramos-ganancias';
 import { pestanasCuentasHtml, type PestanaCuentas } from './tabs';
-import { renderTransactionsPanel, wireTransactionsPanel, type EstadoPanel } from './transactions-panel';
+import { estadoPanelInicial, renderTransactionsPanel, wireTransactionsPanel, type EstadoPanel } from './transactions-panel';
 import { renderPrecisionPanel, wirePrecisionPanel } from './precision-panel';
 import { estadoImportInicial, renderImportPanel, wireImportPanel, type EstadoImport } from './import-panel';
 import { estadoCierreInicial, renderCierrePanel, wireCierrePanel, type EstadoCierre } from './cierre-panel';
@@ -96,7 +96,7 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
   // misma (ver tabs.ts). El estado de cada panel es de interfaz, no del
   // usuario, así que no va al store — igual que hacía la vista de Contabilidad.
   let tabActiva: PestanaCuentas = 'cuentas';
-  const estadoTx: EstadoPanel = { cuentaId: '', mes: hoy().slice(0, 7), filtroTexto: '' };
+  const estadoTx: EstadoPanel = estadoPanelInicial(hoy().slice(0, 7));
   const estadoImport: EstadoImport = estadoImportInicial();
   const estadoCierre: EstadoCierre = estadoCierreInicial();
 
@@ -107,22 +107,45 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
     ledger: deps.ledger,
     accounts: cuentasTodas,
     estimaciones,
+    loans: () => deps.store.get('loans'),
+    nominas: () => deps.store.get('nominas'),
     tagsConocidas: () => deps.tags.todas(),
     onDatosCambiados: notificar,
     hoy,
   };
   const impDeps = { ledger: deps.ledger, accounts: cuentasTodas, onDatosCambiados: notificar };
+  const config = () => deps.store.get('config');
+  // El intervalo de la cabecera del dashboard, para cerrar sobre él en vez de
+  // mes a mes.
+  const periodoHeader = () => ({ desde: config().dashboardStart, hasta: config().dashboardEnd });
+
   const cierreDeps = {
     ledger: deps.ledger,
     precision: deps.precision,
     adjuster: deps.adjuster,
     estimaciones,
+    // Lo previsto no vive solo en `expenses`: la nómina y la cuota del préstamo
+    // son lo más previsible que hay, y sin ellas el cierre daba «previsto 0» en
+    // ingresos y la hipoteca salía como gasto imprevisto todos los meses.
+    nominas: () => deps.store.get('nominas'),
+    loans: () => deps.store.get('loans'),
+    resolverTramosIRPF: () => crearResolverTramos(deps.store.get('tramosIRPFHistorico'), config().tramos_irpf ?? TRAMOS_IRPF_DEFAULT),
+    omitidos: () => config().cierreOmitidos ?? [],
+    setOmitidos: (claves: string[]) => deps.store.patchConfig({ cierreOmitidos: claves }),
     onDatosCambiados: notificar,
+    periodo: periodoHeader,
     hoy,
   };
-  const precDeps = { precision: deps.precision, adjuster: deps.adjuster, estimaciones, onDatosCambiados: notificar, hoy };
+  // La tabla de precisión sigue al modo del cierre, que se pinta justo encima.
+  const precDeps = {
+    precision: deps.precision,
+    adjuster: deps.adjuster,
+    estimaciones,
+    onDatosCambiados: notificar,
+    rango: () => (estadoCierre.modo === 'periodo' ? periodoHeader() : null),
+    hoy,
+  };
 
-  const config = () => deps.store.get('config');
   const nombreCuenta = (id: string) => deps.store.get('accounts').find((a) => a._id === id)?.nombre ?? id;
 
   const tramosIRPF = (): Tramos =>
@@ -349,6 +372,17 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
       const [, puntoId] = (btn.getAttribute('data-hist-borrar') || '').split('|');
       deps.ledger.eliminarPuntoControl(puntoId);
       toast('Eliminado');
+      notificar();
+      reabrir();
+    });
+    onClick(el, '[data-hist-semanal]', (btn) => {
+      const cuentaId = btn.getAttribute('data-hist-semanal') as string;
+      const n = deps.ledger.generarPuntosSemanales(cuentaId);
+      toast(
+        n > 0
+          ? `Histórico con ${n} punto${n !== 1 ? 's' : ''} semanal${n !== 1 ? 'es' : ''}`
+          : 'Sin movimientos con los que calcular el histórico',
+      );
       notificar();
       reabrir();
     });

@@ -1,6 +1,11 @@
 // ── features/accounting/precision-panel ───────────────────────────────────────
-// Precisión de las estimaciones frente al gasto real, por estimación y agregada
-// por etiqueta, con "Sugerir ajuste" por fila y "Ajustar todas" (F4, 4.3/4.5-4.7).
+// Precisión agregada POR ETIQUETA y ajuste en bloque de las estimaciones.
+//
+// La tabla estimación a estimación que había aquí se retiró: repetía lo que ya
+// enseña el cierre justo encima (previsto, real y desviación de cada una, con
+// su botón de ajuste), y para ver de un vistazo dónde te desvías funcionan
+// mejor los anillos por etiqueta del cierre. Lo que no estaba en ninguna otra
+// parte —el agregado por etiqueta y el ajuste en bloque— se queda.
 
 import { formatEUR } from '@/core/money';
 import type { Adjuster, Sugerencia } from '@/accounting/adjust';
@@ -8,7 +13,7 @@ import { sugerirAjuste } from '@/accounting/adjust';
 import type { PrecisionAnalyzer, PrecisionEstimacion } from '@/accounting/precision';
 import type { ISODate } from '@/core/dates';
 import type { Expense } from '@/state/schema';
-import { confirmar, esc, eurColor, nombreMes, onClick, precisionBadge, precisionBadge as badge, tagChips, toast } from '../accounting/dom';
+import { confirmar, esc, eurColor, onClick, precisionBadge, toast } from '../accounting/dom';
 
 export interface PrecisionPanelDeps {
   precision: PrecisionAnalyzer;
@@ -17,6 +22,13 @@ export interface PrecisionPanelDeps {
   onDatosCambiados: () => void;
   /** Fecha de corte del ajuste. Inyectable para que los tests no dependan del día. */
   hoy: () => ISODate;
+  /**
+   * Intervalo al que limitar la comparación, o `null` para el histórico
+   * completo. Lo manda el modo del cierre, que está justo encima: sería
+   * desconcertante cerrar un periodo y que la tabla de precisión de debajo
+   * hablase de otros meses.
+   */
+  rango?: () => { desde: ISODate; hasta: ISODate } | null;
 }
 
 interface FilaAnalisis {
@@ -27,14 +39,25 @@ interface FilaAnalisis {
 
 function calcularFilas(deps: PrecisionPanelDeps): FilaAnalisis[] {
   const estimaciones = deps.estimaciones();
+  const rango = deps.rango?.() ?? null;
   const porId = new Map(estimaciones.map((e) => [e._id, e]));
   return deps.precision
-    .analizarTodas(estimaciones)
+    .analizarTodas(estimaciones, rango ? { desde: rango.desde, hasta: rango.hasta } : {})
     .map((analisis) => {
       const estimacion = porId.get(analisis.estimacionId) as Expense;
       return { analisis, estimacion, sugerencia: sugerirAjuste(analisis, estimacion.cuantia) };
     })
     .filter((f) => !!f.estimacion);
+}
+
+/** Qué meses entran en la comparación, dicho en una frase. */
+function alcance(deps: PrecisionPanelDeps): string {
+  const rango = deps.rango?.() ?? null;
+  if (!rango) return 'Se comparan solo los meses ya cerrados que tengan movimientos reales.';
+  return esc(
+    `Limitado al periodo de la cabecera (${rango.desde} → ${rango.hasta}): se comparan los meses ya cerrados que caen dentro, ` +
+      `recortados al intervalo. El mes en curso nunca entra.`,
+  );
 }
 
 export function renderPrecisionPanel(deps: PrecisionPanelDeps): string {
@@ -48,41 +71,12 @@ export function renderPrecisionPanel(deps: PrecisionPanelDeps): string {
       <div class="card mb-14">
         <div class="card-title">Precisión de las estimaciones</div>
         <div class="text-sm" style="color:var(--text2);line-height:1.6">
-          Todavía no hay datos reales que comparar. Registra movimientos y asígnalos a una
-          estimación (o etiquétalos igual) y aquí verás qué acierto tiene cada previsión,
-          con la opción de ajustarla.
+          Todavía no hay datos reales que comparar${deps.rango?.() ? ' en el periodo de la cabecera' : ''}. Registra movimientos
+          y asígnalos a una estimación (o etiquétalos igual) y aquí verás qué acierto tiene cada
+          previsión, con la opción de ajustarla.
         </div>
       </div>`;
   }
-
-  const filasHtml = conDatos
-    .map(({ analisis, estimacion, sugerencia }) => {
-      const detalleMeses = analisis.meses
-        .slice(-6)
-        .map((m) => `${nombreMes(m.mes)}: ${formatEUR(m.estimado)} → ${formatEUR(m.real)} (${m.precision.toFixed(0)}%)`)
-        .join(' · ');
-      return `
-      <tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:8px">
-          <div style="font-size:13px;color:var(--text)">${esc(estimacion.concepto)}</div>
-          <div style="margin-top:3px">${tagChips(analisis.tags)}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:3px">${esc(detalleMeses)}</div>
-        </td>
-        <td style="padding:8px;text-align:right;font-family:var(--font-mono);font-size:12px;white-space:nowrap">${esc(formatEUR(analisis.estimadoTotal))}</td>
-        <td style="padding:8px;text-align:right;font-family:var(--font-mono);font-size:12px;white-space:nowrap">${esc(formatEUR(analisis.realTotal))}</td>
-        <td style="padding:8px;text-align:right;font-family:var(--font-mono);font-size:12px;white-space:nowrap">${eurColor(analisis.desviacionTotal)}</td>
-        <td style="padding:8px;text-align:right;white-space:nowrap">${badge(analisis.precision)}</td>
-        <td style="padding:8px;text-align:right;white-space:nowrap">
-          ${
-            sugerencia
-              ? `<button class="btn-secondary" data-sugerir="${esc(analisis.estimacionId)}" style="padding:4px 9px;font-size:11px"
-                   title="${esc(sugerencia.motivo)}">Sugerir ajuste → ${esc(formatEUR(sugerencia.cuantiaSugerida))}</button>`
-              : '<span style="font-size:11px;color:var(--text3)">sin ajuste necesario</span>'
-          }
-        </td>
-      </tr>`;
-    })
-    .join('');
 
   const filasTag = porTag
     .map(
@@ -104,25 +98,22 @@ export function renderPrecisionPanel(deps: PrecisionPanelDeps): string {
   return `
     <div class="card mb-14">
       <div class="flex justify-between items-center mb-12" style="flex-wrap:wrap;gap:8px">
-        <span class="card-title" style="margin:0">Precisión de las estimaciones</span>
+        <span class="card-title" style="margin:0">Ajuste de las estimaciones</span>
         ${
           conSugerencia.length > 0
             ? `<button class="btn-primary" id="ajustar-todas" style="padding:6px 12px;font-size:12px">Ajustar automáticamente todas (${conSugerencia.length})</button>`
             : ''
         }
       </div>
-      <div class="text-sm mb-10" style="color:var(--text2);line-height:1.6">
-        Se comparan solo los meses ya cerrados que tengan movimientos reales. Al ajustar, la
-        estimación actual se cierra hoy y se crea su continuación con el importe corregido:
-        el pasado se mantiene tal como lo estimaste.
-      </div>
-      <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse">
-          <thead><tr style="background:var(--bg3)">
-            ${th('Estimación')}${th('Estimado', 'right')}${th('Real', 'right')}${th('Desviación', 'right')}${th('Precisión', 'right')}${th('', 'right')}
-          </tr></thead>
-          <tbody>${filasHtml}</tbody>
-        </table>
+      <div class="text-sm" style="color:var(--text2);line-height:1.6">
+        ${alcance(deps)}
+        ${
+          conSugerencia.length > 0
+            ? `Hay ${conSugerencia.length} estimación(es) que se desvían de forma sistemática. Al ajustar, la
+               estimación actual se cierra hoy y se crea su continuación con el importe corregido: el pasado se
+               mantiene tal como lo estimaste.`
+            : 'Ninguna estimación se desvía lo bastante como para proponer un cambio de importe.'
+        }
       </div>
     </div>
 
@@ -140,23 +131,6 @@ export function renderPrecisionPanel(deps: PrecisionPanelDeps): string {
 }
 
 export function wirePrecisionPanel(container: HTMLElement, deps: PrecisionPanelDeps, refrescar: () => void): void {
-  onClick(container, '[data-sugerir]', (el) => {
-    const id = el.dataset.sugerir as string;
-    const fila = calcularFilas(deps).find((f) => f.analisis.estimacionId === id);
-    if (!fila?.sugerencia) return;
-    const s = fila.sugerencia;
-    const mensaje =
-      `${s.concepto}\n\n${s.motivo} (precisión ${s.precision.toFixed(1)}%).\n\n` +
-      `Estimación actual: ${formatEUR(s.cuantiaActual)}\n` +
-      `Nueva estimación: ${formatEUR(s.cuantiaSugerida)}\n\n` +
-      `La estimación actual se cerrará hoy y se creará su continuación con el nuevo importe. ¿Aplicar?`;
-    if (!confirmar(mensaje)) return;
-    deps.adjuster.aplicar(id, s.cuantiaSugerida, { hoy: deps.hoy() });
-    toast(`Estimación ajustada a ${formatEUR(s.cuantiaSugerida)}`);
-    deps.onDatosCambiados();
-    refrescar();
-  });
-
   onClick(container, '#ajustar-todas', () => {
     const sugerencias = calcularFilas(deps)
       .map((f) => f.sugerencia)

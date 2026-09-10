@@ -173,6 +173,203 @@ describe('puntos de control y saldos derivados', () => {
     expect(store.get('accounts').find((a) => a._id === 'default')?.historicoSaldos).toHaveLength(1);
   });
 
+  it('eliminarPuntosControlEnRango borra solo los puntos manuales dentro del rango, de esa cuenta', () => {
+    const { ledger, store } = env;
+    ledger.registrarPuntoControl('default', '2026-06-15', 500); // antes del rango: se queda
+    ledger.registrarPuntoControl('default', '2026-07-05', 800); // dentro: se borra
+    ledger.registrarPuntoControl('default', '2026-07-20', 900); // dentro: se borra
+    ledger.registrarPuntoControl('default', '2026-08-01', 1000); // después: se queda
+    ledger.registrarPuntoControl('ahorro', '2026-07-10', 5000); // otra cuenta: se queda
+
+    const borrados = ledger.eliminarPuntosControlEnRango('default', '2026-07-01', '2026-07-31');
+
+    expect(borrados).toBe(2);
+    expect(ledger.puntosControl('default').map((p) => p.fecha)).toEqual(['2026-06-15', '2026-08-01']);
+    expect(ledger.puntosControl('ahorro')).toHaveLength(1);
+    // El puente con el legacy también refleja el borrado
+    expect(store.get('accounts').find((a) => a._id === 'default')?.historicoSaldos).toHaveLength(2);
+  });
+
+  it('eliminarPuntosControlEnRango no toca nada ni sincroniza si no hay puntos en rango', () => {
+    const { ledger } = env;
+    ledger.registrarPuntoControl('default', '2026-06-01', 500);
+    expect(ledger.eliminarPuntosControlEnRango('default', '2026-07-01', '2026-07-31')).toBe(0);
+    expect(ledger.puntosControl('default')).toHaveLength(1);
+  });
+
+  it('sincronizarHistoricoImportado repite el barrido sobre el rango ya importado de cada cuenta', () => {
+    const { ledger, store } = env;
+    ledger.registrarPuntoControl('default', '2026-07-10', 800); // dentro de lo importado: se borra
+    ledger.registrarPuntoControl('default', '2026-06-01', 500); // fuera: se queda
+    ledger.registrarPuntoControl('ahorro', '2026-07-15', 900); // dentro de lo importado de ahorro: se borra
+    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 20, concepto: 'a', tipo: 'gasto', origen: 'importado' });
+    ledger.registrar({ fecha: '2026-07-20', cuentaId: 'default', importe: 30, concepto: 'b', tipo: 'gasto', origen: 'importado' });
+    ledger.registrar({ fecha: '2026-07-12', cuentaId: 'ahorro', importe: 40, concepto: 'c', tipo: 'ingreso', origen: 'importado' });
+    ledger.registrar({ fecha: '2026-07-18', cuentaId: 'ahorro', importe: 50, concepto: 'd', tipo: 'ingreso', origen: 'importado' });
+    // Un movimiento manual no cuenta como "importado": no debería crear rango propio.
+    ledger.registrar({ fecha: '2026-05-01', cuentaId: 'default', importe: 10, concepto: 'manual', tipo: 'gasto' });
+
+    const resultados = ledger.sincronizarHistoricoImportado();
+
+    expect(resultados.sort((a, b) => a.cuentaId.localeCompare(b.cuentaId))).toEqual([
+      { cuentaId: 'ahorro', eliminados: 1, semanales: 2 },
+      { cuentaId: 'default', eliminados: 1, semanales: 12 },
+    ]);
+    // El punto manual de fuera del rango sigue ahí; el de dentro se ha ido.
+    expect(
+      ledger
+        .puntosControl('default')
+        .filter((p) => p.origen !== 'derivado')
+        .map((p) => p.fecha),
+    ).toEqual(['2026-06-01']);
+    expect(ledger.puntosControl('ahorro').filter((p) => p.origen !== 'derivado')).toHaveLength(0);
+    // Y el histórico queda con curva semanal en vez de con un punto suelto.
+    expect(store.get('accounts').find((a) => a._id === 'default')?.historicoSaldos?.length).toBeGreaterThan(5);
+  });
+
+  it('sincronizarHistoricoImportado se puede acotar a una sola cuenta', () => {
+    const { ledger } = env;
+    ledger.registrarPuntoControl('default', '2026-07-10', 800);
+    ledger.registrarPuntoControl('ahorro', '2026-07-15', 900);
+    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 20, concepto: 'a', tipo: 'gasto', origen: 'importado' });
+    ledger.registrar({ fecha: '2026-07-20', cuentaId: 'default', importe: 25, concepto: 'e', tipo: 'gasto', origen: 'importado' });
+    ledger.registrar({ fecha: '2026-07-12', cuentaId: 'ahorro', importe: 40, concepto: 'c', tipo: 'ingreso', origen: 'importado' });
+    ledger.registrar({ fecha: '2026-07-18', cuentaId: 'ahorro', importe: 50, concepto: 'd', tipo: 'ingreso', origen: 'importado' });
+
+    expect(ledger.sincronizarHistoricoImportado('default')).toEqual([{ cuentaId: 'default', eliminados: 1, semanales: 4 }]);
+    expect(ledger.puntosControl('ahorro')).toHaveLength(1); // no tocada: sigue solo con su punto manual
+  });
+
+  it('sincronizarHistoricoImportado no devuelve nada si no hay movimientos importados', () => {
+    const { ledger } = env;
+    expect(ledger.sincronizarHistoricoImportado()).toEqual([]);
+    // Con movimientos importados sí hay fila, aunque no hubiera puntos manuales que borrar.
+    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 20, concepto: 'a', tipo: 'gasto', origen: 'importado' });
+    expect(ledger.sincronizarHistoricoImportado()).toEqual([{ cuentaId: 'default', eliminados: 0, semanales: 1 }]);
+  });
+
+  it('genera un punto por semana con el saldo del domingo, cubriendo todas las semanas con datos', () => {
+    const { ledger, store } = env;
+    // 2026-06-01 es lunes; los domingos de esas semanas son 07, 14 y 21.
+    ledger.registrar({ fecha: '2026-06-02', cuentaId: 'default', importe: 100, concepto: 'a', tipo: 'ingreso' });
+    ledger.registrar({ fecha: '2026-06-09', cuentaId: 'default', importe: 30, concepto: 'b', tipo: 'gasto' });
+    ledger.registrar({ fecha: '2026-06-16', cuentaId: 'default', importe: 10, concepto: 'c', tipo: 'gasto' });
+
+    expect(ledger.generarPuntosSemanales('default')).toBe(3);
+    const puntos = ledger.puntosControl('default');
+    expect(puntos.map((p) => [p.fecha, p.saldoCts])).toEqual([
+      ['2026-06-07', 10000],
+      ['2026-06-14', 7000],
+      ['2026-06-16', 6000], // la última semana se cierra en el último dato, no en el domingo
+    ]);
+    expect(puntos.every((p) => p.origen === 'derivado')).toBe(true);
+    // Y el puente con el legacy los replica: es lo que dibuja el histórico.
+    expect(store.get('accounts').find((a) => a._id === 'default')?.historicoSaldos).toHaveLength(3);
+  });
+
+  it('cubre también las semanas sin ningún movimiento, arrastrando el saldo', () => {
+    const { ledger } = env;
+    ledger.registrar({ fecha: '2026-06-02', cuentaId: 'default', importe: 100, concepto: 'a', tipo: 'ingreso' });
+    ledger.registrar({ fecha: '2026-06-23', cuentaId: 'default', importe: 40, concepto: 'b', tipo: 'gasto' });
+
+    ledger.generarPuntosSemanales('default');
+    expect(ledger.puntosControl('default').map((p) => [p.fecha, p.saldoCts])).toEqual([
+      ['2026-06-07', 10000],
+      ['2026-06-14', 10000], // sin movimientos: el saldo se mantiene
+      ['2026-06-21', 10000],
+      ['2026-06-23', 6000],
+    ]);
+  });
+
+  it('una semana con punto manual conserva el suyo y no recibe uno derivado', () => {
+    const { ledger } = env;
+    ledger.registrar({ fecha: '2026-06-02', cuentaId: 'default', importe: 100, concepto: 'a', tipo: 'ingreso' });
+    ledger.registrar({ fecha: '2026-06-09', cuentaId: 'default', importe: 30, concepto: 'b', tipo: 'gasto' });
+    // El banco dice que el día 10 había 500: manda sobre lo calculado.
+    ledger.registrarPuntoControl('default', '2026-06-10', 500, 'extracto');
+
+    const puntos = ledger.puntosControl('default');
+    expect(puntos.map((p) => [p.fecha, p.saldoCts, p.origen ?? 'manual'])).toEqual([
+      ['2026-06-07', 10000, 'derivado'],
+      ['2026-06-10', 50000, 'manual'], // su semana (7-14) no lleva punto derivado
+    ]);
+    // Y el ancla manual manda en el saldo posterior.
+    expect(ledger.saldoCuenta('default', '2026-06-14')).toBe(500);
+  });
+
+  it('los puntos derivados no anclan el saldo: un movimiento nuevo se suma igual', () => {
+    const { ledger } = env;
+    ledger.registrar({ fecha: '2026-06-02', cuentaId: 'default', importe: 100, concepto: 'a', tipo: 'ingreso' });
+    ledger.generarPuntosSemanales('default');
+    // Un movimiento anterior al punto derivado del día 7 debe seguir contando:
+    // si el derivado anclara, este gasto quedaría fuera del saldo.
+    ledger.registrar({ fecha: '2026-06-03', cuentaId: 'default', importe: 40, concepto: 'b', tipo: 'gasto' });
+    expect(ledger.saldoCuenta('default', '2026-06-30')).toBe(60);
+  });
+
+  it('regenerar reemplaza los derivados anteriores en vez de acumularlos', () => {
+    const { ledger } = env;
+    ledger.registrar({ fecha: '2026-06-02', cuentaId: 'default', importe: 100, concepto: 'a', tipo: 'ingreso' });
+    ledger.generarPuntosSemanales('default');
+    ledger.generarPuntosSemanales('default');
+    ledger.generarPuntosSemanales('default');
+    expect(ledger.puntosControl('default')).toHaveLength(1);
+  });
+
+  it('sin datos no genera nada y limpia los derivados que hubiera', () => {
+    const { ledger } = env;
+    const tx = ledger.registrar({ fecha: '2026-06-02', cuentaId: 'default', importe: 100, concepto: 'a', tipo: 'ingreso' });
+    ledger.generarPuntosSemanales('default');
+    expect(ledger.puntosControl('default')).toHaveLength(1);
+
+    ledger.eliminar(tx._id);
+    expect(ledger.generarPuntosSemanales('default')).toBe(0);
+    expect(ledger.puntosControl('default')).toHaveLength(0);
+  });
+
+  it('retrasa el arranque de la cuenta hasta el primer movimiento si lo estaba tapando', () => {
+    const { ledger, store } = env;
+    // Cuenta creada DESPUÉS de los movimientos (o tras «Actualizar saldo
+    // base»): su arranque taparía toda la curva semanal en saldoEnFecha y en
+    // la gráfica del dashboard.
+    store.set(
+      'accounts',
+      store.get('accounts').map((a) => (a._id === 'default' ? { ...a, saldoInicial: 0, fechaInicialSaldo: '2026-07-30' } : a)),
+    );
+    ledger.registrar({ fecha: '2026-06-02', cuentaId: 'default', importe: 100, concepto: 'a', tipo: 'ingreso' });
+    ledger.registrar({ fecha: '2026-06-16', cuentaId: 'default', importe: 30, concepto: 'b', tipo: 'gasto' });
+
+    ledger.generarPuntosSemanales('default');
+
+    const cuenta = store.get('accounts').find((a) => a._id === 'default');
+    expect(cuenta?.fechaInicialSaldo).toBe('2026-06-02');
+    expect(cuenta?.saldoInicial).toBe(100); // el saldo que había ese día
+  });
+
+  it('no toca el arranque si ya es anterior al primer movimiento', () => {
+    const { ledger, store } = env;
+    store.set(
+      'accounts',
+      store.get('accounts').map((a) => (a._id === 'default' ? { ...a, saldoInicial: 4200, fechaInicialSaldo: '2026-01-01' } : a)),
+    );
+    ledger.registrar({ fecha: '2026-06-02', cuentaId: 'default', importe: 100, concepto: 'a', tipo: 'ingreso' });
+
+    ledger.generarPuntosSemanales('default');
+
+    const cuenta = store.get('accounts').find((a) => a._id === 'default');
+    expect(cuenta?.fechaInicialSaldo).toBe('2026-01-01');
+    expect(cuenta?.saldoInicial).toBe(4200);
+  });
+
+  it('generarPuntosSemanalesTodas recorre las cuentas con movimientos', () => {
+    const { ledger } = env;
+    ledger.registrar({ fecha: '2026-06-02', cuentaId: 'default', importe: 100, concepto: 'a', tipo: 'ingreso' });
+    ledger.registrar({ fecha: '2026-06-02', cuentaId: 'ahorro', importe: 50, concepto: 'b', tipo: 'ingreso' });
+    expect(ledger.generarPuntosSemanalesTodas()).toBe(2);
+    expect(ledger.puntosControl('default')).toHaveLength(1);
+    expect(ledger.puntosControl('ahorro')).toHaveLength(1);
+  });
+
   it('saldoTotal suma las cuentas activas', () => {
     const { ledger } = env;
     ledger.registrarPuntoControl('default', '2026-07-01', 1000);
