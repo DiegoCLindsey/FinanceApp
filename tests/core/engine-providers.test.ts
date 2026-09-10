@@ -2,6 +2,8 @@
 // retenciones (Fase 1, tarea 1.4). Igualdad estricta.
 import { describe, it, expect, beforeAll } from 'vitest';
 import { proyectarPrestamos, type LoanItem } from '@/engine/providers/loans';
+import { proyectarGastos } from '@/engine/providers/expenses';
+import { proyectarNominas } from '@/engine/providers/salaries';
 import { proyectarInteresesCuentas, type InterestAccount } from '@/engine/providers/interests';
 import { proyectarAportaciones, type ContributionAccount } from '@/engine/providers/contributions';
 import { proyectarRetencionesFiscales, type WithholdingExpense } from '@/engine/providers/withholdings';
@@ -219,5 +221,69 @@ describe('paridad provider de retenciones', () => {
     expect(proyectarRetencionesFiscales(expenses, TRAMOS_IRPF_DEFAULT, range)).toEqual(
       FM.proyectarRetencionesFiscales(expenses, config, range.start, range.end),
     );
+  });
+});
+
+// Regresión de periodicidades: los bucles mensuales se recorrían desde
+// `fechaInicio` con un tope de iteraciones «de seguridad», así que ese tope era
+// en realidad un límite de EDAD. Un recibo domiciliado desde hace más de veinte
+// años, o una nómina de hace veinticinco, no proyectaban ni un solo evento en
+// el periodo que se estaba mirando — y sin avisar: simplemente no salían.
+describe('series mensuales que empezaron hace mucho', () => {
+  const gasto = (over: Record<string, unknown>) => ({
+    _id: 'e1',
+    concepto: 'Seguro',
+    cuantia: 300,
+    tipo: 'gasto',
+    activo: true,
+    tags: [],
+    cuenta: 'default',
+    ...over,
+  });
+  const ventana: DateRange = { start: '2026-01-01', end: '2026-12-31' };
+
+  it('un gasto anual desde 1995 sigue proyectando su pago', () => {
+    const exp = gasto({ tipoFrecuencia: 'mensual', frecuencia: 12, fechaInicio: '1995-11-30' });
+    const eventos = proyectarGastos([exp as never], ventana);
+    expect(eventos.map((e) => e.fecha)).toEqual(['2026-11-30']);
+  });
+
+  it('un gasto mensual desde 2000 proyecta los doce meses', () => {
+    const exp = gasto({ tipoFrecuencia: 'mensual', frecuencia: 1, fechaInicio: '2000-05-20' });
+    expect(proyectarGastos([exp as never], ventana)).toHaveLength(12);
+  });
+
+  it('el salto hasta la ventana respeta la fase de la frecuencia', () => {
+    // Cuatrimestral desde marzo de 1998: los pagos caen en marzo, julio y noviembre.
+    const exp = gasto({ tipoFrecuencia: 'mensual', frecuencia: 4, fechaInicio: '1998-03-05' });
+    expect(proyectarGastos([exp as never], ventana).map((e) => e.fecha)).toEqual(['2026-03-05', '2026-07-05', '2026-11-05']);
+  });
+
+  it('los dos motores dan lo mismo', () => {
+    for (const frecuencia of [1, 2, 3, 4, 6, 12]) {
+      const exp = gasto({ tipoFrecuencia: 'mensual', frecuencia, fechaInicio: '1998-03-05' });
+      expect(proyectarGastos([exp as never], ventana)).toEqual(FM.proyectarGastos([exp], ventana.start, ventana.end));
+    }
+  });
+
+  it('una nómina dada de alta en 1995 sigue cobrándose', () => {
+    const nomina = {
+      _id: 'n1',
+      nombre: 'Sueldo',
+      bruto: 30000,
+      nPagas: 14,
+      irpfModo: 'manual',
+      irpfPct: 15,
+      representacion: 'simplificado',
+      fechaInicio: '1995-04-10',
+      fechaFin: null,
+      cuenta: 'default',
+      activo: true,
+      tags: [],
+      grupoNomina: '',
+    };
+    const nuestro = proyectarNominas([nomina as never], ventana);
+    expect(nuestro.filter((e) => e.tipo === 'ingreso')).toHaveLength(14); // 12 pagas + 2 extras
+    expect(nuestro).toEqual(FM.proyectarNominas([nomina], { tramos_irpf: TRAMOS_IRPF_DEFAULT }, ventana.start, ventana.end));
   });
 });

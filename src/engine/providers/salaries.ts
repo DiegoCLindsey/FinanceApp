@@ -6,7 +6,7 @@
 // tramos por ejercicio se resuelven vía `resolverTramos` inyectado (el legacy
 // lee el State global; sin State usa los defaults, contra los que se verifica).
 
-import { formatLocalDate, parseLocalDate, type ISODate } from '@/core/dates';
+import { arranqueMensual, formatLocalDate, parseLocalDate, type ISODate } from '@/core/dates';
 import { calcFactorInflacion, type PeriodoInflacion } from '@/core/inflation';
 import { calcBaseImponibleTrabajo, calcIRPF, TRAMOS_IRPF_DEFAULT, type Tramos } from '@/core/tax/irpf';
 import type { AccountFilter, CashEvent, DateRange } from '../types';
@@ -182,8 +182,9 @@ export function proyectarNominas(
     if (nPagas <= 12) {
       const step = nPagas === 12 ? 1 : Math.round(12 / nPagas);
       const dayOfMonth = dI.getDate();
-      let year = dI.getFullYear();
-      let month = dI.getMonth();
+      // Desde la ventana, no desde el alta de la nómina: el tope de 300 vueltas
+      // dejaba sin proyectar una nómina de hace más de 25 años.
+      let { year, month } = arranqueMensual(dI, dS, step);
       for (let iter = 0; iter < 300; iter++) {
         const lastDay = new Date(year, month + 1, 0).getDate();
         const d = new Date(year, month, Math.min(dayOfMonth, lastDay));
@@ -198,8 +199,7 @@ export function proyectarNominas(
     } else {
       const nExtra = nPagas - 12;
       const dayOfMonth = dI.getDate();
-      let year = dI.getFullYear();
-      let month = dI.getMonth();
+      let { year, month } = arranqueMensual(dI, dS, 1);
       for (let iter = 0; iter < 300; iter++) {
         const lastDay = new Date(year, month + 1, 0).getDate();
         const d = new Date(year, month, Math.min(dayOfMonth, lastDay));

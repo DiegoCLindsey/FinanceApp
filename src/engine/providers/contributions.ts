@@ -3,7 +3,7 @@
 // pensiones: par gasto (cuenta origen) / ingreso (fondo destino).
 // Paridad exacta con FinanceMath.proyectarAportaciones.
 
-import { formatLocalDate, parseLocalDate, type ISODate } from '@/core/dates';
+import { arranqueMensual, formatLocalDate, parseLocalDate, type ISODate } from '@/core/dates';
 import { modeloFondoDe, type AccountLike } from '@/core/accounts';
 import type { AccountFilter, CashEvent, DateRange } from '../types';
 
@@ -68,8 +68,8 @@ export function proyectarAportaciones(
           });
       };
       const freq = ({ mensual: 1, trimestral: 3, semestral: 6, anual: 12 } as Record<string, number>)[ap.periodicidad || 'mensual'] || 1;
-      let year = dI.getFullYear();
-      let month = dI.getMonth();
+      // Se arranca en la ventana, no en fechaInicio (ver `arranqueMensual`).
+      let { year, month } = arranqueMensual(dI, dS, freq);
       const maxIter = Math.ceil(240 / freq) + 2;
       for (let i = 0; i < maxIter; i++) {
         const maxDay = new Date(year, month + 1, 0).getDate();

@@ -132,3 +132,29 @@ export function sumarDias(fecha: ISODate, dias: number): ISODate {
   d.setDate(d.getDate() + dias);
   return formatLocalDate(d);
 }
+
+/**
+ * Primer periodo a evaluar de una serie mensual, saltando de golpe hasta la
+ * ventana sin perder la fase.
+ *
+ * Todas las series mensuales del motor se recorrían desde `fechaInicio` con un
+ * tope de iteraciones por seguridad (20 o 25 años). Eso convertía el tope en un
+ * límite de EDAD: un recibo domiciliado desde 1998 o una nómina de 1995 se
+ * quedaban sin proyectar —ni un solo evento— porque el bucle se agotaba antes
+ * de llegar al periodo que se estaba mirando. Y sin ruido: simplemente no
+ * aparecían ni en la gráfica ni en el cierre.
+ *
+ * Como los pagos van cada `freq` meses desde el inicio, se puede saltar
+ * directamente `floor(meses hasta la ventana / freq)` periodos: el resultado
+ * cae en la ventana o justo antes, nunca después, así que no se pierde ningún
+ * pago (los anteriores los descarta igual el filtro de la ventana).
+ */
+export function arranqueMensual(inicio: Date, ventana: Date, freq: number): { year: number; month: number } {
+  const paso = Math.max(1, freq);
+  const year = inicio.getFullYear();
+  const month = inicio.getMonth();
+  const meses = (ventana.getFullYear() - year) * 12 + (ventana.getMonth() - month);
+  if (meses <= 0) return { year, month };
+  const total = month + Math.floor(meses / paso) * paso;
+  return { year: year + Math.floor(total / 12), month: total % 12 };
+}

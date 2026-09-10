@@ -43,6 +43,21 @@ const FinanceMath = (() => {
   }
 
   // Dado año y mes (0-based), devuelve la fecha ISO del día efectivo
+  // Primer periodo a evaluar de una serie mensual, saltando hasta la ventana sin
+  // perder la fase. Los bucles mensuales se recorrían desde fechaInicio con un
+  // tope de iteraciones por seguridad, así que ese tope era en realidad un
+  // límite de EDAD: un recibo domiciliado desde hace más de veinte años no
+  // proyectaba ni un evento, sin avisar de nada. Saltar floor(meses/freq)
+  // periodos cae en la ventana o justo antes, nunca después.
+  function _arranqueMensual(inicio, ventana, freq) {
+    const paso = Math.max(1, freq);
+    const year = inicio.getFullYear(), month = inicio.getMonth();
+    const meses = (ventana.getFullYear() - year) * 12 + (ventana.getMonth() - month);
+    if (meses <= 0) return { year, month };
+    const total = month + Math.floor(meses / paso) * paso;
+    return { year: year + Math.floor(total / 12), month: total % 12 };
+  }
+
   function resolverDiaEfectivo(year, month0, diaPago) {
     if (!diaPago) return null;
     if (diaPago.startsWith('dia:')) {
@@ -166,8 +181,8 @@ const FinanceMath = (() => {
 
       } else if (exp.tipoFrecuencia === 'mensual') {
         const freq = Math.max(1, exp.frecuencia || 1);
-        // Punto de partida: mes de dI
-        let year = dI.getFullYear(), month = dI.getMonth();
+        // Punto de partida: la ventana, no dI (ver _arranqueMensual)
+        let { year, month } = _arranqueMensual(dI, dS, freq);
         // Límite de seguridad: no más de 20 años hacia adelante
         const maxIter = freq > 0 ? Math.ceil(240 / freq) + 2 : 300;
         for (let iter = 0; iter < maxIter; iter++) {
@@ -285,7 +300,7 @@ const FinanceMath = (() => {
         if (dI >= dS && dI <= dE && dI <= dF) pushPair(exp.fechaInicio);
       } else if (exp.tipoFrecuencia === 'mensual') {
         const freq = Math.max(1, exp.frecuencia||1);
-        let year = dI.getFullYear(), month = dI.getMonth();
+        let { year, month } = _arranqueMensual(dI, dS, freq);
         const maxIter = Math.ceil(240/freq)+2;
         for (let i=0; i<maxIter; i++) {
           const fe = resolverDiaEfectivo(year,month,exp.diaPago||'') || (() => { const d=dI.getDate(),l=new Date(year,month+1,0).getDate(); return _fechaLocal(new Date(year,month,Math.min(d,l))); })();
@@ -870,7 +885,7 @@ const FinanceMath = (() => {
         // Equally-spaced payments: step = floor(12/nPagas) months
         const step = nPagas === 12 ? 1 : Math.round(12 / nPagas);
         const dayOfMonth = dI.getDate();
-        let year = dI.getFullYear(), month = dI.getMonth();
+        let { year, month } = _arranqueMensual(dI, dS, step);
         for (let iter = 0; iter < 300; iter++) {
           const lastDay = new Date(year, month+1, 0).getDate();
           const d = new Date(year, month, Math.min(dayOfMonth, lastDay));
@@ -883,7 +898,7 @@ const FinanceMath = (() => {
         // 12 regular monthly payments + (nPagas-12) additional extra pagas
         const nExtra = nPagas - 12;
         const dayOfMonth = dI.getDate();
-        let year = dI.getFullYear(), month = dI.getMonth();
+        let { year, month } = _arranqueMensual(dI, dS, 1);
         for (let iter = 0; iter < 300; iter++) {
           const lastDay = new Date(year, month+1, 0).getDate();
           const d = new Date(year, month, Math.min(dayOfMonth, lastDay));
@@ -1000,7 +1015,7 @@ const FinanceMath = (() => {
           if (addD) events.push({ fecha, concepto:`Aportación ${acc.nombre} (${ap.periodicidad||'mensual'})`, cuantia: ap.importe, tipo:'ingreso', tags:['aportacion','transferencia',tag], cuenta: acc._id, sourceId: ap._id, sourceType:'aportacion-in'  });
         };
         const freq = { mensual:1, trimestral:3, semestral:6, anual:12 }[ap.periodicidad||'mensual'] || 1;
-        let year = dI.getFullYear(), month = dI.getMonth();
+        let { year, month } = _arranqueMensual(dI, dS, freq);
         const maxIter = Math.ceil(240/freq)+2;
         for (let i=0; i<maxIter; i++) {
           const maxDay = new Date(year, month+1, 0).getDate();
