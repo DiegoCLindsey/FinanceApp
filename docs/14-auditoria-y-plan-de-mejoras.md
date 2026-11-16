@@ -47,7 +47,7 @@ que la resuelve.
 
 ### 0.3 Orden recomendado
 
-Ver la hoja de ruta de la sección 9. En corto: primero `BUG-01` a `BUG-06`
+Ver la hoja de ruta de la sección 9. En corto: primero `BUG-25` y `BUG-01` a `BUG-06`
 (pérdida de datos), después seguridad `SEC-01`, `SEC-04`, `SEC-07`, después la
 cabecera móvil (`UX-01`) y el orden del cuadro de mando (`UX-12`).
 
@@ -104,6 +104,7 @@ avanzada, y todo lo que exija un servidor propio.
 
 | # | Hallazgo | Tarea |
 |---|---|---|
+| 0 | **Cada elemento creado desde un formulario se guarda tantas veces como modales se hayan abierto desde la última recarga** (el 4.º gasto se crea 4 veces; tras cancelar 5 formularios, 10). Afecta a gastos, préstamos, amortizaciones, nóminas, cuentas y márgenes | `BUG-25` |
 | 1 | Lo que se introduce en el asistente inicial **se borra** al crear el primer gasto desde la vista de Gastos. El legacy y el paquete nuevo guardan cada uno su copia en memoria y se pisan | `BUG-01` |
 | 2 | Con autoguardado, un dispositivo que se queda abierto **sobrescribe la nube cada 15 min con datos viejos**; el otro dispositivo, al abrir, restaura esa copia vieja sin preguntar | `BUG-03` |
 | 3 | Teclear mal la clave de cifrado al desbloquear **sobrescribe la lista de proyectos** de la nube con una copia ilegible | `BUG-04` |
@@ -117,7 +118,7 @@ avanzada, y todo lo que exija un servidor propio.
 
 | Sección | Tareas | P0 | P1 | P2 | P3 |
 |---|---:|---:|---:|---:|---:|
-| 3 · Fallos | 24 | 6 | 8 | 9 | 1 |
+| 3 · Fallos | 25 | 7 | 8 | 9 | 1 |
 | 4 · Seguridad | 11 | 0 | 5 | 5 | 1 |
 | 5 · UI/UX | 29 | 0 | 7 | 16 | 6 |
 | 6 · Mejoras de lo existente | 12 | — | — | — | — |
@@ -170,6 +171,63 @@ avanzada, y todo lo que exija un servidor propio.
   - El recorrido del asistente de arriba termina con 3 filas en Gastos.
   - `State.set('config', …)` seguido de `store.patchConfig(…)` conserva ambos
     cambios.
+
+#### [ ] BUG-25 · Cada formulario guarda tantas veces como modales se hayan abierto en la sesión
+
+- **Prioridad** P0 · **Esfuerzo** S · **Evidencia** ✔ reproducido
+- **Ficheros** `src/features/accounting/dom.ts:57-69` (`onClick`, `onChange`) y
+  todos los que cablean sobre `#modal-content`:
+  `src/features/expenses/index.ts:326-342`,
+  `src/features/loans/index.ts:246-253, 263, 269, 330`,
+  `src/features/salaries/index.ts:224, 243, 271`, `src/features/salaries/tramos.ts`,
+  `src/features/accounts/index.ts:303, 323, 361-389`,
+  `src/features/accounts/tramos-ganancias.ts`, `src/features/margins/index.ts:234-250`.
+- **Problema.** `#modal-content` es **un único elemento que vive toda la
+  sesión**. Cada vez que se abre un formulario se le cambia el `innerHTML` y se
+  le añaden listeners delegados nuevos con `onClick(content, '[data-guardar]', …)`,
+  pero los anteriores **nunca se quitan** (cambiar `innerHTML` no elimina los
+  listeners del propio contenedor). Al pulsar «Guardar» se ejecutan todos los
+  acumulados, y cada uno hace su `store.addItem`.
+  Las vistas sí se protegen de esto (`container.dataset.wired`); los modales no.
+- **Reproducción** (hecha, en Gastos, sin recargar):
+
+  | Acción | Resultado |
+  |---|---|
+  | 1.er gasto | 1 copia |
+  | 2.º gasto | 2 copias |
+  | 3.er gasto | 3 copias |
+  | 4.º gasto | 4 copias |
+  | abrir y **cancelar** 5 veces, luego crear uno | **10 copias** |
+
+  Cuenta cualquier apertura, también editar, duplicar y cancelar: de ahí las
+  «decenas» tras un rato de uso. Recargar la página pone el contador a cero,
+  por eso parece aleatorio.
+- **Alcance.** Todo lo que se crea desde un modal: gastos e ingresos, préstamos,
+  amortizaciones, nóminas, aportaciones a pensiones, cuentas, puntos del
+  histórico de saldo, márgenes, y años y tramos de las tablas fiscales. Al
+  **editar**, el mismo cambio se aplica N veces (sin daño visible, salvo los
+  avisos repetidos). «Cancelar» y los `change` también se disparan N veces.
+- **Solución.**
+  1. Un único punto de apertura de modal en `src/` (`abrirModal(titulo, html)`
+     compartido, hoy copiado en cuatro ficheros) que **entregue un contenedor
+     limpio en cada apertura**: crear un `AbortController` por apertura, pasar
+     su `signal` a `onClick`/`onChange` (tercer argumento de
+     `addEventListener`) y abortar el anterior al abrir o cerrar.
+  2. `onClick`/`onChange` aceptan `{ signal }` opcional.
+  3. Deshabilitar «Guardar» al primer clic hasta que termine, como segunda
+     barrera contra el doble toque.
+  4. Queda absorbido por el componente de diálogo de `UX-03`, pero **no esperar
+     a él**: este arreglo es de medio día.
+- **Limpieza de lo ya duplicado** *(requiere decisión)*. Ofrecer en
+  «Administrar datos» una acción «Buscar duplicados»: agrupa elementos idénticos
+  en todo salvo `_id` creados en el mismo segundo (el `_id` empieza por la marca
+  de tiempo en base 36) y deja elegir cuáles borrar, con copia previa. No
+  borrar nada automáticamente.
+- **Hecho cuando**
+  - Test (happy-dom): abrir y cancelar el formulario de gasto 5 veces, crear
+    uno → `store.get('expenses').length === 1`. El mismo test para préstamo,
+    amortización, nómina, cuenta y margen.
+  - Test: tras 3 aperturas, editar un gasto llama a `updateItem` una vez.
 
 #### [ ] BUG-02 · El cuadro de mando sale vacío al terminar el asistente
 
@@ -1344,7 +1402,7 @@ coherente con `BUG-12`.
 
 | Fase | Objetivo | Tareas |
 |---|---|---|
-| **0 · Que no se pierda nada** | Cerrar todos los P0 y poner la red que los habría detectado | `BUG-01`, `BUG-02`, `BUG-03`, `BUG-04`, `BUG-06`, `BUG-07`, `TEC-02` (flujos de alta y de dos dispositivos), `MEJ-10` (mínimo: copia previa a restaurar) |
+| **0 · Que no se pierda nada** | Cerrar todos los P0 y poner la red que los habría detectado | `BUG-25` (el primero: medio día y es el que más se sufre), `BUG-01`, `BUG-02`, `BUG-03`, `BUG-04`, `BUG-06`, `BUG-07`, `TEC-02` (flujos de alta y de dos dispositivos), `MEJ-10` (mínimo: copia previa a restaurar) |
 | **1 · Seguridad y robustez** | Cerrar la vía de ejecución de código y los fallos de acceso | `SEC-01`, `SEC-04` + `BUG-24`, `SEC-05`, `SEC-07`, `SEC-08`, `BUG-05`, `BUG-08`, `BUG-09`, `BUG-11`, `BUG-12`, `BUG-15`, `BUG-16` |
 | **2 · El móvil** | Que la consulta diaria quepa en una pantalla | `UX-01`, `UX-02`, `UX-03`, `UX-05`, `UX-12`, `UX-14`, `UX-16`, `UX-17` |
 | **3 · Confianza en el número** | Que la proyección se parezca al banco | `BUG-21`, `MEJ-04`, `MEJ-03`, `NEW-03`, `MEJ-06` |
@@ -1367,6 +1425,9 @@ Para repetir las comprobaciones (o convertirlas en los tests de `TEC-02`):
   peticiones a jsDelivr para servir Chart.js desde una copia local
   (`npm pack chart.js@4.4.3 chartjs-adapter-date-fns@3.0.0`); las de Google se
   abortan. Contexto con `timezoneId: 'Europe/Madrid'`.
+- **Duplicados (`BUG-25`)**: en Gastos, repetir `[data-nuevo]` → rellenar
+  `#ef-concepto`, `#ef-cuantia` → `#modal-content [data-guardar]` y contar
+  `FinanceApp.store.get('expenses')` tras cada alta.
 - **Alta**: `#btn-local` → `#welcome-start-btn` → asistente
   (`.wizard-actions .btn-primary` / `.btn-secondary`, campos `#wiz-saldo`,
   `#wiz-inc-concepto`, `#wiz-inc-cuantia`, `#wiz-exp-concepto`,
