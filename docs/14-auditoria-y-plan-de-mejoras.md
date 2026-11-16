@@ -392,7 +392,7 @@ avanzada, y todo lo que exija un servidor propio.
 
 ### 3.2 Flujos rotos (P1)
 
-#### [ ] BUG-07 · El asistente duplica el ingreso y el gasto al volver atrás
+#### [x] BUG-07 · El asistente duplica el ingreso y el gasto al volver atrás
 
 - **Prioridad** P1 · **Esfuerzo** S · **Evidencia** ✔ reproducido
 - **Ficheros** `onboarding/onboarding.js:65-90`
@@ -405,7 +405,7 @@ avanzada, y todo lo que exija un servidor propio.
 - **Hecho cuando** el recorrido anterior deja un solo ingreso, y volver atrás
   conserva lo tecleado.
 
-#### [ ] BUG-08 · Los atajos de periodo terminan un día antes, y «hoy» es ayer de madrugada
+#### [x] BUG-08 · Los atajos de periodo terminan un día antes, y «hoy» es ayer de madrugada
 
 - **Prioridad** P1 · **Esfuerzo** S · **Evidencia** ✔ reproducido
 - **Ficheros** `index.html:572` (`hoyISO`), `index.html:618-631` (`applyPreset`),
@@ -419,7 +419,7 @@ avanzada, y todo lo que exija un servidor propio.
 - **Hecho cuando** hay un test con `TZ=Europe/Madrid`: `1M` desde el 16-nov da
   el 16-dic; `1Y` desde el 29-feb de un bisiesto da el 28-feb.
 
-#### [ ] BUG-09 · Conectar la nube desde el modo local deja la aplicación con los controles duplicados
+#### [x] BUG-09 · Conectar la nube desde el modo local deja la aplicación con los controles duplicados
 
 - **Prioridad** P1 · **Esfuerzo** S · **Evidencia** ◐ por lectura
 - **Ficheros** `auth/auth.js:996-1023` (`launch`), `auth/auth.js:1159-1170`
@@ -436,7 +436,7 @@ avanzada, y todo lo que exija un servidor propio.
 - **Hecho cuando** tras conectar desde el modo local el menú móvil se abre con
   un toque y un JSON se importa una sola vez.
 
-#### [ ] BUG-10 · Los pasos de acceso acumulan listeners al ir y volver
+#### [x] BUG-10 · Los pasos de acceso acumulan listeners al ir y volver
 
 - **Prioridad** P2 · **Esfuerzo** S · **Evidencia** ◐ por lectura
 - **Ficheros** `auth/auth.js:675-710, 766-860`
@@ -484,7 +484,7 @@ avanzada, y todo lo que exija un servidor propio.
 - **Hecho cuando** con la red cortada y sesión previa, la aplicación abre con
   los datos locales y un aviso; al volver la red sincroniza según `BUG-03`.
 
-#### [ ] BUG-13 · El selector de acceso de emergencia aparece sin botones que funcionen
+#### [x] BUG-13 · El selector de acceso de emergencia aparece sin botones que funcionen
 
 - **Prioridad** P2 · **Esfuerzo** S · **Evidencia** ◐ por lectura
 - **Ficheros** `auth/auth.js:608-614` frente a `auth/auth.js:617-672`

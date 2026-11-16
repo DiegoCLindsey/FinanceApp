@@ -273,6 +273,16 @@ const AuthModule = (() => {
   ];
 
   // ── Helpers de UI ─────────────────────────────────────────────────────────────
+  // Cada paso del acceso se cablea UNA vez. Antes se añadían los listeners en
+  // cada entrada al paso, así que «Dropbox → Volver → Dropbox → Conectar»
+  // conectaba dos veces, y en Firebase se abrían dos ventanas de Google
+  // (docs/14, BUG-10).
+  const _cableados = new Set();
+  function _unaVez(clave) {
+    if (_cableados.has(clave)) return false;
+    _cableados.add(clave);
+    return true;
+  }
   function _showStep(id) {
     ALL_STEPS.forEach(s => {
       document.getElementById(s)?.classList.toggle('hidden', s !== id);
@@ -364,7 +374,7 @@ const AuthModule = (() => {
 
     try {
       if (reg.modo === 'local') {
-        await launch('local');
+        await launch('local', { reanudando: true });
         return true;
       }
 
@@ -374,7 +384,7 @@ const AuthModule = (() => {
         if (!user) return false;              // token caducado/revocado → fuera
         FirebaseService.setPassphrase(reg.passphrase);
         await _sincronizarDesdeNube(FirebaseService, 'Firebase');
-        await launch('firebase');
+        await launch('firebase', { reanudando: true });
         return true;
       }
 
@@ -382,7 +392,7 @@ const AuthModule = (() => {
         if (!reg.passphrase) return false;
         if (!(await DropboxService.restore(reg.passphrase))) return false;
         await _sincronizarDesdeNube(DropboxService, 'Dropbox');
-        await launch('dropbox');
+        await launch('dropbox', { reanudando: true });
         return true;
       }
     } catch (err) {
@@ -615,29 +625,21 @@ const AuthModule = (() => {
 
   // ── Init ──────────────────────────────────────────────────────────────────────
   async function init() {
+    // El selector se cablea ANTES de intentar reanudar. El salvavidas de los
+    // 8 segundos lo enseña mientras `_reanudar()` sigue colgado, y con los
+    // listeners registrados después de ese `await` aparecía con los botones
+    // muertos: justo cuando más falta hacían (docs/14, BUG-13).
+    _cablearSelector();
+
     // Reanudar antes de enseñar nada. El overlay de acceso nace oculto, así que
     // mientras esto decide solo se ve la pantalla de carga.
     if (await _reanudar()) return;
+    // El usuario ya ha entrado por su cuenta desde el selector de emergencia.
+    if (_lanzada) return;
 
     // No hay sesión que reanudar: hay que pedir método de acceso.
     document.getElementById('auth-overlay').classList.remove('hidden');
     _quitarCarga();
-
-    // ── Modal de instrucciones Dropbox ────────────────────────────────────────
-    document.getElementById('btn-dbx-help')?.addEventListener('click', () => {
-      document.getElementById('dbx-help-overlay')?.classList.remove('hidden');
-    });
-    document.getElementById('btn-dbx-help-close')?.addEventListener('click', () => {
-      document.getElementById('dbx-help-overlay')?.classList.add('hidden');
-    });
-
-    // ── Modal de instrucciones Firebase ───────────────────────────────────────
-    document.getElementById('btn-fbx-help')?.addEventListener('click', () => {
-      document.getElementById('fbx-help-overlay')?.classList.remove('hidden');
-    });
-    document.getElementById('btn-fbx-help-close')?.addEventListener('click', () => {
-      document.getElementById('fbx-help-overlay')?.classList.add('hidden');
-    });
 
     // ── ¿Hay sesión Firebase guardada? ────────────────────────────────────────
     if (FirebaseService.hasSavedSession()) {
@@ -655,17 +657,33 @@ const AuthModule = (() => {
 
     // ── Primera vez → selector ─────────────────────────────────────────────────
     _showStep('auth-step-select');
+  }
+
+  /** Listeners del selector de método y de las ventanas de ayuda. Una sola vez. */
+  function _cablearSelector() {
+    if (!_unaVez('selector')) return;
+
+    document.getElementById('btn-dbx-help')?.addEventListener('click', () => {
+      document.getElementById('dbx-help-overlay')?.classList.remove('hidden');
+    });
+    document.getElementById('btn-dbx-help-close')?.addEventListener('click', () => {
+      document.getElementById('dbx-help-overlay')?.classList.add('hidden');
+    });
+    document.getElementById('btn-fbx-help')?.addEventListener('click', () => {
+      document.getElementById('fbx-help-overlay')?.classList.remove('hidden');
+    });
+    document.getElementById('btn-fbx-help-close')?.addEventListener('click', () => {
+      document.getElementById('fbx-help-overlay')?.classList.add('hidden');
+    });
 
     document.getElementById('btn-dropbox')?.addEventListener('click', () => {
       _showStep('auth-step-dropbox');
       _wireDropboxStep();
     });
-
     document.getElementById('btn-firebase')?.addEventListener('click', () => {
       _showStep('auth-step-firebase-setup');
       _wireFirebaseSetupStep();
     });
-
     document.getElementById('btn-local')?.addEventListener('click', () => {
       launch('local');
     });
@@ -674,6 +692,8 @@ const AuthModule = (() => {
   // ── Paso: formulario de primera conexión Dropbox ─────────────────────────────
   function _wireDropboxStep() {
     _err('dbx-error', '');
+    setTimeout(() => document.getElementById('dbx-token')?.focus(), 50);
+    if (!_unaVez('dropbox')) return;
 
     document.getElementById('btn-dropbox-back')?.addEventListener('click', () => {
       _showStep('auth-step-select');
@@ -704,9 +724,6 @@ const AuthModule = (() => {
       if (e.key === 'Enter') doConnect();
     });
 
-    // Foco en el primer campo vacío
-    const tokenEl = document.getElementById('dbx-token');
-    setTimeout(() => tokenEl?.focus(), 50);
   }
 
   // ── Paso: desbloqueo de sesión guardada ───────────────────────────────────────
@@ -726,6 +743,8 @@ const AuthModule = (() => {
     }
 
     _ofrecerDesbloqueoConHuella('dropbox', document.getElementById('dbx-unlock-passphrase'), 'btn-dropbox-unlock');
+    setTimeout(() => document.getElementById('dbx-unlock-passphrase')?.focus(), 50);
+    if (!_unaVez('dropbox-unlock')) return;
 
     const doUnlock = async () => {
       _err('dbx-unlock-error', '');
@@ -758,8 +777,6 @@ const AuthModule = (() => {
       _showStep('auth-step-dropbox');
       _wireDropboxStep();
     });
-
-    setTimeout(() => document.getElementById('dbx-unlock-passphrase')?.focus(), 50);
   }
 
   // ── Paso: configuración inicial Firebase ──────────────────────────────────────
@@ -785,6 +802,8 @@ const AuthModule = (() => {
         _err('fbx-setup-error', 'Introduce la configuración de tu proyecto Firebase para continuar.');
       }
     }
+
+    if (!_unaVez('firebase-setup')) return;
 
     document.getElementById('btn-firebase-back')?.addEventListener('click', () => {
       _showStep('auth-step-select');
@@ -927,6 +946,7 @@ const AuthModule = (() => {
 
     const savedEmail = document.getElementById('fbx-unlock-saved-email');
     if (savedEmail) savedEmail.textContent = FirebaseService.savedEmail() || '';
+    if (!_unaVez('firebase-unlock')) return;
 
     // Fase 2: passphrase
     const _showUnlockPassphrase = (email) => {
@@ -993,7 +1013,25 @@ const AuthModule = (() => {
   // mode: 'local' | 'dropbox' | 'firebase'
   // `passphrase` solo llega desde los flujos interactivos: al reanudar ya está
   // guardada y no hay que reescribirla.
-  async function launch(mode, { passphrase } = {}) {
+  let _lanzada = false;
+  async function launch(mode, { passphrase, reanudando = false } = {}) {
+    // La aplicación se monta UNA vez por carga de página. «Conectar la nube»
+    // desde el modo local volvía a pasar por aquí sin recargar, y `Router.init`
+    // y `DataIO.init` registraban sus listeners por segunda vez: el menú móvil
+    // se abría y cerraba en el mismo toque, y cada JSON se importaba dos veces
+    // (docs/14, BUG-09). Se deja constancia de la sesión nueva y se recarga: el
+    // arranque ya sabe reanudarla.
+    if (_lanzada) {
+      // Una reanudación que termina tarde, cuando el usuario ya entró desde el
+      // selector de emergencia, no debe llevárselo por delante.
+      if (reanudando) return;
+      const c = State.get('config');
+      if (c.storageMode !== mode) State.set('config', { ...c, storageMode: mode });
+      _sesion().abrir({ modo: mode, passphrase, email: FirebaseService.currentUserEmail() || undefined });
+      window.location.reload();
+      return;
+    }
+    _lanzada = true;
     await State.load();
 
     const cfg = State.get('config');
