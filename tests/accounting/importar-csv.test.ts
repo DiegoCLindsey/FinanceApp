@@ -284,12 +284,21 @@ describe('prepararFilas', () => {
     expect(filas[1].duplicada).toBe(false);
   });
 
-  it('marca también los repetidos dentro del propio fichero', () => {
+  it('dos movimientos idénticos el mismo día NO son duplicados entre sí', () => {
+    // Dos cafés iguales el mismo día son dos cargos. Antes el segundo se
+    // marcaba duplicado, no se importaba y el saldo descuadraba (BUG-11).
     const repetido = ['Fecha;Concepto;Importe', '01/02/2026;COMPRA;-45,20', '01/02/2026;COMPRA;-45,20'].join('\n');
     const a = analizarCsv(repetido);
-    const filas = prepararFilas(a, a.mapeo);
-    expect(filas[0].duplicada).toBe(false);
-    expect(filas[1].duplicada).toBe(true);
+    expect(prepararFilas(a, a.mapeo).map((f) => f.duplicada)).toEqual([false, false]);
+  });
+
+  it('cuenta multiplicidades: solo son duplicadas las que ya están guardadas', () => {
+    const repetido = ['Fecha;Concepto;Importe', '01/02/2026;COMPRA;-45,20', '01/02/2026;COMPRA;-45,20'].join('\n');
+    const a = analizarCsv(repetido);
+    const existe = { fecha: '2026-02-01', importeCts: -4520, concepto: 'COMPRA' };
+    expect(prepararFilas(a, a.mapeo, [existe]).map((f) => f.duplicada)).toEqual([true, false]);
+    // Reimportar el mismo fichero entero: todo duplicado.
+    expect(prepararFilas(a, a.mapeo, [existe, existe]).map((f) => f.duplicada)).toEqual([true, true]);
   });
 
   it('un duplicado sigue siendo importable: la decisión es del usuario', () => {
@@ -310,7 +319,8 @@ describe('resumir', () => {
 
   it('cuenta e informa del rango y el neto', () => {
     const a = analizarCsv(csv);
-    const filas = prepararFilas(a, a.mapeo);
+    // La COMPRA aparece dos veces y una ya está guardada: una es duplicada.
+    const filas = prepararFilas(a, a.mapeo, [{ fecha: '2026-02-01', importeCts: -4520, concepto: 'COMPRA' }]);
     const r = resumir(filas, false);
     expect(r.total).toBe(4);
     expect(r.conError).toBe(1);
@@ -323,7 +333,7 @@ describe('resumir', () => {
 
   it('incluyendo duplicados cuenta uno más', () => {
     const a = analizarCsv(csv);
-    const filas = prepararFilas(a, a.mapeo);
+    const filas = prepararFilas(a, a.mapeo, [{ fecha: '2026-02-01', importeCts: -4520, concepto: 'COMPRA' }]);
     expect(resumir(filas, true).importables).toBe(3);
   });
 });

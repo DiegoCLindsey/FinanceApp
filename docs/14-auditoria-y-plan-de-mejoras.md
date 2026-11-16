@@ -358,7 +358,7 @@ avanzada, y todo lo que exija un servidor propio.
   - Test de ida y vuelta con 20.000 movimientos sintéticos.
   - Test de compatibilidad: una copia `version: 2` se sigue pudiendo leer.
 
-#### [ ] BUG-06 · La migración 010 no limpia nada y convierte supuestos en realidad
+#### [x] BUG-06 · La migración 010 no limpia nada y convierte supuestos en realidad
 
 - **Prioridad** P0 para quien usó «Supuestos» o el planificador · **Esfuerzo** M · **Evidencia** ✔ reproducido con test
 - **Ficheros** `src/state/migrations/index.ts:49` (`LEGACY_KEYS`),
@@ -446,7 +446,7 @@ avanzada, y todo lo que exija un servidor propio.
   segunda muestra «Inicio de sesión cancelado» aunque la primera vaya bien.
 - **Solución.** Cablear cada paso una sola vez en `init()`.
 
-#### [ ] BUG-11 · Dos movimientos idénticos el mismo día se importan como uno
+#### [x] BUG-11 · Dos movimientos idénticos el mismo día se importan como uno
 
 - **Prioridad** P1 · **Esfuerzo** S · **Evidencia** ✔ reproducido con test
 - **Ficheros** `src/accounting/importar-csv.ts:412-426` (`prepararFilas`)
@@ -517,7 +517,7 @@ avanzada, y todo lo que exija un servidor propio.
   Mostrar el uso en «Administrar datos». `try/catch` en `common/storage.js`.
   A medio plazo, `TEC-06`.
 
-#### [ ] BUG-16 · Un almacenamiento incompleto deja la aplicación sin arrancar
+#### [x] BUG-16 · Un almacenamiento incompleto deja la aplicación sin arrancar
 
 - **Prioridad** P2 · **Esfuerzo** S · **Evidencia** ✔ reproducido con test
 - **Ficheros** `src/state/store.ts:48-70`

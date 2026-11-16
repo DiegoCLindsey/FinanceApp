@@ -566,6 +566,22 @@ if (app) {
         badgeProyecto.addEventListener('click', () => app.ui.openProyectos());
       }
       document.getElementById('btn-proyectos')?.addEventListener('click', () => app.ui.openProyectos());
+      // Aviso, una sola vez, de lo que la migración 011 ha sacado de la
+      // proyección: el usuario tiene que saber que hay elementos desactivados.
+      const archivo = app.store.get('config').archivoMigracion011;
+      if (archivo && !archivo.avisado && archivo.desactivados + archivo.amortizaciones.length > 0) {
+        const n = archivo.desactivados + archivo.amortizaciones.length;
+        const ui = (globalThis as { UI?: { toast?: (m: string, t?: string) => void } }).UI;
+        setTimeout(
+          () =>
+            ui?.toast?.(
+              `Se han desactivado ${n} elemento${n === 1 ? '' : 's'} que venía${n === 1 ? '' : 'n'} de un supuesto. Búscalos con la etiqueta «supuesto-archivado».`,
+              'warn',
+            ),
+          1500,
+        );
+        app.store.patchConfig({ archivoMigracion011: { ...archivo, avisado: true } });
+      }
       document.getElementById('btn-personas')?.addEventListener('click', () => app.ui.openPersonas());
     }
   };

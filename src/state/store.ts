@@ -9,8 +9,8 @@
 import { formatLocalDate, todayISO, type ISODate } from '@/core/dates';
 import { crearResolverTramos } from '@/core/tax/tables';
 import type { Tramos } from '@/core/tax/irpf';
-import { defaultAccount, defaultState, SCHEMA_VERSION, type AppConfig, type AppState, type CollectionKey } from './schema';
-import { LEGACY_KEYS, runMigrations } from './migrations';
+import { defaultAccount, defaultConfig, defaultState, SCHEMA_VERSION, type AppConfig, type AppState, type CollectionKey } from './schema';
+import { CLAVES_RETIRADAS, LEGACY_KEYS, runMigrations } from './migrations';
 import { KEY_PREFIX, VERSION_KEY } from './storage/local';
 import { crearHistorialBorrados, type BorradoRegistrado } from './deshacer';
 import type { StorageAdapter } from './storage/types';
@@ -58,14 +58,38 @@ export function createStore({ adapter, hoy = new Date() }: StoreOptions) {
     }
     const storedVersion = adapter.get<number>(VERSION_KEY);
     const { state: migrated, applied } = runMigrations(raw, storedVersion, { hoyISO, finISO });
-    state = migrated;
+    state = conValoresPorDefecto(migrated);
     ensureInvariants();
     if (applied.length > 0) {
       for (const k of Object.keys(state) as StateKey[]) persist(k);
       void adapter.set(VERSION_KEY, SCHEMA_VERSION);
+      // Colecciones que ya no existen: fuera del almacenamiento, o se quedan
+      // huérfanas para siempre.
+      for (const k of CLAVES_RETIRADAS) adapter.remove(`${KEY_PREFIX}${k}`);
     }
     lastMigrations = applied;
     return { applied };
+  }
+
+  /**
+   * Rellena lo que falte con los valores de fábrica.
+   *
+   * Las migraciones solo corren si la versión guardada va por detrás, así que
+   * un almacenamiento al día pero incompleto —una clave borrada, o corrupta,
+   * que el adapter trata como ausente— dejaba esa colección `undefined`. Si era
+   * `config`, los flags reventaban en el arranque y solo quedaba el cuadro de
+   * mando (docs/14, BUG-16).
+   */
+  function conValoresPorDefecto(parcial: AppState): AppState {
+    const base = defaultState(hoyISO, finISO);
+    const out = { ...base, ...parcial } as AppState;
+    for (const k of Object.keys(base) as StateKey[]) {
+      if (k === 'config') continue;
+      if (!Array.isArray(out[k])) (out as unknown as Record<string, unknown>)[k] = base[k];
+    }
+    const cfg = parcial.config && typeof parcial.config === 'object' ? parcial.config : ({} as Partial<AppState['config']>);
+    out.config = { ...defaultConfig(hoyISO, finISO), ...cfg };
+    return out;
   }
 
   /** Invariantes que deben cumplirse siempre, migrado o no. */
@@ -198,7 +222,7 @@ export function createStore({ adapter, hoy = new Date() }: StoreOptions) {
   /** Reemplaza el estado completo (import de backup), migrándolo antes. */
   function replaceAll(raw: Record<string, unknown>, fromVersion: number | null = null): { applied: number[] } {
     const { state: migrated, applied } = runMigrations(raw, fromVersion, { hoyISO, finISO });
-    state = migrated;
+    state = conValoresPorDefecto(migrated);
     ensureInvariants();
     for (const k of Object.keys(state) as StateKey[]) persist(k);
     void adapter.set(VERSION_KEY, SCHEMA_VERSION);

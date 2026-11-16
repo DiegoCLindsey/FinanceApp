@@ -78,7 +78,7 @@ describe('migración a v5', () => {
 
   it('normaliza un backup v4 completo', () => {
     const { state, applied } = runMigrations(structuredClone(backupV4), 4, ctx);
-    expect(applied).toEqual([5, 6, 7, 8, 9, 10]); // la cadena completa desde v4
+    expect(applied).toEqual([5, 6, 7, 8, 9, 10, 11]); // la cadena completa desde v4
 
     // Supuestos/escenarios se retiraron en la v10: ni rastro de escenarioIds
     expect(state.loans[0]).not.toHaveProperty('escenarioIds');
@@ -168,7 +168,7 @@ describe('store', () => {
     const store = createStore({ adapter, hoy: HOY });
     const { applied } = store.load();
 
-    expect(applied).toEqual([5, 6, 7, 8, 9, 10]);
+    expect(applied).toEqual([5, 6, 7, 8, 9, 10, 11]);
     expect(adapter.get(VERSION_KEY)).toBe(SCHEMA_VERSION);
     expect(store.get('loans')[0].diaPago).toBe('dia:ultimo');
     expect(store.get('config').colchonMeses).toBe(8);
@@ -266,7 +266,7 @@ describe('store', () => {
     expect(store.get('config').colchonMeses).not.toBe(999);
 
     const { applied } = store.replaceAll(structuredClone(backupV4), 4);
-    expect(applied).toEqual([5, 6, 7, 8, 9, 10]);
+    expect(applied).toEqual([5, 6, 7, 8, 9, 10, 11]);
     expect(store.get('loans')).toHaveLength(1);
     expect(store.get('loans')[0].diaPago).toBe('dia:ultimo');
   });

@@ -384,8 +384,17 @@ function clave(fecha: ISODate, importeCts: number, concepto: string): string {
  * porque dos compras idénticas el mismo día en el mismo sitio existen.
  */
 export function prepararFilas(analisis: AnalisisCsv, mapeo: Mapeo, existentes: MovimientoExistente[] = []): FilaImportada[] {
-  const yaHay = new Set(existentes.map((m) => clave(m.fecha, m.importeCts, m.concepto)));
-  const vistas = new Set<string>();
+  // Cuántas veces existe ya cada movimiento, y cuántas ha salido en el fichero.
+  // Con conjuntos (sí/no) dos cafés iguales el mismo día se marcaban como
+  // duplicados entre sí y el segundo no se importaba: el saldo descuadraba
+  // (docs/14, BUG-11). Lo correcto es contar: de N apariciones en el fichero,
+  // son duplicadas las que ya estén guardadas, ni una más.
+  const yaHay = new Map<string, number>();
+  for (const m of existentes) {
+    const k = clave(m.fecha, m.importeCts, m.concepto);
+    yaHay.set(k, (yaHay.get(k) ?? 0) + 1);
+  }
+  const vistas = new Map<string, number>();
 
   return analisis.filas.map((celdas, i) => {
     const errores: string[] = [];
@@ -417,11 +426,10 @@ export function prepararFilas(analisis: AnalisisCsv, mapeo: Mapeo, existentes: M
     let duplicada = false;
     if (fecha && importeCts !== null) {
       const k = clave(fecha, importeCts, concepto);
-      // Repetido respecto a lo ya guardado, o respecto a otra fila del propio
-      // fichero (algunos extractos repiten el último movimiento del periodo
-      // anterior en la primera línea del siguiente).
-      duplicada = yaHay.has(k) || vistas.has(k);
-      vistas.add(k);
+      // Duplicada solo si ya hay guardadas al menos tantas como llevamos vistas.
+      const n = (vistas.get(k) ?? 0) + 1;
+      vistas.set(k, n);
+      duplicada = n <= (yaHay.get(k) ?? 0);
     }
 
     return {

@@ -11,6 +11,7 @@ import { migrateTo7 } from './007-price-history';
 import { migrateTo8 } from './008-planner';
 import { migrateTo9 } from './009-personas';
 import { migrateTo10 } from './010-simplificacion';
+import { migrateTo11 } from './011-supuestos-archivados';
 import type { Migration, MigrationContext, RawState } from './types';
 
 const MIGRATIONS: Migration[] = [
@@ -40,13 +41,25 @@ const MIGRATIONS: Migration[] = [
     describe: 'Simplificación: retira escenarios/supuestos, objetivos de ahorro antiguos y el planificador financiero',
     migrate: migrateTo10,
   },
+  {
+    version: 11,
+    describe: 'Termina la 010: desactiva lo que solo existía en un supuesto, archiva planes y retira las claves huérfanas',
+    migrate: migrateTo11,
+  },
 ];
 
 /**
  * Claves de localStorage que ya no forman parte de AppState pero que las
  * migraciones necesitan leer. El store las carga además de las del esquema.
  */
-export const LEGACY_KEYS = ['history'] as const;
+export const LEGACY_KEYS = ['history', 'escenarios', 'planes', 'goals'] as const;
+
+/**
+ * Claves que ya no pertenecen al estado y que hay que BORRAR del
+ * almacenamiento tras migrar. `history` no está: la 006 la importa y se
+ * conserva como estaba.
+ */
+export const CLAVES_RETIRADAS = ['escenarios', 'planes', 'goals'] as const;
 
 /**
  * Aplica las migraciones pendientes en orden. `fromVersion` puede ser null/0

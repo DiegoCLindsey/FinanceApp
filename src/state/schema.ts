@@ -19,10 +19,12 @@ import type { MargenSeguridad, PuntoReserva } from '@/engine/margins';
  * v6 (2026-07): módulo de contabilidad real (F4) — colecciones `transacciones`
  *   y `puntosControl`. El histórico de saldos pasa a ser de contabilidad y es el
  *   source of truth del pasado.
+ * v11 (2026-11): termina la limpieza de la v10, que no llegaba a ejecutarse
+ *   (ver migrations/011-supuestos-archivados.ts).
  * v7 (2026-07): retira `historialPrecios` de las estimaciones — cada entrada
  *   pasa a ser una transacción real enlazada a su estimación (tarea 4.8).
  */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 /**
  * Quién hay en el proyecto — no necesariamente personas físicas: la nota
@@ -280,6 +282,8 @@ export interface AppConfig {
   autoLogoutMinutos: number;
   onboardingDone: boolean;
   features: FeatureFlags;
+  /** Lo que la migración 011 retiró de la proyección sin borrarlo. */
+  archivoMigracion011?: import('./migrations/011-supuestos-archivados').ArchivoMigracion011;
 }
 
 export interface AppState {
