@@ -890,6 +890,7 @@ horizontales ni errores de consola en ninguna vista.
   - «Simulación desde» pasa a ajustes avanzados con el valor «hoy» por defecto;
     eliminar su duplicado «Fecha referencia» del cuadro de mando (`UX-14`).
 - **Hecho cuando** en 390×664 la cabecera mide ≤ 64 px y el contenido ≥ 590 px.
+- **Aplicado (2026-11-16), parcial.** En móvil la barra se pliega en una línea («Periodo 1 sep 26 → 31 dic 27 ▾» + buscar): la cabecera fija pasa de 251 a 109 px y el contenido de 413 a 555 px. **Pendiente**: mostrarla solo en las vistas que usan el periodo, atajos como control segmentado y sacar «Simulación desde» a ajustes.
 
 #### [ ] UX-02 · Navegación: sin botón atrás, sin direcciones y con menú de hamburguesa
 
@@ -918,6 +919,7 @@ horizontales ni errores de consola en ninguna vista.
   inicial en el primer campo, trampa de foco, Escape, devolución del foco,
   `aria-labelledby`, y pie fijo con las acciones. Intro envía el formulario.
   Migrar `UI.openModal` a ese componente.
+- **Aplicado (2026-11-16), parcial.** Escape cierra; `role="dialog"`, `aria-modal` y nombre accesible con el título; el foco entra (primer campo con ratón, la ventana con dedo), no sale con el tabulador y vuelve a quien abrió. **Pendiente**: pila de modales, pie fijo con las acciones e Intro para enviar.
 
 #### [ ] UX-04 · Confirmaciones y peticiones con ventanas nativas del navegador
 
@@ -1033,6 +1035,7 @@ horizontales ni errores de consola en ninguna vista.
   Después la gráfica, y el resto bajo pestañas. La configuración sale del flujo
   (`UX-14`).
 - **Hecho cuando** en 390×664, sin desplazar, se ven los puntos 1 a 3.
+- **Aplicado (2026-11-16), parcial.** La tarjeta «Este mes» (`NEW-09`) es lo primero que se ve y la de Configuración nace plegada. **Pendiente**: saldo de hoy, saldo a fin de periodo y punto más bajo en la primera pantalla; sacar la configuración a un botón ⚙ (`UX-14`).
 
 #### [ ] UX-13 · Gráficas
 

@@ -192,3 +192,25 @@ details[open] .form-advanced-summary::before { transform: rotate(90deg); }
 .wizard-title { font-family:var(--font-mono); font-size:22px; font-weight:700; letter-spacing:-0.03em; margin-bottom:8px; }
 .wizard-sub { font-size:13px; color:var(--text2); line-height:1.6; margin-bottom:20px; }
 .wizard-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:20px; }
+
+/* ── Barra de periodo plegable en móvil (docs/14, UX-01) ───────────────────── */
+.period-resumen { display: none; }
+.modal-box:focus { outline: none; }
+@media (max-width: 768px) {
+  .period-bar { padding: 6px 12px; gap: 8px; }
+  .period-resumen {
+    display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; min-height: 40px;
+    background: var(--surface); border: 1px solid var(--hairline-soft); border-radius: 12px;
+    padding: 0 12px; color: var(--text); font-size: 13px; font-family: inherit; cursor: pointer; text-align: left;
+  }
+  .period-resumen-etq { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); }
+  #period-resumen-texto { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .period-resumen-flecha { color: var(--text3); transition: transform .15s ease; }
+  .period-bar.abierta .period-resumen-flecha { transform: rotate(180deg); }
+  /* Plegada: solo la línea de resumen y el buscador. */
+  .period-bar:not(.abierta) > *:not(.period-resumen):not(#btn-buscador) { display: none !important; }
+  .period-bar.abierta > .period-bar-label:first-of-type { display: none; }
+  .period-bar.abierta .period-resumen { flex-basis: 100%; }
+  .period-bar .form-input, .period-bar .btn-secondary { min-height: 38px; }
+  .period-bar #btn-buscador { min-height: 40px; margin-left: 0 !important; }
+}

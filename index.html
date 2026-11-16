@@ -360,7 +360,7 @@
     <div class="mobile-header">
       <span class="logo-mark">F</span>
       <span class="logo-text" style="font-size:15px">Finance<span class="logo-accent">App</span></span>
-      <button id="mobile-menu-btn" class="btn-icon" style="margin-left:auto">
+      <button id="mobile-menu-btn" class="btn-icon" style="margin-left:auto" aria-label="Abrir el menú">
         <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
       </button>
     </div>
@@ -436,6 +436,13 @@
     <div class="main-area">
       <!-- Global period selector (visible on all views) -->
       <div id="period-bar" class="period-bar">
+        <!-- En móvil la barra se pliega en esta línea: desplegada y fija ocupaba
+             251 de los 664 px de la pantalla en todas las vistas (docs/14, UX-01). -->
+        <button type="button" id="period-resumen" class="period-resumen" aria-expanded="false" aria-controls="period-bar">
+          <span class="period-resumen-etq">Periodo</span>
+          <span id="period-resumen-texto"></span>
+          <span class="period-resumen-flecha" aria-hidden="true">▾</span>
+        </button>
         <span class="period-bar-label">Periodo</span>
         <input class="form-input" type="date" id="cfg-start" style="width:138px" onchange="PeriodBar.apply()"/>
         <div class="flex gap-4 flex-wrap" style="row-gap:4px">
@@ -494,8 +501,8 @@
 
   <!-- ── Generic modal ── -->
   <div id="modal-overlay" class="modal-overlay hidden">
-    <div id="modal-box" class="modal-box">
-      <button id="modal-close" class="modal-close">×</button>
+    <div id="modal-box" class="modal-box" role="dialog" aria-modal="true" aria-label="Ventana" tabindex="-1">
+      <button id="modal-close" class="modal-close" aria-label="Cerrar">×</button>
       <div id="modal-content"></div>
     </div>
   </div>
@@ -555,6 +562,12 @@
 <!-- ── Bootstrap ── -->
 <script>
   document.getElementById('modal-close').onclick = () => UI.closeModal();
+  // Escape cierra la ventana que esté abierta (docs/14, UX-03).
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const ov = document.getElementById('modal-overlay');
+    if (ov && !ov.classList.contains('hidden')) { e.preventDefault(); UI.closeModal(); }
+  });
   document.getElementById('modal-overlay').onclick = e => {
     if (e.target === document.getElementById('modal-overlay')) UI.closeModal();
   };
@@ -597,7 +610,22 @@
     // Se recorta a la ventana igual que hace el motor (_aplicarSaldoRef): una
     // fecha de simulación fuera del periodo no se usa tal cual, así que
     // enseñar el saldo de esa fecha sería enseñar un número que no manda.
+    const MESES_CORTOS = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    function fechaCorta(iso) {
+      const [y, m, d] = String(iso || '').split('-').map(Number);
+      return y && m && d ? `${d} ${MESES_CORTOS[m - 1]} ${String(y).slice(2)}` : '—';
+    }
+    /** Texto de la línea plegada del móvil. */
+    function pintarResumen() {
+      const t = document.getElementById('period-resumen-texto');
+      if (!t) return;
+      const c = State.get('config');
+      const ini = document.getElementById('cfg-start')?.value || c.dashboardStart;
+      const fin = document.getElementById('cfg-end')?.value   || c.dashboardEnd;
+      t.textContent = `${fechaCorta(ini)} → ${fechaCorta(fin)}`;
+    }
     function pintarAncla() {
+      pintarResumen();
       const el = document.getElementById('cfg-sim-ancla');
       if (!el || typeof FinanceMath === 'undefined') return;
       const config = State.get('config');
@@ -647,6 +675,12 @@
   })();
   // Publicado para el paquete nuevo: ver la nota al final de common/state.js.
   window.PeriodBar = PeriodBar;
+
+  document.getElementById('period-resumen')?.addEventListener('click', () => {
+    const barra = document.getElementById('period-bar');
+    const abierta = barra.classList.toggle('abierta');
+    document.getElementById('period-resumen').setAttribute('aria-expanded', String(abierta));
+  });
 
   AuthModule.init();
 </script>

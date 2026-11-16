@@ -93,3 +93,46 @@ const UI = (() => {
 
 // Publicado para el paquete nuevo: ver la nota al final de common/state.js.
 globalThis.UI = UI;
+
+// ── El modal como diálogo: foco al abrir, foco de vuelta al cerrar ────────────
+// Todos los formularios (legacy y nuevos) abren el mismo #modal-overlay quitando
+// la clase `hidden`, cada uno por su cuenta. En vez de tocar cada punto, se
+// observa esa clase: al abrirse se guarda quién tenía el foco y se lleva al
+// primer campo; al cerrarse se devuelve. Antes el foco se quedaba en el botón
+// de detrás y el teclado seguía actuando sobre la página tapada (docs/14, UX-03).
+(() => {
+  if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return;
+  const ov = document.getElementById('modal-overlay');
+  const caja = document.getElementById('modal-box');
+  if (!ov || !caja) return;
+  let anterior = null;
+  let abierto = !ov.classList.contains('hidden');
+  const enfocables = () => [...caja.querySelectorAll('input:not([type=hidden]), select, textarea, button, [href], [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.disabled && el.offsetParent !== null);
+  const alAbrir = () => {
+    anterior = document.activeElement;
+    const titulo = caja.querySelector('.modal-title')?.textContent?.trim();
+    caja.setAttribute('aria-label', titulo || 'Ventana');
+    // Con dedo no se enfoca un campo de texto: abriría el teclado y taparía
+    // media ventana antes de haberla visto. Se enfoca la propia ventana.
+    const tactil = window.matchMedia?.('(pointer: coarse)').matches;
+    const primero = enfocables().find(el => !el.classList.contains('modal-close') && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName));
+    setTimeout(() => (tactil || !primero ? caja : primero).focus({ preventScroll: true }), 30);
+  };
+  const alCerrar = () => { if (anterior && document.contains(anterior)) anterior.focus?.({ preventScroll: true }); anterior = null; };
+  new MutationObserver(() => {
+    const ahora = !ov.classList.contains('hidden');
+    if (ahora === abierto) return;
+    abierto = ahora;
+    (abierto ? alAbrir : alCerrar)();
+  }).observe(ov, { attributes: true, attributeFilter: ['class'] });
+  // El tabulador no sale de la ventana mientras esté abierta.
+  ov.addEventListener('keydown', e => {
+    if (e.key !== 'Tab' || !abierto) return;
+    const lista = enfocables();
+    if (lista.length === 0) { e.preventDefault(); return; }
+    const primero = lista[0], ultimo = lista[lista.length - 1];
+    if (e.shiftKey && (document.activeElement === primero || document.activeElement === caja)) { e.preventDefault(); ultimo.focus(); }
+    else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
+  });
+})();

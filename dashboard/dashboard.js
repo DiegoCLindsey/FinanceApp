@@ -128,6 +128,13 @@ const DashboardModule = (() => {
     </div>`;
   }
 
+  /**
+   * La tarjeta de configuración nace PLEGADA: son ajustes que se tocan de vez
+   * en cuando y ocupaban la primera pantalla entera, por delante de las cifras
+   * que se vienen a mirar (docs/14, UX-12). Solo `false` explícito la abre.
+   */
+  function _cfgPlegada(cfg) { return cfg.configCollapsed !== false; }
+
   /** Meses de calendario del periodo; con el paquete nuevo ausente, la aproximación de siempre. */
   function _mesesDelPeriodo(desde, hasta) {
     const f = window.FinanceApp?.engine?.mes?.mesesDeCalendario;
@@ -901,11 +908,11 @@ const DashboardModule = (() => {
            referencia, filtrar cuentas, histórico, actualizar) afectan a TODAS
            las pestañas, no solo a Resumen. -->
       <div class="card" style="margin-bottom:14px">
-        <div style="display:flex;justify-content:space-between;align-items:center;${config.configCollapsed?'':'margin-bottom:14px'}">
+        <div style="display:flex;justify-content:space-between;align-items:center;${_cfgPlegada(config)?'':'margin-bottom:14px'}">
           <span class="card-title" style="margin:0">Configuración</span>
-          <button class="btn-secondary btn-sm" style="padding:4px 10px;font-size:18px;line-height:1" onclick="DashboardModule.toggleConfig()" title="${config.configCollapsed?'Expandir':'Colapsar'}">${config.configCollapsed?'▸':'▾'}</button>
+          <button class="btn-secondary btn-sm" style="padding:4px 10px;font-size:18px;line-height:1" onclick="DashboardModule.toggleConfig()" title="${_cfgPlegada(config)?'Expandir':'Colapsar'}">${_cfgPlegada(config)?'▸':'▾'}</button>
         </div>
-        ${config.configCollapsed ? '' : `
+        ${_cfgPlegada(config) ? '' : `
         <div class="grid-2" style="gap:10px">
           <div class="form-group">
             <label class="form-label">Fecha referencia</label>
@@ -2137,7 +2144,7 @@ const DashboardModule = (() => {
 
   function toggleConfig() {
     const cfg = State.get('config');
-    State.set('config', { ...cfg, configCollapsed: !cfg.configCollapsed });
+    State.set('config', { ...cfg, configCollapsed: !_cfgPlegada(cfg) });
     render();
   }
 
