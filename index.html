@@ -569,7 +569,21 @@
   // práctica se quedaba congelada en la fecha de alta y el dashboard seguía
   // anclando meses después en un saldo viejo.
   const PeriodBar = (() => {
-    function hoyISO() { return new Date().toISOString().slice(0, 10); }
+    // Fecha civil LOCAL. `toISOString()` convierte a UTC: en España devolvía
+    // ayer entre medianoche y la 1/2 h, y los atajos (1M, 1Y…) terminaban un día
+    // antes de lo pedido (docs/14, BUG-08).
+    function fechaLocal(d) {
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    function hoyISO() { return fechaLocal(new Date()); }
+    /** Suma meses sin desbordar el mes: 31 ene + 1M = 28/29 feb, no 3 mar. */
+    function sumarMeses(d, n) {
+      const dia = d.getDate();
+      const r = new Date(d.getFullYear(), d.getMonth() + n, 1);
+      const ultimo = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
+      r.setDate(Math.min(dia, ultimo));
+      return r;
+    }
     function init(config) {
       const s = document.getElementById('cfg-start');
       const e = document.getElementById('cfg-end');
@@ -618,15 +632,11 @@
     function applyPreset(p) {
       const base = document.getElementById('cfg-start')?.value || State.get('config').dashboardStart;
       const dS = new Date(base + 'T00:00:00');
-      const dE = new Date(dS);
-      if (p === '1M')  dE.setMonth(dE.getMonth()+1);
-      if (p === '3M')  dE.setMonth(dE.getMonth()+3);
-      if (p === '6M')  dE.setMonth(dE.getMonth()+6);
-      if (p === '1Y')  dE.setFullYear(dE.getFullYear()+1);
-      if (p === '5Y')  dE.setFullYear(dE.getFullYear()+5);
-      if (p === '10Y') dE.setFullYear(dE.getFullYear()+10);
+      const meses = { '1M': 1, '3M': 3, '6M': 6, '1Y': 12, '5Y': 60, '10Y': 120 }[p];
+      if (!meses) return;
+      const dE = sumarMeses(dS, meses);
       const endEl = document.getElementById('cfg-end');
-      if (endEl) endEl.value = dE.toISOString().slice(0,10);
+      if (endEl) endEl.value = fechaLocal(dE);
       apply();
     }
     return { init, apply, applyPreset };

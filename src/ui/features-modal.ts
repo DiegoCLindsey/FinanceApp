@@ -1,3 +1,4 @@
+import { todayISO } from '@/core/dates';
 // ── ui/features-modal ─────────────────────────────────────────────────────────
 // Ventana de configuración de funcionalidades (F2, tarea 2.3).
 //
@@ -136,7 +137,7 @@ export function createFeaturesModal(deps: FeaturesModalDeps) {
       const url = URL.createObjectURL(blob);
       const a = doc.createElement('a');
       a.href = url;
-      a.download = `financeapp-funcionalidades-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `financeapp-funcionalidades-${todayISO()}.json`;
       a.click();
       URL.revokeObjectURL(url);
       notificar(deps, 'Perfil de funcionalidades guardado');
