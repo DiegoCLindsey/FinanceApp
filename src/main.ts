@@ -26,8 +26,17 @@ import { proyectarRetencionesFiscales } from './engine/providers/withholdings';
 import { proyectarInflacionGastos, proyectarPerdidaAhorro } from './engine/providers/inflation-events';
 import { createStore, type Store } from './state/store';
 import { crearRegistroCambios, type RegistroCambios } from './state/cambios';
-import { aplicarCopia, COLECCIONES, esEstadoVacioOPorDefecto, faltantesEnCopia, snapshotParaCopia } from './state/colecciones';
-import { adoptarClavesHuerfanas, createLocalStorageAdapter } from './state/storage/local';
+import {
+  aplicarCopia,
+  CLAVE_VERSION_COPIA,
+  COLECCIONES,
+  esEstadoVacioOPorDefecto,
+  faltantesEnCopia,
+  inferirVersionDeCopia,
+  snapshotParaCopia,
+} from './state/colecciones';
+import { adoptarClavesHuerfanas, createLocalStorageAdapter, EVENTO_SIN_ESPACIO, KEY_PREFIX, VERSION_KEY } from './state/storage/local';
+import { LEGACY_KEYS } from './state/migrations';
 import { crearServicioProyectos, leerColeccionesDeProyecto, namespaceDeProyecto, remapearIds, type Proyecto } from './state/proyectos';
 import type { AppState, CollectionKey } from './state/schema';
 import { SCHEMA_VERSION } from './state/schema';
@@ -459,7 +468,9 @@ function bootstrap(): FinanceAppNamespace {
     cambios,
     datos: {
       colecciones: COLECCIONES,
-      snapshot: () => snapshotParaCopia(almacen) as Record<string, unknown>,
+      // La copia declara con qué esquema se hizo, para que quien la restaure
+      // sepa qué migraciones le faltan.
+      snapshot: () => ({ ...(snapshotParaCopia(almacen) as Record<string, unknown>), [CLAVE_VERSION_COPIA]: SCHEMA_VERSION }),
       aplicar: (copia, { sellar = true } = {}) => {
         // `setRestaurando` del legacy escribe SIN mover el sello de última
         // modificación: lo que baja de la nube no es una modificación tuya.
@@ -471,6 +482,13 @@ function bootstrap(): FinanceAppNamespace {
               else almacen.set(k, v);
             };
         const escritas = aplicarCopia(escribir, copia);
+        // Una copia antigua tiene que pasar por las migraciones que le falten:
+        // se escriben también las colecciones retiradas que traiga (las leen
+        // las migraciones) y se deja la versión de la COPIA, no la actual.
+        for (const k of LEGACY_KEYS) {
+          if (copia[k] !== undefined && copia[k] !== null) escribir(`${KEY_PREFIX}${k}`, copia[k]);
+        }
+        if (escritas.length > 0) escribir(VERSION_KEY, inferirVersionDeCopia(copia, SCHEMA_VERSION));
         // Recargar NO es opcional. El store se carga al arrancar la página, y
         // una restauración o un import ocurren después: sin releer, su copia en
         // memoria sigue siendo la de antes y la siguiente escritura devuelve al
@@ -597,6 +615,50 @@ if (app) {
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement | null;
     if (target?.closest('.nav-btn[data-view]')) setTimeout(aplicarGating, 0);
+  });
+
+  // ── Almacenamiento lleno ────────────────────────────────────────────────────
+  // Aviso fijo, no un toast que se va: mientras esté, lo que se cambie no se
+  // está guardando.
+  window.addEventListener(EVENTO_SIN_ESPACIO, () => {
+    if (document.getElementById('aviso-sin-espacio')) return;
+    const host = document.querySelector('.view-container');
+    if (!host?.parentElement) return;
+    const div = document.createElement('div');
+    div.id = 'aviso-sin-espacio';
+    div.setAttribute('role', 'alert');
+    div.className = 'card';
+    div.style.cssText =
+      'border:1px solid var(--red);background:rgba(255,77,109,0.09);padding:10px 16px;margin:10px 20px 0;font-size:13px;display:flex;gap:12px;align-items:center;flex-wrap:wrap';
+    const texto = document.createElement('span');
+    texto.style.flex = '1';
+    texto.textContent =
+      'No se ha podido guardar: el almacenamiento de este navegador está lleno o bloqueado. Los últimos cambios pueden perderse al recargar. Exporta una copia ahora.';
+    const boton = document.createElement('button');
+    boton.className = 'btn-primary btn-sm';
+    boton.textContent = 'Exportar copia';
+    boton.addEventListener('click', () => (globalThis as { DataIO?: { exportJSON?: () => void } }).DataIO?.exportJSON?.());
+    div.append(texto, boton);
+    host.parentElement.insertBefore(div, host);
+  });
+
+  // ── Otra pestaña ha cambiado los datos ───────────────────────────────────────
+  // Cada pestaña guarda colecciones enteras desde su copia en memoria: sin
+  // releer, la más antigua pisaba lo que acababa de guardar la otra (BUG-20).
+  // `storage` solo se dispara en las DEMÁS pestañas, nunca en la que escribe.
+  let relectura: ReturnType<typeof setTimeout> | null = null;
+  const prefijoEstado = `${namespaceDeProyecto(app.proyectos.activo()._id)}${KEY_PREFIX}`;
+  window.addEventListener('storage', (e) => {
+    if (!e.key || !e.key.startsWith(prefijoEstado) || e.key.endsWith('_modificadoEn') || e.key.endsWith('_schemaVersion')) return;
+    if (relectura) clearTimeout(relectura);
+    relectura = setTimeout(() => {
+      relectura = null;
+      app.store.load();
+      // Con un formulario abierto no se repinta debajo: guardará sobre el
+      // estado ya releído, que es lo que importa.
+      const modalAbierto = document.getElementById('modal-overlay')?.classList.contains('hidden') === false;
+      if (!modalAbierto) (globalThis as { Router?: { rerender?: () => void } }).Router?.rerender?.();
+    }, 150);
   });
 }
 

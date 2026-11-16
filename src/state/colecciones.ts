@@ -122,3 +122,54 @@ export function esEstadoVacioOPorDefecto(snapshot: Record<string, unknown>): boo
       !(Array.isArray(a.historicoSaldos) && a.historicoSaldos.length > 0),
   );
 }
+
+/** Clave con la que una copia declara el esquema con el que se hizo. */
+export const CLAVE_VERSION_COPIA = '_schemaVersion';
+
+/**
+ * ¿Con qué versión de esquema se hizo esta copia?
+ *
+ * Importar o restaurar una copia la escribía tal cual y recargaba el store,
+ * pero la versión guardada en el almacenamiento seguía siendo la actual, así
+ * que **las migraciones no corrían**: una copia antigua (con `goals`, con
+ * gastos de un supuesto, sin `personas`…) entraba a medio migrar (docs/14,
+ * BUG-27). Las copias llevan ahora su versión; para las anteriores se deduce
+ * del contenido, de la más vieja a la más nueva, con una señal por migración:
+ *
+ *   sin `config.features`                     → 4  (anterior al esquema formal)
+ *   sin `transacciones`                        → 5  (anterior a la contabilidad)
+ *   algún gasto con `historialPrecios`         → 6
+ *   sin `personas`                             → 8
+ *   con restos de supuestos o del planificador → 10 (falta la limpieza de la 011)
+ *   en otro caso                               → `actual`
+ *
+ * Deducir de menos es peor que deducir de más: una migración de más sobre datos
+ * ya migrados puede duplicar (la 006 reimportaría el histórico), y una de menos
+ * solo deja algo sin limpiar. Por eso cada regla exige una señal positiva.
+ */
+export function inferirVersionDeCopia(copia: Record<string, unknown>, actual: number): number {
+  const declarada = copia[CLAVE_VERSION_COPIA];
+  if (typeof declarada === 'number' && Number.isFinite(declarada)) return Math.min(declarada, actual);
+
+  const arr = (k: string): Record<string, unknown>[] => (Array.isArray(copia[k]) ? (copia[k] as Record<string, unknown>[]) : []);
+  const config = copia.config && typeof copia.config === 'object' ? (copia.config as Record<string, unknown>) : null;
+
+  if (config && config.features === undefined) return 4;
+  if (copia.transacciones === undefined && copia.expenses !== undefined) return 5;
+  if (arr('expenses').some((e) => Array.isArray(e.historialPrecios) && e.historialPrecios.length > 0)) return 6;
+  if (copia.personas === undefined && copia.expenses !== undefined) return 8;
+
+  const conSupuesto = (items: Record<string, unknown>[]) => items.some((i) => Array.isArray(i.escenarioIds) && i.escenarioIds.length > 0);
+  const restos =
+    copia.escenarios !== undefined ||
+    copia.planes !== undefined ||
+    copia.goals !== undefined ||
+    conSupuesto(arr('expenses')) ||
+    conSupuesto(arr('loans')) ||
+    conSupuesto(arr('nominas')) ||
+    conSupuesto(arr('accounts')) ||
+    arr('loans').some((l) => conSupuesto(Array.isArray(l.amortizaciones) ? (l.amortizaciones as Record<string, unknown>[]) : []));
+  if (restos) return Math.min(10, actual);
+
+  return actual;
+}

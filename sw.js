@@ -21,6 +21,9 @@
  *     servir un saldo viejo desde la caché sería peor que no servir nada.
  */
 
+// El despliegue sustituye este valor por el SHA del commit (deploy.yml, paso
+// «Version local assets»): así cada versión estrena caché y la anterior se
+// borra al activarse. No cambiar el literal sin cambiar también ese paso.
 const VERSION = 'v1';
 const CACHE_APP = `financeapp-${VERSION}`;
 const CACHE_CDN = `financeapp-cdn-${VERSION}`;

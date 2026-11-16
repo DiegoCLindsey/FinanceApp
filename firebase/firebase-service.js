@@ -2,7 +2,8 @@
 // Depends on: CryptoService (common/crypto.js), State (common/state.js)
 //
 // Seguridad:
-//   • Firebase Auth gestiona identidad (email + contraseña)
+//   • Firebase Auth gestiona identidad (solo Google; el acceso por email y
+//     contraseña se retiró: nunca tuvo pantalla y abría un hueco, ver SEC-04)
 //   • Lista blanca por email en Firestore /whitelist/{email}
 //   • Los datos se cifran con AES-GCM-256 ANTES de subir a Firestore
 //   • La passphrase de cifrado NUNCA se envía a Firebase
@@ -116,89 +117,6 @@ const FirebaseService = (() => {
     } catch {
       _isAdmin = false;
     }
-  }
-
-  // ── Inicio de sesión ─────────────────────────────────────────────────────────
-  async function login(config, email, password, passphrase) {
-    if (!email || !password)  throw new Error('Email y contraseña son obligatorios.');
-    if (!passphrase || passphrase.length < 4) throw new Error('La clave de cifrado debe tener al menos 4 caracteres.');
-
-    try { _initApp(config); } catch (err) {
-      throw new Error('Configuración de Firebase inválida: ' + err.message);
-    }
-
-    let userCredential;
-    try {
-      userCredential = await _auth.signInWithEmailAndPassword(email.trim(), password);
-    } catch (err) {
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential' || err.code === 'auth/invalid-login-credentials') {
-        throw new Error('Credenciales incorrectas. Comprueba email y contraseña.');
-      }
-      if (err.code === 'auth/wrong-password') throw new Error('Contraseña incorrecta.');
-      if (err.code === 'auth/invalid-email')  throw new Error('Formato de email inválido.');
-      if (err.code === 'auth/too-many-requests') throw new Error('Demasiados intentos fallidos. Espera unos minutos.');
-      throw new Error('Error de autenticación: ' + err.message);
-    }
-
-    _user = userCredential.user;
-
-    try {
-      await _checkWhitelist(email.trim());
-    } catch (err) {
-      await _auth.signOut().catch(() => {});
-      _user = null;
-      throw err;
-    }
-
-    _passphrase = passphrase;
-    _saveConfig(config);
-    localStorage.setItem(LS_EMAIL, email.trim());
-    await _loadAdminStatus(email.trim());
-    return _user;
-  }
-
-  // ── Registro de nueva cuenta ─────────────────────────────────────────────────
-  // Solo funciona si el email ya está en la lista blanca (el admin lo añade antes).
-  // La verificación ocurre DESPUÉS de crear la cuenta Auth, cuando ya hay token
-  // para leer Firestore. Si no está en la lista, se borra la cuenta recién creada.
-  async function register(config, email, password, passphrase) {
-    if (!email || !password)  throw new Error('Email y contraseña son obligatorios.');
-    if (password.length < 6)  throw new Error('La contraseña debe tener al menos 6 caracteres.');
-    if (!passphrase || passphrase.length < 4) throw new Error('La clave de cifrado debe tener al menos 4 caracteres.');
-
-    try { _initApp(config); } catch (err) {
-      throw new Error('Configuración de Firebase inválida: ' + err.message);
-    }
-
-    let userCredential;
-    try {
-      userCredential = await _auth.createUserWithEmailAndPassword(email.trim(), password);
-    } catch (err) {
-      if (err.code === 'auth/email-already-in-use') {
-        throw new Error('Este email ya está registrado. Usa el inicio de sesión normal.');
-      }
-      if (err.code === 'auth/weak-password') throw new Error('Contraseña demasiado débil (mínimo 6 caracteres).');
-      if (err.code === 'auth/invalid-email')  throw new Error('Formato de email inválido.');
-      throw new Error('Error al registrar: ' + err.message);
-    }
-
-    _user = userCredential.user;
-
-    // Verificar lista blanca con el token ya disponible
-    try {
-      await _checkWhitelist(email.trim());
-    } catch (err) {
-      await _user.delete().catch(() => {});
-      await _auth.signOut().catch(() => {});
-      _user = null;
-      throw err;
-    }
-
-    _passphrase = passphrase;
-    _saveConfig(config);
-    localStorage.setItem(LS_EMAIL, email.trim());
-    await _loadAdminStatus(email.trim());
-    return _user;
   }
 
   // ── Inicio de sesión con Google (OAuth) ──────────────────────────────────────
@@ -513,7 +431,7 @@ const FirebaseService = (() => {
   return {
     isConfigured, getConfig, hasInjectedConfig, hasSavedSession, savedEmail,
     isConnected, currentUserEmail, isAdmin,
-    login, register, loginWithGoogle, restoreSession, logout, forget,
+    loginWithGoogle, restoreSession, logout, forget,
     uploadBackup, downloadBackup, ultimaFechaBackup, ultimaRevBackup, revRemota, setPassphrase, esClaveActual,
     uploadRegistroProyectos, downloadRegistroProyectos,
     listWhitelist, addToWhitelist, removeFromWhitelist, setUserAdmin,

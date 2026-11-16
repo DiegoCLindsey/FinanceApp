@@ -395,8 +395,11 @@ describe('formulario de gastos', () => {
   it('una transferencia no guarda reparto aunque el widget estuviera relleno', () => {
     const { registry, store } = entorno({ expenses: [] });
     store.addItem('personas', { nombre: 'Pareja', esPorDefecto: false, activo: true });
+    // Una transferencia necesita dos cuentas distintas (BUG-17).
+    const ahorro = store.addItem('accounts', { ...store.get('accounts')[0], nombre: 'Ahorro', esCuentaPrincipal: false });
     abrirNuevo(registry);
     fijar(modal(), '#ef-tipo', 'transferencia');
+    fijar(modal(), '#ef-cuenta-dest', ahorro._id);
     escribir('#ef-concepto', 'Movimiento interno');
     escribir('#ef-cuantia', '100');
     guardar();
@@ -404,6 +407,43 @@ describe('formulario de gastos', () => {
     const guardado = store.get('expenses')[0];
     expect(guardado.repartoConsumo).toBeUndefined();
     expect(guardado.repartoPago).toBeUndefined();
+  });
+
+  it('no guarda cuantías no positivas, fechas incoherentes ni transferencias a la misma cuenta', () => {
+    const { registry, store } = entorno({ expenses: [] });
+    abrirNuevo(registry);
+    escribir('#ef-concepto', 'Algo');
+    escribir('#ef-cuantia', '-5');
+    guardar();
+    expect(store.get('expenses')).toHaveLength(0);
+
+    escribir('#ef-cuantia', '5');
+    escribir('#ef-fecha-ini', '2026-05-01');
+    escribir('#ef-fecha-fin', '2026-04-01');
+    guardar();
+    expect(store.get('expenses')).toHaveLength(0);
+
+    escribir('#ef-fecha-fin', '');
+    fijar(modal(), '#ef-tipo', 'transferencia');
+    guardar();
+    expect(store.get('expenses')).toHaveLength(0);
+
+    fijar(modal(), '#ef-tipo', 'gasto');
+    guardar();
+    expect(store.get('expenses')).toHaveLength(1);
+  });
+
+  it('una transferencia conserva las etiquetas del usuario y añade la suya', () => {
+    const { registry, store } = entorno({ expenses: [] });
+    const ahorro = store.addItem('accounts', { ...store.get('accounts')[0], nombre: 'Ahorro', esCuentaPrincipal: false });
+    abrirNuevo(registry);
+    escribir('#ef-concepto', 'Hucha');
+    escribir('#ef-cuantia', '100');
+    escribir('#ef-tags', 'ahorro, vacaciones');
+    fijar(modal(), '#ef-tipo', 'transferencia');
+    fijar(modal(), '#ef-cuenta-dest', ahorro._id);
+    guardar();
+    expect(store.get('expenses')[0].tags).toEqual(['ahorro', 'vacaciones', 'transferencia']);
   });
 
   it('editar un gasto con reparto lo precarga marcado en el formulario', () => {

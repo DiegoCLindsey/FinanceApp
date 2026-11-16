@@ -166,6 +166,17 @@ jobs:
               sys.exit(1)
 
           open(ruta, 'w', encoding='utf-8').write(html)
+
+          # El service worker cachea cada URL versionada y solo purga al cambiar
+          # su VERSION: si no cambia nunca, la caché crece con cada despliegue.
+          sw = '_site/sw.js'
+          js = open(sw, encoding='utf-8').read()
+          if "const VERSION = 'v1';" not in js:
+              print('::error::sw.js ya no declara VERSION como se esperaba')
+              sys.exit(1)
+          open(sw, 'w', encoding='utf-8').write(js.replace("const VERSION = 'v1';", f"const VERSION = '{v}';"))
+          print(f'✅ service worker sellado como {v}')
+
           print(f'✅ {len(sellados)} recursos versionados como ?v={v}')
           for s in sellados:
               print(f'   · {s}')

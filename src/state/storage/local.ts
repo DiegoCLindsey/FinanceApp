@@ -25,6 +25,17 @@ export const NAMESPACE = 'financeapp_';
  */
 export const CLAVE_SELLO = 'state__modificadoEn';
 
+/** Evento que escucha el shell para enseñar el aviso de «no se ha podido guardar». */
+export const EVENTO_SIN_ESPACIO = 'financeapp:sin-espacio';
+
+function avisarSinEspacio(): void {
+  try {
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(EVENTO_SIN_ESPACIO));
+  } catch {
+    /* sin DOM (tests): nada que avisar */
+  }
+}
+
 export function createLocalStorageAdapter(backing: Storage = localStorage, namespace: string = NAMESPACE): StorageAdapter {
   const fisica = (key: string) => `${namespace}${key}`;
   return {
@@ -45,8 +56,11 @@ export function createLocalStorageAdapter(backing: Storage = localStorage, names
         // recarga sin avisar: exactamente el fallo que el sello viene a evitar.
         if (key !== CLAVE_SELLO) backing.setItem(fisica(CLAVE_SELLO), JSON.stringify(Date.now()));
       } catch (e) {
-        // Cuota agotada o modo privado: no debe tumbar la app
+        // Cuota agotada o modo privado: no debe tumbar la app, pero el usuario
+        // TIENE que enterarse: antes seguía trabajando convencido de que se
+        // guardaba (docs/14, BUG-15).
         console.error('No se pudo guardar en localStorage:', key, e);
+        avisarSinEspacio();
       }
     },
     remove(key: string): void {

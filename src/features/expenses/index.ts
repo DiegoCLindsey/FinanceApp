@@ -349,11 +349,33 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
     const tipo = (val('#ef-tipo') || 'gasto') as TipoExpense;
     const esTransferencia = tipo === 'transferencia';
     const concepto = val('#ef-concepto').trim();
-    const cuantia = parseFloat(val('#ef-cuantia'));
-    if (!concepto || !Number.isFinite(cuantia)) {
-      toast('Concepto y cuantía obligatorios', 'err');
+    const cuantia = parseFloat(val('#ef-cuantia').replace(',', '.'));
+    const fechaInicio = val('#ef-fecha-ini');
+    const fechaFin = val('#ef-fecha-fin') || null;
+    // Validación: lo que el motor no sabe proyectar no debe poder guardarse.
+    const error = !concepto
+      ? 'Escribe un concepto'
+      : !Number.isFinite(cuantia) || cuantia <= 0
+        ? 'La cuantía debe ser mayor que 0 (el signo lo pone el tipo: gasto o ingreso)'
+        : !fechaInicio
+          ? 'Indica la fecha de inicio'
+          : fechaFin && fechaFin < fechaInicio
+            ? 'La fecha de fin no puede ser anterior a la de inicio'
+            : esTransferencia && val('#ef-cuenta') === (val('#ef-cuenta-dest') || 'default')
+              ? 'En una transferencia, la cuenta de destino tiene que ser distinta de la de origen'
+              : '';
+    if (error) {
+      toast(error, 'err');
       return false;
     }
+
+    // Etiquetas: las del usuario se conservan SIEMPRE. Antes, guardar una
+    // transferencia las sustituía todas por `transferencia`.
+    const propias = val('#ef-tags')
+      .split(',')
+      .map((t) => t.trim())
+      .filter((t) => t && t !== 'transferencia');
+    const tags = esTransferencia ? [...new Set([...propias, 'transferencia'])] : [...new Set(propias)];
 
     const clasificacionRaw = val('#ef-clasificacion');
     const datos: Omit<Expense, '_id'> = {
@@ -362,8 +384,8 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
       cuantia,
       frecuencia: parseInt(val('#ef-frecuencia'), 10) || 1,
       tipoFrecuencia: (val('#ef-tipo-frec') || 'mensual') as Expense['tipoFrecuencia'],
-      fechaInicio: val('#ef-fecha-ini'),
-      fechaFin: val('#ef-fecha-fin') || null,
+      fechaInicio,
+      fechaFin,
       diaPago: leerDiaPago(content),
       cuenta: val('#ef-cuenta'),
       cuentaDestino: esTransferencia ? val('#ef-cuenta-dest') || 'default' : undefined,
@@ -372,12 +394,7 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
       sujetoIRPF: !esTransferencia && marcado('#ef-sujetoIRPF'),
       // Una transferencia no se clasifica; en gasto, '' significa "sin clasificar"
       clasificacion: tipo === 'gasto' ? ((clasificacionRaw || null) as Expense['clasificacion']) : undefined,
-      tags: esTransferencia
-        ? ['transferencia']
-        : val('#ef-tags')
-            .split(',')
-            .map((t) => t.trim())
-            .filter(Boolean),
+      tags,
       repartoConsumo: esTransferencia ? undefined : leerRepartoWidget(content, 'consumo'),
       repartoPago: esTransferencia ? undefined : leerRepartoWidget(content, 'pago'),
     };

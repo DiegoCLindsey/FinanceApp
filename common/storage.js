@@ -28,7 +28,16 @@ const StorageAdapter = (() => {
   }
   function remove(key)     { localStorage.removeItem(P() + key); return true; }
 
-  function _escribir(key, value) { localStorage.setItem(P() + key, JSON.stringify(value)); return true; }
+  // Si no cabe (cuota agotada) o el navegador no deja escribir, se avisa: el
+  // shell enseña un aviso fijo en vez de dejar al usuario trabajando en falso.
+  function _escribir(key, value) {
+    try { localStorage.setItem(P() + key, JSON.stringify(value)); return true; }
+    catch (e) {
+      console.error('[storage] No se pudo guardar', key, e);
+      try { window.dispatchEvent(new CustomEvent('financeapp:sin-espacio')); } catch { /* sin DOM */ }
+      return false;
+    }
+  }
 
   /**
    * Escribe y sella la hora.

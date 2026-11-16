@@ -118,7 +118,7 @@ avanzada, y todo lo que exija un servidor propio.
 
 | Sección | Tareas | P0 | P1 | P2 | P3 |
 |---|---:|---:|---:|---:|---:|
-| 3 · Fallos | 26 | 8 | 8 | 9 | 1 |
+| 3 · Fallos | 27 | 8 | 9 | 9 | 1 |
 | 4 · Seguridad | 11 | 0 | 5 | 5 | 1 |
 | 5 · UI/UX | 29 | 0 | 7 | 16 | 6 |
 | 6 · Mejoras de lo existente | 12 | — | — | — | — |
@@ -401,6 +401,17 @@ avanzada, y todo lo que exija un servidor propio.
 
 ### 3.2 Flujos rotos (P1)
 
+#### [x] BUG-27 · Una copia antigua importada o restaurada no pasaba por las migraciones
+
+- **Prioridad** P1 · **Esfuerzo** S · **Evidencia** ◐ por lectura (encontrado al hacer `BUG-06`)
+- **Ficheros** `src/main.ts` (`datos.aplicar`, `datos.snapshot`), `src/state/colecciones.ts`
+- **Problema.** Aplicar una copia escribía sus colecciones y recargaba el store,
+  pero la versión de esquema guardada seguía siendo la actual: las migraciones
+  no corrían. Un JSON de hace meses entraba a medio migrar.
+- **Solución aplicada.** Las copias llevan `_schemaVersion`; para las anteriores
+  se deduce del contenido (`inferirVersionDeCopia`). Al aplicar se escribe esa
+  versión y las colecciones retiradas que traiga, y el store migra al recargar.
+
 #### [x] BUG-07 · El asistente duplica el ingreso y el gasto al volver atrás
 
 - **Prioridad** P1 · **Esfuerzo** S · **Evidencia** ✔ reproducido
@@ -513,7 +524,7 @@ avanzada, y todo lo que exija un servidor propio.
   fusión respeta la más reciente entre `actualizadoEn` y `eliminadoEn`. Al
   eliminar con nube conectada, borrar también el documento remoto.
 
-#### [ ] BUG-15 · Si el almacenamiento se llena, los cambios se pierden en silencio
+#### [x] BUG-15 · Si el almacenamiento se llena, los cambios se pierden en silencio
 
 - **Prioridad** P1 · **Esfuerzo** S · **Evidencia** ◐ por lectura
 - **Ficheros** `src/state/storage/local.ts:38-51`, `common/storage.js:22-25`
@@ -539,7 +550,7 @@ avanzada, y todo lo que exija un servidor propio.
 - **Hecho cuando** un almacenamiento con solo `state__schemaVersion = 10` y
   `state_expenses` arranca con el resto por defecto.
 
-#### [ ] BUG-17 · El formulario de gastos acepta datos imposibles y borra las etiquetas de las transferencias
+#### [x] BUG-17 · El formulario de gastos acepta datos imposibles y borra las etiquetas de las transferencias
 
 - **Prioridad** P2 · **Esfuerzo** S · **Evidencia** ◐ por lectura
 - **Ficheros** `src/features/expenses/index.ts:345-393`
@@ -569,7 +580,7 @@ avanzada, y todo lo que exija un servidor propio.
 - **Problema.** `onclick="DashboardModule.toggleTag('${t}')"`: una etiqueta como
   `d'ocio` produce un error de sintaxis y el filtro deja de responder.
 
-#### [ ] BUG-20 · Dos pestañas abiertas se pisan
+#### [x] BUG-20 · Dos pestañas abiertas se pisan
 
 - **Prioridad** P2 · **Esfuerzo** S · **Evidencia** ◐ por lectura
 - **Problema.** Cada pestaña guarda colecciones enteras desde su copia en
@@ -614,7 +625,7 @@ avanzada, y todo lo que exija un servidor propio.
   - Los tests de paridad afectados se actualizan y se explica en el commit.
 - Complemento de producto en `MEJ-04`.
 
-#### [ ] BUG-22 · La caché del service worker crece sin límite
+#### [x] BUG-22 · La caché del service worker crece sin límite
 
 - **Prioridad** P3 · **Esfuerzo** S · **Evidencia** ◐ por lectura
 - **Ficheros** `sw.js:24, 51-60`
@@ -636,7 +647,7 @@ avanzada, y todo lo que exija un servidor propio.
   cuenta, o desactivar la cuenta en lugar de borrarla (recomendado si tiene
   movimientos). El «Deshacer» debe restaurar el conjunto.
 
-#### [ ] BUG-24 · La ayuda de Firebase indica un método de acceso que la aplicación no usa
+#### [x] BUG-24 · La ayuda de Firebase indica un método de acceso que la aplicación no usa
 
 - **Prioridad** P1 (por su efecto en `SEC-04`) · **Esfuerzo** S · **Evidencia** ✔
 - **Ficheros** `index.html:325`, `firebase/firebase-service.js:4-9, 122-202`
