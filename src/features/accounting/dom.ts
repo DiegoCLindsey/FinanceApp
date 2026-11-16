@@ -54,6 +54,29 @@ export function confirmar(mensaje: string): boolean {
   return typeof confirm === 'function' ? confirm(mensaje) : true;
 }
 
+/**
+ * Contenedor del modal compartido, SIN listeners de aperturas anteriores.
+ *
+ * `#modal-content` es un único elemento que vive toda la sesión, y cada
+ * formulario le cuelga sus manejadores por delegación (`onClick(el, …)`).
+ * Cambiarle el `innerHTML` no quita los listeners del propio contenedor, así
+ * que se acumulaban: al pulsar «Guardar» se ejecutaban los de TODAS las
+ * aperturas anteriores y cada uno hacía su `addItem` — el cuarto gasto de la
+ * sesión se creaba cuatro veces, y bastaba abrir y cancelar para sumar.
+ *
+ * Se sustituye el nodo por un clon vacío: es la única forma de soltar
+ * listeners anónimos sin tocar cada punto que los registra, y vale también
+ * para los que los formularios añaden directamente con `addEventListener`.
+ * Quien abre un modal debe pedir el contenedor aquí y no con `getElementById`.
+ */
+export function contenedorModalLimpio(doc: Document = document): HTMLElement | null {
+  const actual = doc.getElementById('modal-content');
+  if (!actual) return null;
+  const limpio = actual.cloneNode(false) as HTMLElement;
+  actual.replaceWith(limpio);
+  return limpio;
+}
+
 /** Delegación de eventos: un solo listener por contenedor y acción. */
 export function onClick(container: HTMLElement, selector: string, handler: (el: HTMLElement, ev: Event) => void): void {
   container.addEventListener('click', (ev) => {

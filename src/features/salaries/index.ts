@@ -16,7 +16,7 @@ import { TRAMOS_IRPF_DEFAULT, type Tramos } from '@/core/tax/irpf';
 import { agruparNominas, desgloseNomina, irpfGrupo } from '@/core/tax/nomina-grupo';
 import type { FeatureManifest } from '@/app/feature-registry';
 import type { Account, AppConfig, Nomina, PeriodoInflacion, Persona, TablaFiscalAnual } from './store-tipos';
-import { confirmar, esc, onChange, onClick, toast } from '../accounting/dom';
+import { confirmar, contenedorModalLimpio, esc, onChange, onClick, toast } from '../accounting/dom';
 import { formularioNomina, leerFormulario, wireFormulario, type ComponenteFlex } from './form';
 import { createTramosModal } from './tramos';
 import { idPersonaPorDefecto, personasImplicadas } from '@/core/reparto';
@@ -212,7 +212,7 @@ export function createSalariesFeature(deps: SalariesViewDeps): FeatureManifest {
   // ── Modales ─────────────────────────────────────────────────────────────────
 
   const overlay = () => document.getElementById('modal-overlay');
-  const contenido = () => document.getElementById('modal-content');
+  const contenido = () => contenedorModalLimpio();
   const cerrarModal = () => overlay()?.classList.add('hidden');
 
   function abrirModal(titulo: string, html: string): HTMLElement | null {

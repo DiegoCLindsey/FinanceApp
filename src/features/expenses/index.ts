@@ -14,7 +14,7 @@ import { formatEUR } from '@/core/money';
 import { labelDiaPago, todayISO, type ISODate } from '@/core/dates';
 import type { FeatureManifest } from '@/app/feature-registry';
 import type { Account, Expense, Persona, TipoExpense } from '@/state/schema';
-import { confirmar, esc, onChange, onClick, toast } from '../accounting/dom';
+import { confirmar, contenedorModalLimpio, esc, onChange, onClick, toast } from '../accounting/dom';
 import { diaPagoWidget, leerDiaPago, sincronizarDiaPago } from '../shared/dia-pago';
 import { leerRepartoWidget, repartoWidget, resumenRepartoDoble, sincronizarRepartoWidget } from '../shared/reparto-widget';
 
@@ -323,7 +323,7 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
 
   function abrirFormulario(exp: Partial<Expense> | null, titulo: string, refrescar: () => void): void {
     const overlay = document.getElementById('modal-overlay');
-    const content = document.getElementById('modal-content');
+    const content = contenedorModalLimpio();
     if (!overlay || !content) return;
     content.innerHTML = `<div class="modal-title">${esc(titulo)}</div>${formularioHtml(exp)}`;
     overlay.classList.remove('hidden');

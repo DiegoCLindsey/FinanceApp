@@ -10,7 +10,7 @@
 import { TRAMOS_AHORRO_DEFAULT } from '@/core/tax/ahorro';
 import type { Tramos } from '@/core/tax/irpf';
 import type { AppConfig, TablaFiscalAnual } from '@/state/schema';
-import { confirmar, esc, onClick, toast } from '../accounting/dom';
+import { confirmar, contenedorModalLimpio, esc, onClick, toast } from '../accounting/dom';
 
 export interface TramosGananciasStoreLike {
   get(key: 'config'): AppConfig;
@@ -39,7 +39,7 @@ export function createTramosGananciasModal(deps: TramosGananciasDeps) {
   let filas: Tramos = [];
 
   const overlay = () => document.getElementById('modal-overlay');
-  const contenido = () => document.getElementById('modal-content');
+  const contenido = () => contenedorModalLimpio();
   const cerrar = () => overlay()?.classList.add('hidden');
   const porDefecto = (): Tramos => deps.store.get('config').tramosGananciasCapital ?? TRAMOS_AHORRO_DEFAULT;
 

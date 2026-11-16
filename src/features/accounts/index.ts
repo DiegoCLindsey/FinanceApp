@@ -41,7 +41,7 @@ import type { Ledger } from '@/accounting/ledger';
 import type { TagService } from '@/accounting/tags';
 import type { PrecisionAnalyzer } from '@/accounting/precision';
 import type { Adjuster } from '@/accounting/adjust';
-import { confirmar, esc, onClick, toast } from '../accounting/dom';
+import { confirmar, contenedorModalLimpio, esc, onClick, toast } from '../accounting/dom';
 import { carteraFiscalHtml, renderAccountCard, FLUJOS_VACIOS, type CardCtx, type FlujosCuenta, type LineaFlujo } from './card';
 import { construirCuenta, formularioCuenta, wireFormularioCuenta } from './form';
 import { historicoDeCuenta, historicoHtml } from './historico';
@@ -291,7 +291,7 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
   // ── Modales ─────────────────────────────────────────────────────────────────
 
   const overlay = () => document.getElementById('modal-overlay');
-  const contenido = () => document.getElementById('modal-content');
+  const contenido = () => contenedorModalLimpio();
   const cerrarModal = () => overlay()?.classList.add('hidden');
 
   function abrirModal(titulo: string, html: string): HTMLElement | null {

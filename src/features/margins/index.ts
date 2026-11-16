@@ -25,7 +25,7 @@ import {
 } from '@/engine/margins';
 import type { FeatureManifest } from '@/app/feature-registry';
 import type { Account, AppConfig } from '@/state/schema';
-import { confirmar, esc, onChange, onClick, toast } from '../accounting/dom';
+import { confirmar, contenedorModalLimpio, esc, onChange, onClick, toast } from '../accounting/dom';
 
 export interface MarginsStoreLike {
   get(key: 'config'): AppConfig;
@@ -225,7 +225,7 @@ export function createMarginsFeature(deps: MarginsViewDeps): FeatureManifest {
 
   function abrirFormulario(id: string | null, refrescar: () => void): void {
     const overlay = document.getElementById('modal-overlay');
-    const content = document.getElementById('modal-content');
+    const content = contenedorModalLimpio();
     if (!overlay || !content) return;
     renderFormulario(content, id);
     overlay.classList.remove('hidden');

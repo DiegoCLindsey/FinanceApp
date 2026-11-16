@@ -172,7 +172,7 @@ avanzada, y todo lo que exija un servidor propio.
   - `State.set('config', …)` seguido de `store.patchConfig(…)` conserva ambos
     cambios.
 
-#### [ ] BUG-25 · Cada formulario guarda tantas veces como modales se hayan abierto en la sesión
+#### [x] BUG-25 · Cada formulario guarda tantas veces como modales se hayan abierto en la sesión
 
 - **Prioridad** P0 · **Esfuerzo** S · **Evidencia** ✔ reproducido
 - **Ficheros** `src/features/accounting/dom.ts:57-69` (`onClick`, `onChange`) y

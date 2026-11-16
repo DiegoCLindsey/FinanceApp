@@ -21,7 +21,7 @@ import type { FeatureManifest } from '@/app/feature-registry';
 import type { Account, AppConfig, Expense, Loan, Nomina, Persona } from '@/state/schema';
 import type { PeriodoInflacion } from '@/core/inflation';
 import { idPersonaPorDefecto, personasImplicadas } from '@/core/reparto';
-import { confirmar, esc, onClick, toast } from '../accounting/dom';
+import { confirmar, contenedorModalLimpio, esc, onClick, toast } from '../accounting/dom';
 import { leerDiaPago, sincronizarDiaPago } from '../shared/dia-pago';
 import { leerRepartoWidget, sincronizarRepartoWidget } from '../shared/reparto-widget';
 import { renderLoanCard } from './card';
@@ -240,7 +240,7 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
   // ── Modales ─────────────────────────────────────────────────────────────────
 
   const overlay = () => document.getElementById('modal-overlay');
-  const contenido = () => document.getElementById('modal-content');
+  const contenido = () => contenedorModalLimpio();
   const cerrarModal = () => overlay()?.classList.add('hidden');
 
   function abrirModal(titulo: string, html: string): HTMLElement | null {
