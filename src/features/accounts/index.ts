@@ -446,7 +446,47 @@ export function createAccountsFeature(deps: AccountsViewDeps): FeatureManifest {
       const id = el.getAttribute('data-borrar-acc') as string;
       const accounts = deps.store.get('accounts');
       if (accounts.length <= 1) return toast('Debe existir al menos una cuenta', 'err');
-      if (!confirmar('¿Eliminar cuenta?')) return;
+      const cuenta = accounts.find((a) => a._id === id);
+      if (!cuenta) return;
+
+      // ¿Qué cuelga de esta cuenta? Borrarla sin más dejaba movimientos, puntos
+      // de control y estimaciones apuntando a una cuenta que ya no existe
+      // (docs/14, BUG-23). Si tiene algo, se ofrece DESACTIVARLA: deja de
+      // contar en la proyección y conserva su historial.
+      const usos = [
+        [deps.ledger?.transacciones({ cuentaId: id }).length ?? 0, 'movimiento', 'movimientos'],
+        [deps.ledger?.puntosControl(id).filter((p) => p.origen !== 'derivado').length ?? 0, 'saldo anotado', 'saldos anotados'],
+        [
+          deps.store.get('expenses').filter((e) => (e.cuenta || 'default') === id || e.cuentaDestino === id).length,
+          'gasto o ingreso',
+          'gastos o ingresos',
+        ],
+        [deps.store.get('nominas').filter((n) => n.cuenta === id).length, 'nómina', 'nóminas'],
+        [deps.store.get('loans').filter((l) => (l.cuenta || 'default') === id).length, 'préstamo', 'préstamos'],
+      ] as [number, string, string][];
+      const detalle = usos.filter(([n]) => n > 0).map(([n, uno, varios]) => `${n} ${n === 1 ? uno : varios}`);
+
+      if (detalle.length > 0) {
+        if (cuenta.activo === false) return toast('Esta cuenta ya está desactivada y tiene datos: no se puede eliminar', 'warn');
+        if (
+          !confirmar(
+            `«${cuenta.nombre}» tiene ${detalle.join(', ')}.\n\nNo se puede eliminar sin dejar esos datos sueltos. ¿Desactivarla? Dejará de contar en la proyección y conservará su historial; puedes reactivarla al editarla.`,
+          )
+        )
+          return;
+        let cuentas = deps.store.get('accounts').map((a) => (a._id === id ? { ...a, activo: false, esCuentaPrincipal: false } : a));
+        if (!cuentas.some((a) => a.esCuentaPrincipal)) {
+          const sustituta = cuentas.find((a) => a.activo !== false) ?? cuentas[0];
+          cuentas = cuentas.map((a) => (a._id === sustituta._id ? { ...a, esCuentaPrincipal: true } : a));
+        }
+        deps.store.set('accounts', cuentas);
+        toast('Cuenta desactivada');
+        notificar();
+        refrescar();
+        return;
+      }
+
+      if (!confirmar(`¿Eliminar la cuenta «${cuenta.nombre}»? No tiene movimientos ni nada asociado.`)) return;
       deps.store.removeItem('accounts', id);
       // `removeItem` no revisa invariantes: si se ha ido la principal, hay que
       // designar otra o los gastos nuevos se quedan sin cuenta por defecto.

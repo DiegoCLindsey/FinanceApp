@@ -639,7 +639,7 @@ avanzada, y todo lo que exija un servidor propio.
   versión nueva · Recargar» (el mensaje `skip-waiting` ya existe, falta la
   interfaz).
 
-#### [ ] BUG-23 · El borrado de una cuenta deja huérfanos
+#### [x] BUG-23 · El borrado de una cuenta deja huérfanos
 
 - **Prioridad** P2 · **Esfuerzo** S · **Evidencia** ◐ por lectura (a confirmar al implementar)
 - **Ficheros** `src/features/accounts/index.ts:445-460`
