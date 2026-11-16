@@ -12,7 +12,7 @@ describe('cifrado portátil', () => {
   it('ida y vuelta con la misma passphrase', async () => {
     const datos = { hola: 'qué tal', numero: 42, lista: [1, 2, 3] };
     const cifrado = await CS.encryptPortable('secreta', datos);
-    expect(cifrado.split(':')).toHaveLength(3); // salt:iv:ct
+    expect(cifrado.split(':')).toHaveLength(4); // gz1:salt:iv:ct
     expect(await CS.decryptPortable('secreta', cifrado)).toEqual(datos);
   });
 
@@ -52,5 +52,42 @@ describe('cifrado portátil', () => {
     const vuelta = await CS.decryptPortable('secreta', cifrado);
     expect(vuelta.transacciones).toHaveLength(3000);
     expect(vuelta.transacciones[2999].concepto).toBe(transacciones[2999].concepto);
+  });
+});
+
+describe('compresión de la copia (BUG-05)', () => {
+  const movimientos = (n) =>
+    Array.from({ length: n }, (_, i) => ({
+      _id: `id${i}`,
+      fecha: `2026-${String((i % 12) + 1).padStart(2, '0')}-15`,
+      cuentaId: 'default',
+      importeCts: -(1000 + i),
+      concepto: i % 3 ? 'COMPRA TARJ. MERCADONA VALENCIA ES' : 'RECIBO IBERDROLA CLIENTES SAU',
+      tags: [],
+      tipo: 'gasto',
+      origen: 'importado',
+    }));
+
+  it('20.000 movimientos caben de sobra en un documento de 1 MiB', async () => {
+    const datos = { transacciones: movimientos(20000), config: { a: 1 } };
+    const cifrado = await globalThis.CryptoService.encryptPortable('clave', datos);
+    expect(cifrado.startsWith('gz1:')).toBe(true);
+    expect(cifrado.length).toBeLessThan(700_000);
+    expect(JSON.stringify(datos).length).toBeGreaterThan(3_000_000);
+    expect(await globalThis.CryptoService.decryptPortable('clave', cifrado)).toEqual(datos);
+  }, 30000);
+
+  it('sigue leyendo el formato anterior, sin comprimir', async () => {
+    const C = globalThis.CryptoService;
+    const salt = C.generateSalt();
+    const key = await C.deriveKey('clave', salt);
+    const antiguo = `${btoa(String.fromCharCode(...salt))}:${await C.encrypt(key, { hola: 'mundo', ñ: 'áé€' })}`;
+    expect(await C.decryptPortable('clave', antiguo)).toEqual({ hola: 'mundo', ñ: 'áé€' });
+  });
+
+  it('conserva acentos y símbolos al comprimir', async () => {
+    const datos = { concepto: 'Peluquería «Añil» 12,50 €' };
+    const cifrado = await globalThis.CryptoService.encryptPortable('clave', datos);
+    expect(await globalThis.CryptoService.decryptPortable('clave', cifrado)).toEqual(datos);
   });
 });

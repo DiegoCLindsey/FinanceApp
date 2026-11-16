@@ -106,8 +106,19 @@ const FirebaseService = (() => {
       if (err.code === 'permission-denied') {
         throw new Error('Tu dirección de correo no está autorizada. Solicita acceso al administrador.');
       }
-      throw new Error('No se pudo verificar el acceso: ' + err.message);
+      // Cualquier otra cosa (sin red, servicio caído) NO es «no autorizado»:
+      // se marca para que el arranque pueda seguir con los datos locales.
+      const e = new Error('No se pudo verificar el acceso: ' + err.message);
+      e.code = 'sin-red';
+      throw e;
     }
+  }
+
+  function _errorSinRed(msg) { const e = new Error(msg || 'Sin conexión.'); e.code = 'sin-red'; return e; }
+  function _esFalloDeRed(err) {
+    return (typeof navigator !== 'undefined' && navigator.onLine === false)
+      || err?.code === 'auth/network-request-failed' || err?.code === 'unavailable'
+      || /network|offline|failed to fetch/i.test(err?.message || '');
   }
 
   async function _loadAdminStatus(email) {
@@ -165,6 +176,8 @@ const FirebaseService = (() => {
   // o ha dejado de serlo — en cuyo caso el llamante debe echar al usuario.
   async function restoreSession(config, { timeoutMs = 8000 } = {}) {
     if (!config) return null;
+    // Sin red el SDK puede no haber cargado: eso no es «sesión no válida».
+    if (typeof firebase === 'undefined') throw _errorSinRed('El SDK de Firebase no está disponible (sin conexión).');
     try { _initApp(config); } catch { return null; }
 
     const user = await new Promise(resolve => {
@@ -181,9 +194,14 @@ const FirebaseService = (() => {
 
     // El token puede estar caducado o revocado: forzar refresco lo comprueba
     // contra el servidor, que es lo que hace válida a la sesión.
+    // Un fallo de RED no invalida la sesión. Antes se cerraba la sesión de
+    // Firebase igual que si el acceso se hubiera revocado, y quien abría la
+    // aplicación sin cobertura se quedaba fuera de sus propios datos, que
+    // están en el dispositivo (docs/14, BUG-12).
     try {
       await user.getIdToken(true);
-    } catch {
+    } catch (err) {
+      if (_esFalloDeRed(err)) throw _errorSinRed();
       await _auth.signOut().catch(() => {});
       return null;
     }
@@ -191,7 +209,8 @@ const FirebaseService = (() => {
     _user = user;
     try {
       await _checkWhitelist(user.email);   // el acceso puede haberse revocado
-    } catch {
+    } catch (err) {
+      if (err?.code === 'sin-red' || _esFalloDeRed(err)) { _user = null; throw _errorSinRed(); }
       await _auth.signOut().catch(() => {});
       _user = null;
       return null;

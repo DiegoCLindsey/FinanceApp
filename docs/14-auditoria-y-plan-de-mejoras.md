@@ -346,7 +346,7 @@ avanzada, y todo lo que exija un servidor propio.
 - **Hecho cuando** hay un test con un servicio simulado: clave errónea → cero
   escrituras remotas.
 
-#### [ ] BUG-05 · La copia en Firebase tiene un techo de ~1 MiB
+#### [x] BUG-05 · La copia en Firebase tiene un techo de ~1 MiB
 
 - **Prioridad** P0 (latente) · **Esfuerzo** M · **Evidencia** ◐ por lectura y cálculo
 - **Ficheros** `firebase/firebase-service.js:336-345`, `common/crypto.js`
@@ -363,6 +363,9 @@ avanzada, y todo lo que exija un servidor propio.
   2. Si aun así supera ~900 KB, trocear en documentos `backup__0…n` con un
      manifiesto (`partes`, `rev`), escritos en un `batch`.
   3. Mostrar el tamaño de la copia en «Administrar datos» y avisar al 70 %.
+- **Aplicado (2026-11-16).** El punto 1 (gzip antes de cifrar, formato `gz1:`,
+  lectura compatible con el anterior). **Pendientes** los puntos 2 y 3: con la
+  compresión el techo pasa a decenas de miles de movimientos.
 - **Hecho cuando**
   - Test de ida y vuelta con 20.000 movimientos sintéticos.
   - Test de compatibilidad: una copia `version: 2` se sigue pudiendo leer.
@@ -479,7 +482,7 @@ avanzada, y todo lo que exija un servidor propio.
 - **Hecho cuando**: fichero con 2 iguales y 0 existentes → 0 duplicadas; con 1
   existente → 1 duplicada; reimportar el mismo fichero → todas duplicadas.
 
-#### [ ] BUG-12 · Sin conexión no se puede entrar si se usa la nube
+#### [x] BUG-12 · Sin conexión no se puede entrar si se usa la nube
 
 - **Prioridad** P1 · **Esfuerzo** M · **Evidencia** ◐ por lectura
 - **Ficheros** `firebase/firebase-service.js:248-284`, `auth/auth.js:361-393`,

@@ -113,7 +113,13 @@ const DropboxService = (() => {
       await unlock(passphrase);
       await _verifyToken(_token);
       return true;
-    } catch {
+    } catch (err) {
+      // `fetch` sin red lanza TypeError: eso no dice nada del token.
+      if (err instanceof TypeError || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+        const e = new Error('Sin conexión.'); e.code = 'sin-red';
+        _token = null; _cryptoKey = null; _passphrase = null;
+        throw e;
+      }
       _token = null;
       _cryptoKey = null;
       _passphrase = null;
@@ -424,10 +430,54 @@ const AuthModule = (() => {
         return true;
       }
     } catch (err) {
+      // Sin red, los datos siguen estando en este dispositivo: se entra con
+      // ellos y se sincroniza al volver la conexión. Lo que NO vale es dejar
+      // al usuario en una pantalla de acceso que exige red para pasar.
+      if (_esErrorDeRed(err)) {
+        console.warn('[auth] Sin conexión: se arranca con los datos de este dispositivo.');
+        await launch(reg.modo, { reanudando: true });
+        _avisarSinConexion();
+        return true;
+      }
       console.error('[auth] No se pudo reanudar la sesión:', err);
       return false;
     }
     return false;
+  }
+
+  function _esErrorDeRed(err) {
+    return err?.code === 'sin-red' || err?.code === 'unavailable' || err?.code === 'auth/network-request-failed'
+      || (typeof navigator !== 'undefined' && navigator.onLine === false)
+      || (err instanceof TypeError && /fetch|network/i.test(err.message || ''));
+  }
+
+  /** Aviso fijo de «sin conexión», con la vuelta a sincronizar cuando haya red. */
+  function _avisarSinConexion() {
+    const host = document.getElementById('toast-container');
+    if (!host || document.getElementById('aviso-sin-conexion')) return;
+    const el = document.createElement('div');
+    el.id = 'aviso-sin-conexion';
+    el.className = 'toast toast-warn';
+    el.setAttribute('role', 'status');
+    el.style.cssText = 'display:flex;align-items:center;gap:12px';
+    const texto = document.createElement('span');
+    texto.style.flex = '1';
+    texto.textContent = 'Sin conexión: estás viendo los datos de este dispositivo. Los cambios se subirán al volver la red.';
+    el.appendChild(texto);
+    host.appendChild(el);
+    const alVolver = () => {
+      texto.textContent = 'Conexión recuperada.';
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn-primary btn-sm';
+      b.textContent = 'Sincronizar';
+      // Recargar es la forma de volver a pasar por la sincronización completa
+      // (subir, bajar o preguntar). Lo decide el usuario: puede estar a medias.
+      b.addEventListener('click', () => window.location.reload());
+      el.appendChild(b);
+    };
+    if (navigator.onLine) alVolver();
+    else window.addEventListener('online', alVolver, { once: true });
   }
 
   /** Escapado para el HTML del diálogo de conflicto. */
@@ -553,7 +603,15 @@ const AuthModule = (() => {
     // nada.
     const backup = await service.downloadBackup();
     await _sincronizarRegistroProyectos(service);
-    if (!backup) return;
+    if (!backup) {
+      // La nube está vacía y aquí hay datos: se sube la primera copia. Antes se
+      // quedaba sin subir hasta que el usuario cambiara algo o le diera a mano.
+      if (!_localEsVacioOPorDefecto()) {
+        try { await service.uploadBackup(); }
+        catch (e) { console.warn('[auth] No se ha podido subir la primera copia:', e.message); }
+      }
+      return;
+    }
 
     const fechaNube  = service.ultimaFechaBackup?.() ?? null;
     const revNube    = service.ultimaRevBackup?.() ?? null;

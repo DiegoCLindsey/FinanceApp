@@ -34,7 +34,9 @@ const CACHE_CDN = `financeapp-cdn-${VERSION}`;
  * puede quedar obsoleta. Sin jsDelivr la aplicación abriría sin red pero sin
  * gráficos, que es justo lo que se va a mirar.
  */
-const HOSTS_FUENTES = ['fonts.googleapis.com', 'fonts.gstatic.com', 'cdn.jsdelivr.net'];
+// `www.gstatic.com` sirve el SDK de Firebase (URL con versión): sin él, quien
+// usa la nube no podía abrir la aplicación sin red.
+const HOSTS_FUENTES = ['fonts.googleapis.com', 'fonts.gstatic.com', 'cdn.jsdelivr.net', 'www.gstatic.com'];
 
 /** Nunca se cachea: datos vivos y autenticación. */
 const NUNCA = /firestore|firebaseio|identitytoolkit|securetoken|googleapis\.com\/identitytoolkit|dropboxapi|dropbox\.com/i;
