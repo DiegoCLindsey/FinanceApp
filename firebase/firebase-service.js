@@ -313,9 +313,52 @@ const FirebaseService = (() => {
   let _ultimaFechaBackup = null;
   function ultimaFechaBackup() { return _ultimaFechaBackup; }
 
-  async function uploadBackup() {
+  // ── Revisión de la copia remota ──────────────────────────────────────────────
+  // Cada subida lleva un identificador propio (`rev`). Sirve para saber si la
+  // copia de la nube es LA MISMA que este dispositivo vio por última vez, sin
+  // comparar relojes: antes se subía a ciegas, y un dispositivo con datos
+  // viejos pisaba lo que otro acababa de guardar (docs/14, BUG-03).
+  let _ultimaRev = null;
+  function ultimaRevBackup() { return _ultimaRev; }
+  /** Las copias anteriores a `rev` se identifican por su fecha de servidor. */
+  function _revDe(d) {
+    if (!d) return null;
+    return d.rev || (d.updatedAt?.toMillis ? 'u' + d.updatedAt.toMillis() : null);
+  }
+  function _docBackup() {
+    return _db.collection('users').doc(_user.uid).collection('data').doc(_backupDocId());
+  }
+  /** Revisión actual de la copia remota, o null si aún no hay ninguna. */
+  async function revRemota() {
+    if (!isConnected()) throw new Error('No autenticado en Firebase.');
+    const doc = await _docBackup().get({ source: 'server' });
+    return doc.exists ? _revDe(doc.data()) : null;
+  }
+  function _nuevaRev() {
+    return (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+  }
+  function _errorConflicto() {
+    const e = new Error('La copia de la nube ha cambiado desde otro dispositivo.');
+    e.code = 'conflicto-nube';
+    return e;
+  }
+
+  /**
+   * Sube la copia. Si la nube ya no es la que este dispositivo conocía, NO
+   * sube y lanza un error con `code: 'conflicto-nube'`; `forzar: true` se usa
+   * solo cuando el usuario ya ha elegido conservar lo de este dispositivo.
+   */
+  async function uploadBackup({ forzar = false } = {}) {
     if (!isConnected()) throw new Error('No autenticado en Firebase.');
     if (!_passphrase)   throw new Error('Clave de cifrado no disponible.');
+
+    if (!forzar) {
+      const remota = await revRemota();
+      if (remota && remota !== StorageAdapter.baseNube()) throw _errorConflicto();
+    }
+    // El sello se toma ANTES de leer los datos: lo que cambie mientras la copia
+    // vuela debe seguir contando como pendiente.
+    const selloAlEmpezar = StorageAdapter.modificadoEn();
 
     // Del ALMACENAMIENTO y con la lista del esquema, no de `State.get` con una
     // lista escrita a mano. Lo de antes fallaba por los dos lados: `State` es
@@ -335,14 +378,15 @@ const FirebaseService = (() => {
 
     const cipher = await CryptoService.encryptPortable(_passphrase, snapshot);
 
-    await _db
-      .collection('users').doc(_user.uid)
-      .collection('data').doc(_backupDocId())
-      .set({
-        cipher,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        version:   2,
-      });
+    const rev = _nuevaRev();
+    await _docBackup().set({
+      cipher,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      version:   2,
+      rev,
+    });
+    _ultimaRev = rev;
+    StorageAdapter.marcarSincronizado(rev, selloAlEmpezar);
   }
 
   // ── Descargar y descifrar backup de Firestore ────────────────────────────────
@@ -361,6 +405,7 @@ const FirebaseService = (() => {
     // saber si la copia de la nube era más nueva o más vieja que la local.
     const { cipher, updatedAt } = doc.data();
     _ultimaFechaBackup = updatedAt?.toMillis ? updatedAt.toMillis() : null;
+    _ultimaRev = _revDe(doc.data());
     try {
       return await CryptoService.decryptPortable(_passphrase, cipher);
     } catch {
@@ -400,12 +445,19 @@ const FirebaseService = (() => {
       .collection('data').doc(_registroDocId())
       .get();
     if (!doc.exists) return null;
+    // «No existe» (null) y «no se puede descifrar» (error) NO son lo mismo:
+    // devolver null en los dos casos hacía que, con la clave mal tecleada, el
+    // llamante creyera que no había registro y subiera el suyo encima —cifrado
+    // con la clave equivocada (docs/14, BUG-04).
+    let lista;
     try {
-      const lista = await CryptoService.decryptPortable(_passphrase, doc.data().cipher);
-      return Array.isArray(lista) ? lista : null;
+      lista = await CryptoService.decryptPortable(_passphrase, doc.data().cipher);
     } catch {
-      return null;   // clave incorrecta: se ignora aquí, downloadBackup ya lo habrá avisado
+      const e = new Error('No se pudo descifrar la lista de proyectos. ¿Es correcta la clave de cifrado?');
+      e.code = 'clave-incorrecta';
+      throw e;
     }
+    return Array.isArray(lista) ? lista : null;
   }
 
   // ── Gestión de lista blanca ───────────────────────────────────────────────────
@@ -462,7 +514,7 @@ const FirebaseService = (() => {
     isConfigured, getConfig, hasInjectedConfig, hasSavedSession, savedEmail,
     isConnected, currentUserEmail, isAdmin,
     login, register, loginWithGoogle, restoreSession, logout, forget,
-    uploadBackup, downloadBackup, ultimaFechaBackup, setPassphrase, esClaveActual,
+    uploadBackup, downloadBackup, ultimaFechaBackup, ultimaRevBackup, revRemota, setPassphrase, esClaveActual,
     uploadRegistroProyectos, downloadRegistroProyectos,
     listWhitelist, addToWhitelist, removeFromWhitelist, setUserAdmin,
   };

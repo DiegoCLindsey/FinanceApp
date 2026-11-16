@@ -265,7 +265,7 @@ avanzada, y todo lo que exija un servidor propio.
 - **Hecho cuando** al terminar el asistente, el saldo de la barra y la gráfica
   muestran el saldo introducido sin pulsar «Actualizar».
 
-#### [ ] BUG-03 · La sincronización puede destruir cambios sin avisar
+#### [x] BUG-03 · La sincronización puede destruir cambios sin avisar
 
 - **Prioridad** P0 · **Esfuerzo** L · **Evidencia** ◐ por lectura
 - **Ficheros** `data-io/data-io.js:154-171` (temporizador),
@@ -313,8 +313,17 @@ avanzada, y todo lo que exija un servidor propio.
   - Test: subir con `rev` remoto distinto de la base no escribe y devuelve
     conflicto.
 - **Mejora de fondo** en `MEJ-01` (fusión por elemento).
+- **Aplicado (2026-11-16).** Revisión `rev` por subida, base y sello de
+  sincronización por proyecto (`StorageAdapter.marcarSincronizado`), tabla de
+  decisión en `_sincronizarDesdeNube`, `AuthModule.guardarEnNube()` como único
+  camino de guardado (pregunta en conflicto), y punto de restauración de una
+  posición antes de cualquier volcado o importación («Volver a esa copia» en
+  Administrar datos). Probado con dos dispositivos contra una nube simulada
+  (15 comprobaciones). **Pendiente**: la comprobación y la escritura no van en
+  una transacción de Firestore (queda una ventana de milisegundos), y los tests
+  son de navegador y aún no están en CI (`TEC-02`).
 
-#### [ ] BUG-04 · Una clave mal tecleada sobrescribe la lista de proyectos remota
+#### [x] BUG-04 · Una clave mal tecleada sobrescribe la lista de proyectos remota
 
 - **Prioridad** P0 · **Esfuerzo** S · **Evidencia** ◐ por lectura
 - **Ficheros** `auth/auth.js:448-458, 472-479, 942-951`,
@@ -543,7 +552,7 @@ avanzada, y todo lo que exija un servidor propio.
   los formularios de préstamos (`capital`, `meses` > 0, `tin` ≥ 0), nóminas y
   cuentas, que hoy no muestran errores de validación.
 
-#### [ ] BUG-18 · «JSON → Firebase» sube aunque se cancele, y «Cargar copia» pregunta dos veces
+#### [x] BUG-18 · «JSON → Firebase» sube aunque se cancele, y «Cargar copia» pregunta dos veces
 
 - **Prioridad** P2 · **Esfuerzo** S · **Evidencia** ◐ por lectura
 - **Ficheros** `data-io/data-io.js:63-80, 142-151, 328-338`

@@ -59,9 +59,28 @@ const DataIO = (() => {
     }
   }
 
+  // ── Punto de restauración ────────────────────────────────────────────────────
+  // Una posición, compartida con la restauración desde la nube (auth.js).
+  function _guardarRespaldo(motivo) {
+    try {
+      const datos = window.FinanceApp?.datos?.snapshot?.();
+      if (!datos) return;
+      const proyecto = window.FinanceApp?.proyectos?.activo?.()?._id || 'default';
+      localStorage.setItem('financeapp_respaldo_previo', JSON.stringify({ cuando: Date.now(), motivo, proyecto, datos }));
+    } catch (e) { console.warn('[DataIO] No se ha podido guardar el punto de restauración:', e.message); }
+  }
+
   // ── Apply import ─────────────────────────────────────────────────────────────
-  async function applyImport(data) {
-    if (!data || typeof data !== 'object') { UI.toast('Archivo inválido', 'err'); return; }
+  /**
+   * Aplica una copia. Devuelve `true` si se aplicó y `false` si no (formato
+   * inválido o el usuario canceló): quien llama decide con eso si sigue. Antes
+   * no devolvía nada, y «JSON → Firebase» subía y anunciaba «importados»
+   * aunque se hubiera cancelado aquí (docs/14, BUG-18).
+   * `confirmar: false` cuando quien llama ya ha preguntado: una sola pregunta
+   * por acción.
+   */
+  async function applyImport(data, { confirmar = true } = {}) {
+    if (!data || typeof data !== 'object') { UI.toast('Archivo inválido', 'err'); return false; }
     const loans      = data.loans      || [];
     const expenses   = data.expenses   || [];
     const accounts   = data.accounts   || [];
@@ -74,10 +93,14 @@ const DataIO = (() => {
     const config     = data.config     || {};
 
     if (!Array.isArray(loans) || !Array.isArray(expenses)) {
-      UI.toast('Formato de backup no reconocido', 'err'); return;
+      UI.toast('Formato de backup no reconocido', 'err'); return false;
     }
     const hasData = loans.length || expenses.length || (accounts.length > 1);
-    if (hasData && !window.confirm(`¿Sustituir los datos actuales con el backup?\n(${loans.length} préstamos, ${expenses.length} gastos, ${accounts.length} cuentas)`)) return;
+    if (confirmar && hasData && !window.confirm(`¿Sustituir los datos actuales con el backup?\n(${loans.length} préstamos, ${expenses.length} gastos, ${accounts.length} cuentas)`)) return false;
+
+    // Lo que hay ahora se guarda antes de pisarlo: «Deshacer la última
+    // restauración» en este mismo modal lo devuelve.
+    _guardarRespaldo('importar');
 
     // Se aplican TODAS las colecciones del esquema, no una lista escrita a mano:
     // así un backup con planes o con contabilidad los restaura de verdad. Y lo
@@ -122,6 +145,7 @@ const DataIO = (() => {
     document.getElementById('welcome-overlay')?.classList.add('hidden');
     UI.toast(`Importado: ${loans.length} préstamos, ${expenses.length} gastos, ${accounts.length} cuentas`);
     Router.navigate('dashboard');
+    return true;
   }
 
   // ── Firebase helpers ─────────────────────────────────────────────────────────
@@ -144,9 +168,9 @@ const DataIO = (() => {
     const text = await file.text();
     const data = JSON.parse(text);
     if (!data || typeof data !== 'object') { UI.toast('Archivo inválido', 'err'); return; }
-    if (!window.confirm('¿Subir este archivo a Firebase y sobrescribir el backup remoto?')) return;
-    await applyImport(data);
-    await FirebaseService.uploadBackup();
+    if (!window.confirm('¿Sustituir los datos de este dispositivo Y la copia de Firebase por este archivo?')) return;
+    if (!(await applyImport(data, { confirmar: false }))) return;
+    await FirebaseService.uploadBackup({ forzar: true });
     UI.toast('Datos importados y subidos a Firebase ✓');
   }
 
@@ -166,8 +190,7 @@ const DataIO = (() => {
         // Solo si hay algo que subir. Subir «por si acaso» cada N minutos hacía
         // que un dispositivo olvidado abierto pisara la nube con su copia vieja.
         if (aviso) { if (aviso.hayPendiente()) await aviso.guardarAhora(); return; }
-        if      (FirebaseService.isConnected()) await FirebaseService.uploadBackup();
-        else if (DropboxService.isConnected())  await DropboxService.uploadBackup();
+        if (StorageAdapter.modificadoDesdeSync()) await AuthModule.guardarEnNube();
       } catch (e) { console.warn('Auto-save error:', e.message); }
     }, ms);
   }
@@ -227,6 +250,21 @@ const DataIO = (() => {
       _stopAutoSave();
       await AuthModule.logout();
     });
+  }
+
+  /** «Deshacer la última restauración», si hay un punto guardado para este proyecto. */
+  function _respaldoSection() {
+    const r = AuthModule.puntoDeRestauracion?.();
+    if (!r) return '';
+    const cuando = new Date(r.cuando).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' });
+    const que = r.motivo === 'importar' ? 'la importación' : 'la restauración desde la nube';
+    return `
+      <div style="margin-top:10px;font-size:12px;color:var(--text2);line-height:1.5">
+        Antes de ${que} del ${cuando} se guardó una copia de lo que había en este dispositivo.
+        <div class="dm-grid" style="margin-top:6px">
+          <button class="btn-secondary dm-btn" id="dm-deshacer-restauracion">↶ Volver a esa copia</button>
+        </div>
+      </div>`;
   }
 
   function openDataModal() {
@@ -296,6 +334,7 @@ const DataIO = (() => {
             <button class="btn-secondary dm-btn" id="dm-export">↓ Exportar JSON</button>
             <button class="btn-secondary dm-btn" id="dm-import">↑ Importar JSON</button>
           </div>
+          ${_respaldoSection()}
         </div>
         ${fbxSection}${dbxSection}${noCloud}${(fbx || dbx) ? _bioSection(fbx ? 'firebase' : 'dropbox') : ''}${_sesionSection(cfg, { yaHayCierre: fbx || dbx })}
       </div>`, 'Administrar datos');
@@ -311,6 +350,16 @@ const DataIO = (() => {
 
     // Local
     document.getElementById('dm-export')?.addEventListener('click', exportJSON);
+    document.getElementById('dm-deshacer-restauracion')?.addEventListener('click', () => {
+      if (!window.confirm('¿Volver a los datos que había antes de la última restauración? Los actuales se sustituyen.')) return;
+      if (AuthModule.restaurarPuntoDeRestauracion()) {
+        UI.closeModal();
+        UI.toast('Se ha vuelto a la copia anterior ✓');
+        Router.navigate('dashboard');
+      } else {
+        UI.toast('No se ha podido recuperar la copia anterior', 'err');
+      }
+    });
     document.getElementById('dm-import')?.addEventListener('click', () => document.getElementById('import-file-input')?.click());
 
     // Firebase
@@ -322,7 +371,7 @@ const DataIO = (() => {
         // reseteo solo estaba en el `catch`, nunca en el camino feliz. El toast
         // decía «Guardado ✓» pero el botón seguía deshabilitado, así que parecía
         // que algo se había quedado a medias.
-        try { await FirebaseService.uploadBackup(); UI.toast('Guardado en Firebase ✓'); }
+        try { await _guardarAhora('Firebase'); }
         catch (e) { UI.toast('Error: ' + e.message, 'err'); }
         finally { btn.disabled = false; btn.textContent = 'Guardar ahora'; }
       });
@@ -335,7 +384,10 @@ const DataIO = (() => {
           const backup = await FirebaseService.downloadBackup();
           if (!backup) { UI.toast('Sin copia en Firebase todavía.', 'warn'); btn.disabled = false; btn.textContent = 'Cargar copia'; return; }
           UI.closeModal();
-          await applyImport(backup);
+          if (await applyImport(backup, { confirmar: false })) {
+            // Local y nube coinciden: que el siguiente arranque no vea conflicto.
+            StorageAdapter.marcarSincronizado(FirebaseService.ultimaRevBackup());
+          }
         } catch (e) { UI.toast('Error: ' + e.message, 'err'); btn.disabled = false; btn.textContent = 'Cargar copia'; }
       });
 
@@ -368,7 +420,7 @@ const DataIO = (() => {
       document.getElementById('dm-dbx-save')?.addEventListener('click', async () => {
         const btn = document.getElementById('dm-dbx-save');
         btn.disabled = true; btn.textContent = '…';
-        try { await DropboxService.uploadBackup(); UI.toast('Guardado en Dropbox ✓'); }
+        try { await _guardarAhora('Dropbox'); }
         catch (e) { UI.toast('Error: ' + e.message, 'err'); }
         finally { btn.disabled = false; btn.textContent = 'Guardar ahora'; }
       });
@@ -379,6 +431,17 @@ const DataIO = (() => {
         await AuthModule.logout({ olvidarCuenta: true });
       });
     }
+  }
+
+  /**
+   * «Guardar ahora». Pasa por el aviso de guardado cuando existe, para que el
+   * botón y el aviso «Tienes cambios sin guardar» no vayan cada uno por su
+   * lado: guardar desde aquí también lo da por atendido.
+   */
+  async function _guardarAhora(nombre) {
+    const aviso = window.FinanceApp?.ui?.avisoGuardado;
+    if (aviso) { await aviso.guardarAhora(); return; }
+    if ((await AuthModule.guardarEnNube()) === 'subido') UI.toast(`Guardado en ${nombre} ✓`);
   }
 
   // ── Has data ─────────────────────────────────────────────────────────────────

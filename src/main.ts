@@ -553,7 +553,11 @@ if (app) {
         guardar: async () => {
           const s = destino();
           if (!s?.uploadBackup) throw new Error('No hay ningún destino de copia conectado.');
-          await s.uploadBackup();
+          // Por el camino que sabe resolver un conflicto con otro dispositivo
+          // (pregunta en vez de pisar). El directo solo queda como reserva.
+          const auth = (globalThis as { AuthModule?: { guardarEnNube?: () => Promise<string> } }).AuthModule;
+          if (auth?.guardarEnNube) await auth.guardarEnNube();
+          else await s.uploadBackup();
         },
       });
       // Proyecto activo, siempre visible en el sidebar — sin esto no hay forma

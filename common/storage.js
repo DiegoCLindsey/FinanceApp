@@ -19,7 +19,13 @@ const StorageAdapter = (() => {
   /** Clave del sello: cuándo se tocó por última vez algo de los datos. */
   const SELLO = 'state__modificadoEn';
 
-  function get(key)        { const r = localStorage.getItem(P() + key); return r ? JSON.parse(r) : null; }
+  // Un valor corrupto se trata como ausente: sin el try, un JSON a medias en
+  // una sola clave impedía arrancar la aplicación entera.
+  function get(key) {
+    const r = localStorage.getItem(P() + key);
+    if (!r) return null;
+    try { return JSON.parse(r); } catch { console.error('[storage] valor corrupto en', key); return null; }
+  }
   function remove(key)     { localStorage.removeItem(P() + key); return true; }
 
   function _escribir(key, value) { localStorage.setItem(P() + key, JSON.stringify(value)); return true; }
@@ -53,7 +59,24 @@ const StorageAdapter = (() => {
   /** Fija el sello a la hora de la copia restaurada. */
   function sellar(ms) { return _escribir(SELLO, ms || Date.now()); }
 
-  return { get, set, remove, setRestaurando, modificadoEn, sellar };
+  // ── Estado de sincronización con la nube (por proyecto) ─────────────────────
+  // `base`: revisión de la copia remota que este dispositivo bajó o subió por
+  // última vez. `selloEnSync`: el sello local en ese instante. Con los dos se
+  // sabe, sin comparar relojes de máquinas distintas, si ha cambiado la nube
+  // (su revisión ya no es la base) y si ha cambiado el local (su sello ya no es
+  // el de la última sincronización). Ver docs/14, BUG-03.
+  const BASE = 'sync__base', SELLO_SYNC = 'sync__sello';
+  function baseNube() { try { return get(BASE); } catch { return null; } }
+  function selloEnSync() { try { return get(SELLO_SYNC); } catch { return null; } }
+  /** Deja constancia de que local y nube coinciden en la revisión `rev`. */
+  function marcarSincronizado(rev, sello) {
+    if (rev) _escribir(BASE, rev);
+    _escribir(SELLO_SYNC, sello === undefined ? modificadoEn() : sello);
+  }
+  /** ¿Se ha tocado algo aquí desde la última sincronización? */
+  function modificadoDesdeSync() { return modificadoEn() !== selloEnSync(); }
+
+  return { get, set, remove, setRestaurando, modificadoEn, sellar, baseNube, selloEnSync, marcarSincronizado, modificadoDesdeSync };
 })();
 
 // Publicado para el paquete nuevo: ver la nota al final de common/state.js.

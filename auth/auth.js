@@ -165,12 +165,36 @@ const DropboxService = (() => {
   let _ultimaFechaBackup = null;
   function ultimaFechaBackup() { return _ultimaFechaBackup; }
 
+  // Revisión de la copia remota (el `rev` que Dropbox asigna a cada versión
+  // del fichero). Ver la nota equivalente en firebase-service.js.
+  let _ultimaRev = null;
+  function ultimaRevBackup() { return _ultimaRev; }
+  async function revRemota() {
+    if (!isConnected()) throw new Error('No conectado a Dropbox.');
+    const resp = await _apiPost('https://api.dropboxapi.com/2/files/get_metadata', { path: FILE_PATH() });
+    if (resp.status === 409) return null;   // no existe todavía
+    if (resp.status === 401) throw new Error('Token de Dropbox inválido o expirado.');
+    if (!resp.ok) throw new Error('No se pudo consultar la copia en Dropbox (HTTP ' + resp.status + ').');
+    const meta = await resp.json().catch(() => ({}));
+    return meta.rev || null;
+  }
+
   // ── Subir backup cifrado ──────────────────────────────────────────────────────
   // Usa encryptPortable: genera sal+IV frescos y los embebe en el payload.
   // Formato en Dropbox: "salt_b64:iv_b64:ct_b64"
   // Cualquier dispositivo con la passphrase correcta puede descifrarlo.
-  async function uploadBackup() {
+  async function uploadBackup({ forzar = false } = {}) {
     if (!isConnected()) throw new Error('No conectado a Dropbox.');
+
+    if (!forzar) {
+      const remota = await revRemota();
+      if (remota && remota !== StorageAdapter.baseNube()) {
+        const e = new Error('La copia de la nube ha cambiado desde otro dispositivo.');
+        e.code = 'conflicto-nube';
+        throw e;
+      }
+    }
+    const selloAlEmpezar = StorageAdapter.modificadoEn();
 
     // Ver la nota en firebase-service.js: del almacenamiento y con la lista del
     // esquema, que es la única que no se queda atrás.
@@ -205,6 +229,9 @@ const DropboxService = (() => {
       const err = await resp.json().catch(() => ({}));
       throw new Error('Error al subir a Dropbox: ' + (err?.error_summary || resp.status));
     }
+    const meta = await resp.json().catch(() => ({}));
+    _ultimaRev = meta.rev || null;
+    StorageAdapter.marcarSincronizado(_ultimaRev, selloAlEmpezar);
   }
 
   // ── Descargar y descifrar backup ─────────────────────────────────────────────
@@ -233,7 +260,8 @@ const DropboxService = (() => {
     try {
       const meta = JSON.parse(resp.headers.get('Dropbox-API-Result') || '{}');
       _ultimaFechaBackup = meta.server_modified ? Date.parse(meta.server_modified) : null;
-    } catch { _ultimaFechaBackup = null; }
+      _ultimaRev = meta.rev || null;
+    } catch { _ultimaFechaBackup = null; _ultimaRev = null; }
 
     const cipher = await resp.text();
     try {
@@ -250,7 +278,7 @@ const DropboxService = (() => {
 
   return {
     setup, unlock, restore, hasSavedSession, isConnected, forget,
-    uploadBackup, downloadBackup, ultimaFechaBackup, tokenAgeHours, couldBeExpired, esClaveActual,
+    uploadBackup, downloadBackup, ultimaFechaBackup, ultimaRevBackup, revRemota, tokenAgeHours, couldBeExpired, esClaveActual,
   };
 })();
 
@@ -432,7 +460,43 @@ const AuthModule = (() => {
    * vista nueva se reescribía el almacenamiento con los datos VIEJOS. Era una de
    * las dos causas de «recargo y aparecen datos antiguos».
    */
-  function _volcar(backup, fechaNube) {
+  const LS_RESPALDO = 'financeapp_respaldo_previo';
+  /**
+   * Guarda lo que hay AHORA en este dispositivo antes de pisarlo con otra
+   * copia. Una sola posición: es la red para «he restaurado lo que no era».
+   */
+  function _guardarPuntoDeRestauracion(motivo) {
+    try {
+      const datos = window.FinanceApp?.datos?.snapshot?.();
+      if (!datos) return;
+      const proyecto = window.FinanceApp?.proyectos?.activo?.()?._id || 'default';
+      localStorage.setItem(LS_RESPALDO, JSON.stringify({ cuando: Date.now(), motivo, proyecto, datos }));
+    } catch (e) {
+      // Sin sitio para el respaldo no se bloquea la restauración: se avisa.
+      console.warn('[auth] No se ha podido guardar el punto de restauración:', e.message);
+    }
+  }
+  /** El punto de restauración del proyecto activo, o null. */
+  function puntoDeRestauracion() {
+    try {
+      const r = JSON.parse(localStorage.getItem(LS_RESPALDO) || 'null');
+      const proyecto = window.FinanceApp?.proyectos?.activo?.()?._id || 'default';
+      return r && r.datos && r.proyecto === proyecto ? r : null;
+    } catch { return null; }
+  }
+  /** Devuelve el dispositivo a como estaba antes de la última restauración. */
+  function restaurarPuntoDeRestauracion() {
+    const r = puntoDeRestauracion();
+    if (!r) return false;
+    const aplicar = window.FinanceApp?.datos?.aplicar;
+    if (!aplicar) return false;
+    aplicar(r.datos);            // sella: vuelve a ser un cambio local pendiente de subir
+    localStorage.removeItem(LS_RESPALDO);
+    return true;
+  }
+
+  function _volcar(backup, fechaNube, revNube) {
+    _guardarPuntoDeRestauracion('restaurar-nube');
     const aplicar = window.FinanceApp?.datos?.aplicar;
     if (aplicar) {
       // sellar:false → lo que baja de la nube no es una modificación tuya.
@@ -443,6 +507,8 @@ const AuthModule = (() => {
       }
     }
     StorageAdapter.sellar(fechaNube || Date.now());
+    // Local y nube coinciden ahora en esta revisión.
+    StorageAdapter.marcarSincronizado(revNube || null);
   }
 
   /**
@@ -480,30 +546,54 @@ const AuthModule = (() => {
    * nada que perder: primera restauración, o local sin tocar desde la última vez.
    */
   async function _sincronizarDesdeNube(service, nombre) {
-    // Antes incluso del backup del proyecto activo: si el usuario tiene un
-    // proyecto nuevo esperando en la nube, tiene que verlo aparecer aquí
-    // aunque el proyecto que tenga abierto ahora mismo no tenga nada que
-    // sincronizar.
-    await _sincronizarRegistroProyectos(service);
+    // PRIMERO la copia: descifrarla es lo que valida la clave. La lista de
+    // proyectos se sincroniza después, porque sincronizarla escribe en la nube
+    // y con la clave mal tecleada se sobrescribía con una copia ilegible
+    // (docs/14, BUG-04). Si la clave es incorrecta, esto lanza y no se escribe
+    // nada.
     const backup = await service.downloadBackup();
+    await _sincronizarRegistroProyectos(service);
     if (!backup) return;
 
     const fechaNube  = service.ultimaFechaBackup?.() ?? null;
+    const revNube    = service.ultimaRevBackup?.() ?? null;
+    const base       = StorageAdapter.baseNube();
     const fechaLocal = StorageAdapter.modificadoEn();
+    const bajar = (avisar) => {
+      _volcar(backup, fechaNube, revNube);
+      if (avisar) UI.toast(`Datos restaurados desde ${nombre} ✓`);
+    };
 
     // Sin sello local no hay nada que proteger: es la primera restauración.
-    if (!fechaLocal) { _volcar(backup, fechaNube); UI.toast(`Datos restaurados desde ${nombre} ✓`); return; }
+    if (!fechaLocal) { bajar(true); return; }
 
-    // El local no se ha tocado desde que se trajo esta copia: nada que decidir.
-    if (fechaNube && fechaLocal <= fechaNube) { _volcar(backup, fechaNube); return; }
+    if (base && revNube) {
+      // Camino normal: se decide con revisiones, no con relojes.
+      //
+      //   nube respecto a la base | local modificado | acción
+      //   igual                   | no               | nada
+      //   igual                   | sí               | subir sin preguntar
+      //   distinta                | no               | bajar sin preguntar
+      //   distinta                | sí               | preguntar
+      const modificado = StorageAdapter.modificadoDesdeSync();
+      if (base === revNube) {
+        if (modificado) {
+          try { await service.uploadBackup(); }
+          catch (e) { console.warn('[auth] No se han podido subir los cambios pendientes:', e.message); }
+        }
+        return;
+      }
+      if (!modificado) { bajar(false); return; }
+    } else if (fechaNube && fechaLocal <= fechaNube) {
+      // Dispositivo que aún no tiene base (primera vez tras esta versión): se
+      // mantiene el criterio anterior por fechas, una sola vez.
+      bajar(false);
+      return;
+    }
 
     // El sello puede ser reciente sin que haya datos reales debajo — un
-    // dispositivo recién estrenado persiste su estado de fábrica al arrancar,
-    // lo que marca el sello aunque el usuario no haya tecleado nada (ver
-    // `_localEsVacioOPorDefecto`). Si el local es, en la práctica, el estado
-    // vacío de fábrica, no hay nada que decidir: se restaura sin preguntar,
-    // igual que en la primera restauración.
-    if (_localEsVacioOPorDefecto()) { _volcar(backup, fechaNube); UI.toast(`Datos restaurados desde ${nombre} ✓`); return; }
+    // dispositivo recién estrenado persiste su estado de fábrica al arrancar.
+    if (_localEsVacioOPorDefecto()) { bajar(true); return; }
 
     const eleccion = await _preguntarConflicto({
       nombre,
@@ -517,18 +607,68 @@ const AuthModule = (() => {
     });
 
     if (eleccion === 'nube') {
-      _volcar(backup, fechaNube);
-      UI.toast(`Datos restaurados desde ${nombre} ✓`);
+      bajar(true);
     } else {
       // Se conserva lo local y se sube, para que la nube deje de ir por detrás.
       try {
-        await service.uploadBackup();
+        await service.uploadBackup({ forzar: true });
         UI.toast('Se conservan tus datos de este dispositivo y se han subido ✓');
       } catch (e) {
         console.error('[auth] No se ha podido subir la copia local:', e);
         UI.toast('Se conservan tus datos de este dispositivo (no se han podido subir)', 'warn');
       }
     }
+  }
+
+  /** El servicio de nube conectado ahora mismo, con su nombre. */
+  function _servicioActivo() {
+    if (FirebaseService.isConnected()) return { service: FirebaseService, nombre: 'Firebase' };
+    if (DropboxService.isConnected())  return { service: DropboxService,  nombre: 'Dropbox' };
+    return null;
+  }
+
+  /**
+   * Guarda en la nube, resolviendo el conflicto si otro dispositivo ha subido
+   * entre medias. Es el único camino por el que deben pasar «Guardar ahora» y
+   * el autoguardado. Devuelve 'subido' o 'restaurado'.
+   */
+  let _resolviendoConflicto = null;
+  async function guardarEnNube() {
+    const activo = _servicioActivo();
+    if (!activo) throw new Error('No hay ningún destino de copia conectado.');
+    const { service, nombre } = activo;
+    try {
+      await service.uploadBackup();
+      return 'subido';
+    } catch (e) {
+      if (e?.code !== 'conflicto-nube') throw e;
+    }
+    // Un solo diálogo aunque el temporizador y el botón coincidan.
+    if (_resolviendoConflicto) return _resolviendoConflicto;
+    _resolviendoConflicto = (async () => {
+      const backup = await service.downloadBackup();
+      if (!backup) { await service.uploadBackup({ forzar: true }); return 'subido'; }
+      const eleccion = await _preguntarConflicto({
+        nombre,
+        fechaNube:  service.ultimaFechaBackup?.() ?? null,
+        fechaLocal: StorageAdapter.modificadoEn(),
+        resumenNube:  _resumirCopia(backup),
+        resumenLocal: _resumirCopia({
+          expenses: State.get('expenses'), loans: State.get('loans'),
+          accounts: State.get('accounts'), nominas: State.get('nominas'),
+        }),
+      });
+      if (eleccion === 'nube') {
+        _volcar(backup, service.ultimaFechaBackup?.() ?? null, service.ultimaRevBackup?.() ?? null);
+        UI.toast(`Datos restaurados desde ${nombre} ✓`);
+        // Todo lo que hay en pantalla viene de los datos anteriores.
+        setTimeout(() => window.location.reload(), 600);
+        return 'restaurado';
+      }
+      await service.uploadBackup({ forzar: true });
+      return 'subido';
+    })().finally(() => { _resolviendoConflicto = null; });
+    return _resolviendoConflicto;
   }
 
   /** Diálogo de conflicto. Resuelve con 'nube' o 'local'. */
@@ -542,10 +682,11 @@ const AuthModule = (() => {
           <div class="auth-section-title" style="margin-bottom:6px">Hay dos versiones de tus datos</div>
           <p style="font-size:12px;color:var(--text2);line-height:1.6;margin:0 0 16px">
             La copia de ${_esc(nombre)} y la de este dispositivo no coinciden. Elige cuál conservar;
-            <strong>la otra se perderá</strong>.
+            la otra se sustituye. Si eliges la de ${_esc(nombre)}, la de este
+            dispositivo se guarda como punto de restauración en «Administrar datos».
           </p>
           <button class="btn-secondary full-width" data-elige="local" style="text-align:left;padding:12px 14px;margin-bottom:10px">
-            <div style="font-weight:700;font-size:13px;margin-bottom:3px">Este dispositivo <span style="color:var(--accent)">— más reciente</span></div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:3px">Este dispositivo</div>
             <div style="font-size:11px;color:var(--text3)">${_esc(_fmtFecha(fechaLocal))}</div>
             <div style="font-size:11px;color:var(--text2);margin-top:3px">${_esc(resumenLocal)}</div>
           </button>
@@ -1207,7 +1348,7 @@ const AuthModule = (() => {
     }
   }
 
-  return { init, launch, logout, connectCloud, _wlRemove: null, _wlSetAdmin: null };
+  return { init, launch, logout, connectCloud, guardarEnNube, _sincronizar: _sincronizarDesdeNube, puntoDeRestauracion, restaurarPuntoDeRestauracion, _wlRemove: null, _wlSetAdmin: null };
 })();
 
 // Publicado para el paquete nuevo: ver la nota al final de common/state.js.
