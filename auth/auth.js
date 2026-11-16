@@ -1171,3 +1171,7 @@ const AuthModule = (() => {
 
   return { init, launch, logout, connectCloud, _wlRemove: null, _wlSetAdmin: null };
 })();
+
+// Publicado para el paquete nuevo: ver la nota al final de common/state.js.
+globalThis.DropboxService = DropboxService;
+globalThis.AuthModule = AuthModule;

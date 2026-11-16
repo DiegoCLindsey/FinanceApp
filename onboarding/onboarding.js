@@ -96,8 +96,13 @@ const OnboardingModule = (() => {
     const cfg = State.get('config');
     State.set('config',{...cfg, onboardingDone:true});
     document.getElementById('wizard-overlay')?.classList.add('hidden');
+    // La barra de periodo enseña el saldo de anclaje: sin esto seguía en 0 €.
+    if (typeof PeriodBar !== 'undefined') PeriodBar.init(State.get('config'));
     Router.navigate('dashboard');
   }
 
   return { show, skip, next, prev };
 })();
+
+// Publicado para el paquete nuevo: ver la nota al final de common/state.js.
+globalThis.OnboardingModule = OnboardingModule;

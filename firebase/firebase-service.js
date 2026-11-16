@@ -467,3 +467,6 @@ const FirebaseService = (() => {
     listWhitelist, addToWhitelist, removeFromWhitelist, setUserAdmin,
   };
 })();
+
+// Publicado para el paquete nuevo: ver la nota al final de common/state.js.
+globalThis.FirebaseService = FirebaseService;

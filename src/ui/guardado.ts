@@ -45,6 +45,8 @@ export interface Guardado {
   estado(): EstadoGuardado;
   /** Lanza el guardado desde fuera (el temporizador de autoguardado). */
   guardarAhora(): Promise<void>;
+  /** ¿Hay cambios que todavía no se han subido? El autoguardado no sube si no. */
+  hayPendiente(): boolean;
   detener(): void;
 }
 
@@ -178,6 +180,7 @@ export function instalarAvisoGuardado(deps: DepsGuardado): Guardado {
   return {
     estado: () => (ocultadoPorElUsuario && estado === 'oculto' ? 'oculto' : estado),
     guardarAhora,
+    hayPendiente: () => marca.pendiente(),
     detener() {
       desuscribir();
       quitar();

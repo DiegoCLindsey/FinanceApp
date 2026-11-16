@@ -54,10 +54,45 @@ const State = (() => {
     }
   };
   let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
-  function get(key) { return state[key]; }
-  function set(key, value) { state[key] = value; _persist(key); }
+
+  // ── Una sola copia del estado ───────────────────────────────────────────────
+  // Este módulo y el store del paquete nuevo (src/state/store.ts) leían y
+  // escribían las mismas claves de localStorage, pero cada uno con SU copia en
+  // memoria. Lo que escribía uno no lo veía el otro, y su siguiente escritura
+  // sobre esa colección devolvía al almacenamiento la copia vieja: lo tecleado
+  // en el asistente inicial desaparecía al crear el primer gasto desde la vista
+  // de Gastos, «Quitar simulaciones» las resucitaba, y los ajustes guardados
+  // aquí se perdían al cambiar un flag (docs/14, BUG-01).
+  //
+  // Con el paquete nuevo cargado, este módulo deja de tener estado propio: es
+  // una fachada del store. La copia local de abajo solo se usa si el bundle no
+  // ha podido cargar.
+  function _store() {
+    const s = (typeof window !== 'undefined') ? window.FinanceApp?.store : null;
+    return s || null;
+  }
+  /** ¿La colección existe en el esquema del store? Las retiradas (goals, escenarios) no. */
+  function _enStore(s, key) { return s.get(key) !== undefined; }
+
+  function get(key) {
+    const s = _store();
+    if (s && _enStore(s, key)) return s.get(key);
+    return state[key];
+  }
+  function set(key, value) {
+    const s = _store();
+    if (s && _enStore(s, key)) { s.set(key, value); return; }
+    state[key] = value;
+    // Con el store presente, lo que no está en su esquema es una colección
+    // retirada: no se persiste, para no resucitar claves huérfanas.
+    if (!s) _persist(key);
+  }
   async function _persist(key) { await StorageAdapter.set(`state_${key}`, state[key]); }
   async function load() {
+    // Con el store no hay nada que cargar aquí: él ya leyó, migró y garantiza
+    // sus invariantes (cuenta por defecto, una sola principal).
+    if (_store()) return;
+
     const _stateKeys = Object.keys(DEFAULT_STATE);
     for (const k of _stateKeys) { const val = StorageAdapter.get(`state_${k}`); if (val !== null) state[k] = val; }
 
@@ -86,6 +121,7 @@ const State = (() => {
     // dejarle el trabajo. La rama de abajo se conserva solo como red de
     // seguridad para cuando el bundle nuevo no ha podido cargar.
     if (window.FinanceApp) {
+      // Hay paquete nuevo pero sin store utilizable (arranque a medias).
       ensureDefaultAccount();
       return;
     }
@@ -203,6 +239,7 @@ const State = (() => {
     ensureDefaultAccount();
   }
   function ensureDefaultAccount() {
+    if (_store()) return; // el store mantiene sus propias invariantes
     if (!state.accounts || state.accounts.length === 0) {
       state.accounts = [{ ...DEFAULT_ACCOUNT }];
       _persist('accounts');
@@ -222,16 +259,38 @@ const State = (() => {
     }
   }
   function getPrincipalAccountId() {
-    const accounts = state.accounts || [];
+    const accounts = get('accounts') || [];
     const p = accounts.find(a => a.esCuentaPrincipal && a.activo) || accounts.find(a => a.activo);
     return p ? p._id : 'default';
   }
-  function addItem(col, item) { const arr = [...(state[col]||[])]; const ni = { ...item, _id: _uid() }; arr.push(ni); set(col, arr); return ni; }
-  function updateItem(col, id, patch) { set(col, (state[col]||[]).map(i => i._id===id ? {...i,...patch} : i)); }
-  function removeItem(col, id) { set(col, (state[col]||[]).filter(i => i._id!==id)); }
+  function addItem(col, item) {
+    const s = _store();
+    if (s && _enStore(s, col)) return s.addItem(col, item);
+    const arr = [...(state[col]||[])]; const ni = { ...item, _id: _uid() }; arr.push(ni); set(col, arr); return ni;
+  }
+  function updateItem(col, id, patch) {
+    const s = _store();
+    if (s && _enStore(s, col)) { s.updateItem(col, id, patch); return; }
+    set(col, (state[col]||[]).map(i => i._id===id ? {...i,...patch} : i));
+  }
+  function removeItem(col, id) {
+    const s = _store();
+    // Por el store, además, el borrado queda apuntado para «Deshacer».
+    if (s && _enStore(s, col)) { s.removeItem(col, id); return; }
+    set(col, (state[col]||[]).filter(i => i._id!==id));
+  }
   function _uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
   // Helper: nombres de cuentas para selects
-  function accountOptions() { return (state.accounts||[]).map(a => [a._id, a.nombre + (a.simulacion?' (SIM)':'')]); }
-  function accountName(id) { const a = (state.accounts||[]).find(a=>a._id===id); return a ? a.nombre : id; }
+  function accountOptions() { return (get('accounts')||[]).map(a => [a._id, a.nombre + (a.simulacion?' (SIM)':'')]); }
+  function accountName(id) { const a = (get('accounts')||[]).find(a=>a._id===id); return a ? a.nombre : id; }
   return { get, set, load, addItem, updateItem, removeItem, ensureDefaultAccount, accountOptions, accountName, getPrincipalAccountId };
 })();
+
+// `const State` en el ámbito global NO crea `window.State` (ver la nota al final
+// de router/router.js). El paquete nuevo es un bundle aparte y solo puede
+// alcanzar estos módulos a través de `globalThis`, así que hay que publicarlos:
+// sin esto, `globalThis.State`, `UI`, `FirebaseService`… eran `undefined` para
+// él y, en silencio, no salían los avisos de las vistas nuevas, el aviso de
+// «cambios sin guardar» no aparecía nunca y el autoguardado no subía nada
+// (docs/14, BUG-26).
+globalThis.State = State;

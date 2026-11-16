@@ -2188,3 +2188,6 @@ const DashboardModule = (() => {
 
   return { render, abrir, actualizar, setVentanaVelas, setDashScope, setDashTab, limpiarSimulaciones, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleCriticos, toggleConfig, toggleAnalisis, verDetalleDistribucionMedia };
 })();
+
+// Publicado para el paquete nuevo: ver la nota al final de common/state.js.
+globalThis.DashboardModule = DashboardModule;

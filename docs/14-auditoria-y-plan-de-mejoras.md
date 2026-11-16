@@ -118,7 +118,7 @@ avanzada, y todo lo que exija un servidor propio.
 
 | Sección | Tareas | P0 | P1 | P2 | P3 |
 |---|---:|---:|---:|---:|---:|
-| 3 · Fallos | 25 | 7 | 8 | 9 | 1 |
+| 3 · Fallos | 26 | 8 | 8 | 9 | 1 |
 | 4 · Seguridad | 11 | 0 | 5 | 5 | 1 |
 | 5 · UI/UX | 29 | 0 | 7 | 16 | 6 |
 | 6 · Mejoras de lo existente | 12 | — | — | — | — |
@@ -131,7 +131,7 @@ avanzada, y todo lo que exija un servidor propio.
 
 ### 3.1 Pérdida o corrupción de datos (P0)
 
-#### [ ] BUG-01 · Dos copias del estado en memoria que se pisan
+#### [x] BUG-01 · Dos copias del estado en memoria que se pisan
 
 - **Prioridad** P0 · **Esfuerzo** M · **Evidencia** ✔ reproducido
 - **Ficheros** `common/state.js` (todo), `src/main.ts:350` (`refrescarLegacy`),
@@ -229,7 +229,29 @@ avanzada, y todo lo que exija un servidor propio.
     amortización, nómina, cuenta y margen.
   - Test: tras 3 aperturas, editar un gasto llama a `updateItem` una vez.
 
-#### [ ] BUG-02 · El cuadro de mando sale vacío al terminar el asistente
+#### [x] BUG-26 · El paquete nuevo no veía los módulos antiguos
+
+- **Prioridad** P0 · **Esfuerzo** S · **Evidencia** ✔ reproducido (encontrado al arreglar `BUG-01`)
+- **Ficheros** final de `common/state.js`, `common/storage.js`, `ui/ui.js`,
+  `dashboard/dashboard.js`, `data-io/data-io.js`, `auth/auth.js`,
+  `firebase/firebase-service.js`, `onboarding/onboarding.js`, `index.html`
+- **Problema.** Los módulos legacy se declaran con `const` en el ámbito global,
+  y eso **no** crea propiedad en `window`. El bundle los busca con
+  `globalThis.UI`, `globalThis.State`, `globalThis.FirebaseService`… y recibía
+  `undefined` para todos menos `Router` (el único que se publicaba a mano).
+  En silencio:
+  - los avisos («Creado», «Actualizado», errores de validación) de las vistas
+    nuevas no se mostraban;
+  - el aviso «Tienes cambios sin guardar» no aparecía nunca;
+  - **el autoguardado no subía nada**: encontraba el aviso, este no encontraba
+    destino y fallaba sin decirlo;
+  - la lista de proyectos no se subía al crear o renombrar uno;
+  - el cierre por inactividad leía una configuración atrasada.
+- **Solución aplicada.** Cada módulo legacy se publica en `globalThis` al final
+  de su fichero. Como el autoguardado vuelve a funcionar, ahora solo sube si hay
+  cambios pendientes (primera parte de `BUG-03`).
+
+#### [x] BUG-02 · El cuadro de mando sale vacío al terminar el asistente
 
 - **Prioridad** P0 (es la primera impresión) · **Esfuerzo** S · **Evidencia** ✔ reproducido
 - **Ficheros** `dashboard/dashboard.js:498` (`abrir`), `onboarding/onboarding.js:95-100`
@@ -1262,6 +1284,26 @@ lotes (importación, «quitar simulaciones», borrado múltiple).
 Exportar a CSV los movimientos reales y el extracto proyectado; hoja de estilos
 de impresión para el cuadro de mando (un «informe del periodo» en una página).
 
+#### [ ] MEJ-13 · Estimaciones del mes que «bailan» — Esfuerzo M — *pedido por el propietario (2026-11-16)*
+
+Las cifras estimadas por periodo cambian de un día para otro sin que cambien los
+datos. Antes de tocar, **reproducir y medir** con un estado fijo variando solo
+«hoy» y el periodo. Sospechosos, por orden:
+1. Medias mensuales calculadas dividiendo por días/30,44 sobre una ventana que
+   depende de «hoy» o del periodo elegido, en vez de por meses naturales.
+2. Gastos con periodicidad en días («cada 7/14/30 días») que caen 4 o 5 veces
+   según el mes: es correcto, pero hay que mostrarlo como rango o media, no
+   como salto.
+3. Mezcla de real y estimado dentro del mes en curso según la fecha de
+   «Simulación desde».
+4. Cuotas anuales prorrateadas en unas tarjetas y no en otras.
+5. La gráfica de saldo suaviza con curva entre eventos: el trazo debería ser
+   escalonado.
+
+Criterio de «fino»: el total estimado de un mes natural **no cambia** al avanzar
+el día dentro de ese mes ni al cambiar el periodo visible, salvo que entren
+datos reales. Test que lo fije.
+
 ---
 
 ## 7. Funcionalidades nuevas
@@ -1319,6 +1361,39 @@ aviso 30 días antes de la renovación con el importe del año anterior.
 Para quien lleva las cuentas en pareja: un proyecto bajo una ruta compartida de
 Firestore con su propia clave de cifrado, que cada uno desbloquea. Exige
 `MEJ-01` (fusión) y reglas nuevas. Solo si hay demanda real.
+
+#### [ ] NEW-09 · «Este mes» desglosado: préstamos, facturas, resto y margen de ahorro — Esfuerzo M — *pedido por el propietario (2026-11-16)*
+
+En la primera pantalla del cuadro de mando (va con `UX-12`), para el mes en
+curso:
+
+| Bloque | Qué suma |
+|---|---|
+| **Préstamos** | Cuotas y amortizaciones previstas del mes (`sourceType: 'loan'`) |
+| **Facturas** | Gastos fijos recurrentes: ver detección abajo |
+| **Otros gastos esperados** | El resto de gastos estimados del mes (variables, puntuales) |
+| **Margen de ahorro esperado** | Ingresos del mes − los tres bloques anteriores, en € y en % de los ingresos |
+
+Cada bloque: importe total, cuánto ha vencido ya y cuánto queda por cargar en
+lo que resta de mes, y al tocarlo, la lista de conceptos con su día.
+
+**Cómo detectar una «factura».** Por este orden, de modo que funcione sin tocar
+nada y se pueda corregir a mano:
+1. Marca explícita: campo nuevo `Expense.esFactura?: boolean` (interruptor
+   «Es una factura / recibo» en el formulario).
+2. Si no hay marca, heurística: gasto **recurrente** (no «único», no diario),
+   con día de cargo fijo o periodicidad de 1, 2, 3, 6 o 12 meses, y clasificado
+   como necesidad o básico.
+3. Refuerzo por etiqueta o concepto: `luz`, `gas`, `agua`, `internet`, `fibra`,
+   `móvil`, `teléfono`, `seguro`, `comunidad`, `alquiler`, `ibi`, `basuras`,
+   `suscripción`, y los comercios que `NEW-03` detecte como recurrentes.
+4. Lo que la heurística proponga se enseña una vez como sugerencia («Hemos
+   tratado estos 6 gastos como facturas · Revisar») y la respuesta se guarda en
+   `esFactura`.
+
+**Hecho cuando**: la suma de los cuatro bloques cuadra con «Gastos estimados» y
+«Ahorro esperado» actuales para el mismo mes; hay tests del clasificador; los
+anuales solo cuentan en el mes en que vencen.
 
 **Descartado**: conexión directa con bancos (PSD2 exige servidor y licencia),
 multimoneda, categorización con servicios externos (los datos saldrían del
@@ -1404,7 +1479,7 @@ coherente con `BUG-12`.
 |---|---|---|
 | **0 · Que no se pierda nada** | Cerrar todos los P0 y poner la red que los habría detectado | `BUG-25` (el primero: medio día y es el que más se sufre), `BUG-01`, `BUG-02`, `BUG-03`, `BUG-04`, `BUG-06`, `BUG-07`, `TEC-02` (flujos de alta y de dos dispositivos), `MEJ-10` (mínimo: copia previa a restaurar) |
 | **1 · Seguridad y robustez** | Cerrar la vía de ejecución de código y los fallos de acceso | `SEC-01`, `SEC-04` + `BUG-24`, `SEC-05`, `SEC-07`, `SEC-08`, `BUG-05`, `BUG-08`, `BUG-09`, `BUG-11`, `BUG-12`, `BUG-15`, `BUG-16` |
-| **2 · El móvil** | Que la consulta diaria quepa en una pantalla | `UX-01`, `UX-02`, `UX-03`, `UX-05`, `UX-12`, `UX-14`, `UX-16`, `UX-17` |
+| **2 · El móvil** | Que la consulta diaria quepa en una pantalla | `UX-12` + `NEW-09` + `MEJ-13` (primero: pedido expreso), `UX-01`, `UX-02`, `UX-03`, `UX-05`, `UX-14`, `UX-16`, `UX-17` |
 | **3 · Confianza en el número** | Que la proyección se parezca al banco | `BUG-21`, `MEJ-04`, `MEJ-03`, `NEW-03`, `MEJ-06` |
 | **4 · Sincronización sin pensar** | Dos dispositivos sin diálogos | `MEJ-01`, `MEJ-02`, `BUG-14`, `BUG-20`, `UX-26` |
 | **5 · Las tres preguntas** | Respuesta directa a cada una | `NEW-01`, `MEJ-07`, `NEW-02`, `NEW-05`, `NEW-04` |

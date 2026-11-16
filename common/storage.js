@@ -55,3 +55,6 @@ const StorageAdapter = (() => {
 
   return { get, set, remove, setRestaurando, modificadoEn, sellar };
 })();
+
+// Publicado para el paquete nuevo: ver la nota al final de common/state.js.
+globalThis.StorageAdapter = StorageAdapter;

@@ -163,7 +163,9 @@ const DataIO = (() => {
         // «Subiendo… → ¡Guardado!» que el botón y no suba dos veces a la vez si
         // el usuario acaba de pulsarlo. Sin el paquete nuevo, se sube directo.
         const aviso = window.FinanceApp?.ui?.avisoGuardado;
-        if (aviso) { await aviso.guardarAhora(); return; }
+        // Solo si hay algo que subir. Subir «por si acaso» cada N minutos hacía
+        // que un dispositivo olvidado abierto pisara la nube con su copia vieja.
+        if (aviso) { if (aviso.hayPendiente()) await aviso.guardarAhora(); return; }
         if      (FirebaseService.isConnected()) await FirebaseService.uploadBackup();
         else if (DropboxService.isConnected())  await DropboxService.uploadBackup();
       } catch (e) { console.warn('Auto-save error:', e.message); }
@@ -569,3 +571,6 @@ const DataIO = (() => {
     openDataModal, initAutoSave,
   };
 })();
+
+// Publicado para el paquete nuevo: ver la nota al final de common/state.js.
+globalThis.DataIO = DataIO;

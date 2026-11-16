@@ -91,3 +91,5 @@ const UI = (() => {
            diaPagoWidget, onDiaPagoModeChange, getDiaPagoValue };
 })();
 
+// Publicado para el paquete nuevo: ver la nota al final de common/state.js.
+globalThis.UI = UI;
