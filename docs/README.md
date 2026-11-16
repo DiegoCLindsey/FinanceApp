@@ -20,8 +20,13 @@ contexto previo.
 | [11-dashboard-rediseno.md](11-dashboard-rediseno.md) | Rediseño del dashboard: apertura/cierre de saldo, gastos repetidos agrupados, disfrute/básico/ahorro, cashflow de préstamos, desglose sin promediar por persona, y fusión de la pestaña Gráficas en Resumen |
 | [12-colchon-cuotas-con-tope.md](12-colchon-cuotas-con-tope.md) | El colchón contaba cada cuota de préstamo básico X meses enteros aunque a la cuota le quedara menos: ahora es `min(X,Y)`, con Y los meses reales que le quedan |
 | [13-desglose-distribucion-media.md](13-desglose-distribucion-media.md) | La tarjeta "Distribución media mensual" del dashboard ahora se puede pulsar para ver qué gastos e ingresos concretos componen cada apartado del donut |
+| [14-auditoria-y-plan-de-mejoras.md](14-auditoria-y-plan-de-mejoras.md) | Auditoría completa (2026-11-16): fallos, seguridad, UI/UX por componente, mejoras y funcionalidades nuevas, como tareas con ID, prioridad y criterios de aceptación listas para implementar |
 
 ## Cómo continuar el trabajo
+
+> **El plan vigente es [14-auditoria-y-plan-de-mejoras.md](14-auditoria-y-plan-de-mejoras.md).**
+> Empieza por su sección 9 (hoja de ruta). Los pasos de abajo describen el plan
+> de refactor anterior y se conservan como histórico.
 
 1. Lee `02-plan-refactor.md` y localiza la **primera tarea no marcada como hecha** (`[ ]`).
 2. Cada tarea lista sus ficheros afectados y criterios de aceptación. No empieces una fase
