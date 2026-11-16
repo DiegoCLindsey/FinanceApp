@@ -111,6 +111,11 @@ export interface Expense {
   basico?: boolean;
   sujetoIRPF?: boolean;
   clasificacion?: Clasificacion;
+  /**
+   * ¿Es una factura o recibo? `true`/`false` lo fija el usuario; ausente =
+   * decidirlo automáticamente (ver `engine/mes.esFactura`).
+   */
+  esFactura?: boolean;
   /** Estimación de la que proviene por un ajuste automático (F4, tarea 4.6). */
   ajustadaDesdeId?: string;
   /** Fecha en la que se aplicó el ajuste que la creó. */

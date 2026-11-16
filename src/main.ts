@@ -16,6 +16,8 @@ import * as analysis from './engine/analysis';
 import * as margins from './engine/margins';
 import * as avisos from './engine/avisos';
 import * as dashboard from './engine/dashboard';
+import * as mes from './engine/mes';
+import { tarjetaMes } from './features/dashboard/mes-card';
 import { proyectarGastos } from './engine/providers/expenses';
 import { proyectarPrestamos } from './engine/providers/loans';
 import { proyectarTransferencias } from './engine/providers/transfers';
@@ -88,6 +90,8 @@ export interface FinanceAppNamespace {
     /** Avisos con antelación sobre los cruces ya detectados. */
     avisos: typeof avisos;
     dashboard: typeof dashboard;
+    /** Desglose del mes en curso y meses de calendario. */
+    mes: typeof mes;
   };
   /** Store tipado ya cargado (migraciones aplicadas). */
   store: Store;
@@ -95,6 +99,8 @@ export interface FinanceAppNamespace {
   flags: Flags;
   featureRegistry: { all: typeof FEATURES; porGrupo: typeof featuresPorGrupo };
   ui: {
+    /** HTML de la tarjeta «Este mes» del cuadro de mando. */
+    tarjetaMes: typeof tarjetaMes;
     /** Abre la ventana de configuración de funcionalidades. */
     openFeatures: () => void;
     /** Abre la ventana de proyectos: cambiar, crear, renombrar, duplicar, importar. */
@@ -416,11 +422,13 @@ function bootstrap(): FinanceAppNamespace {
       margins,
       avisos,
       dashboard,
+      mes,
     },
     store,
     flags,
     featureRegistry: { all: FEATURES, porGrupo: featuresPorGrupo },
     ui: {
+      tarjetaMes,
       openFeatures: featuresModal.open,
       openProyectos: proyectosModal.open,
       openPersonas: personasModal.open,

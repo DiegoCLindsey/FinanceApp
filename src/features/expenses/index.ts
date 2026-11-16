@@ -11,6 +11,7 @@
 //     alimentan el análisis de precisión y "sugerir ajuste".
 //
 import { formatEUR } from '@/core/money';
+import { esFactura } from '@/engine/mes';
 import { labelDiaPago, todayISO, type ISODate } from '@/core/dates';
 import type { FeatureManifest } from '@/app/feature-registry';
 import type { Account, Expense, Persona, TipoExpense } from '@/state/schema';
@@ -164,6 +165,7 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
         ${exp.tipo === 'gasto' && exp.clasificacion === 'deseo' ? '<span class="badge" style="background:rgba(255,209,102,0.15);color:#ffb020" title="Gasto clasificado como deseo">deseo</span>' : ''}
         ${exp.tipo === 'gasto' && exp.clasificacion === null ? '<span class="badge badge-inactive" title="Excluido del análisis de distribución">sin clasificar</span>' : ''}
         ${exp.basico ? '<span class="badge badge-orange" title="Gasto básico">⚑ básico</span>' : ''}
+        ${exp.tipo === 'gasto' && esFactura(exp) ? '<span class="badge" style="background:rgba(77,159,255,0.12);color:#4d9fff" title="Cuenta como factura en «Este mes»">factura</span>' : ''}
         ${exp.ajustadaDesdeId ? `<span class="badge" style="background:rgba(99,179,237,0.12);color:#63b3ed" title="Creada por un ajuste automático el ${esc(exp.ajustadaEn ?? '')}">ajustada</span>` : ''}
         ${resumenReparto ? `<span class="badge" style="background:rgba(139,92,246,0.12);color:#a78bfa" title="${esc(resumenReparto)}">👥 reparto</span>` : ''}
         ${expirado ? '<span class="badge badge-inactive">Exp.</span>' : ''}
@@ -280,6 +282,16 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
                 </select>
               </div>
             </div>
+            <div class="mt-8" id="ef-factura-wrap"${exp?.tipo === 'ingreso' ? ' style="display:none"' : ''}>
+              <div class="form-group"><label class="form-label" for="ef-factura">¿Es una factura o recibo?</label>
+                <select class="form-select" id="ef-factura">
+                  <option value=""${exp?.esFactura === undefined ? ' selected' : ''}>Automático${exp ? ` (ahora: ${esFactura({ ...exp, esFactura: undefined } as Expense) ? 'sí' : 'no'})` : ''}</option>
+                  <option value="si"${exp?.esFactura === true ? ' selected' : ''}>Sí: cargo fijo que llega solo</option>
+                  <option value="no"${exp?.esFactura === false ? ' selected' : ''}>No</option>
+                </select>
+                <div class="text-sm mt-4" style="color:var(--text3)">Decide en qué bloque de «Este mes» aparece en el cuadro de mando.</div>
+              </div>
+            </div>
             <div class="form-group mt-8"><label class="form-label">Etiquetas (separadas por coma)</label>
               <input class="form-input" type="text" id="ef-tags" value="${esc((exp?.tags || []).join(', '))}" placeholder="alquiler, vivienda"/></div>
             <div class="form-row mt-8">
@@ -319,6 +331,7 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
     mostrar('#ef-basico-wrap', tipo !== 'transferencia');
     mostrar('#ef-irpf-wrap', tipo === 'ingreso');
     mostrar('#ef-clasificacion-wrap', tipo === 'gasto');
+    mostrar('#ef-factura-wrap', tipo === 'gasto');
   }
 
   function abrirFormulario(exp: Partial<Expense> | null, titulo: string, refrescar: () => void): void {
@@ -394,6 +407,7 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
       sujetoIRPF: !esTransferencia && marcado('#ef-sujetoIRPF'),
       // Una transferencia no se clasifica; en gasto, '' significa "sin clasificar"
       clasificacion: tipo === 'gasto' ? ((clasificacionRaw || null) as Expense['clasificacion']) : undefined,
+      esFactura: tipo === 'gasto' ? (val('#ef-factura') === 'si' ? true : val('#ef-factura') === 'no' ? false : undefined) : undefined,
       tags,
       repartoConsumo: esTransferencia ? undefined : leerRepartoWidget(content, 'consumo'),
       repartoPago: esTransferencia ? undefined : leerRepartoWidget(content, 'pago'),

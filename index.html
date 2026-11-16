@@ -634,7 +634,11 @@
       const dS = new Date(base + 'T00:00:00');
       const meses = { '1M': 1, '3M': 3, '6M': 6, '1Y': 12, '5Y': 60, '10Y': 120 }[p];
       if (!meses) return;
+      // N meses EXACTOS con los dos extremos incluidos: del 16 al 15, no del 16
+      // al 16. Con un día de más, lo que vence justo ese día contaba dos veces
+      // y las medias mensuales del periodo salían infladas.
       const dE = sumarMeses(dS, meses);
+      dE.setDate(dE.getDate() - 1);
       const endEl = document.getElementById('cfg-end');
       if (endEl) endEl.value = fechaLocal(dE);
       apply();

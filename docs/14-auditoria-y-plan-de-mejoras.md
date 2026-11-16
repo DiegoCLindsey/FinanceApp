@@ -1327,6 +1327,15 @@ Criterio de «fino»: el total estimado de un mes natural **no cambia** al avanz
 el día dentro de ese mes ni al cambiar el periodo visible, salvo que entren
 datos reales. Test que lo fije.
 
+**Aplicado (2026-11-16), parcial.** (1) Las medias mensuales dividen por meses
+de calendario (`engine/mes.mesesDeCalendario`) en vez de milisegundos/30,44.
+(2) Los atajos de periodo dan N meses exactos (del 16 al 15): con un día de más
+lo que vence ese día contaba dos veces. (3) La tarjeta «Este mes» sale del mes
+natural completo y no depende del periodo ni del día. (4) La línea de saldo
+estimado es escalonada, sin curva entre cargos. **Pendiente**: reproducir con
+los datos reales del propietario qué cifra concreta sigue bailando (puntos 2 a
+4 de la lista de sospechosos) y fijarla con un test.
+
 ---
 
 ## 7. Funcionalidades nuevas
@@ -1385,7 +1394,7 @@ Para quien lleva las cuentas en pareja: un proyecto bajo una ruta compartida de
 Firestore con su propia clave de cifrado, que cada uno desbloquea. Exige
 `MEJ-01` (fusión) y reglas nuevas. Solo si hay demanda real.
 
-#### [ ] NEW-09 · «Este mes» desglosado: préstamos, facturas, resto y margen de ahorro — Esfuerzo M — *pedido por el propietario (2026-11-16)*
+#### [x] NEW-09 · «Este mes» desglosado: préstamos, facturas, resto y margen de ahorro — Esfuerzo M — *pedido por el propietario (2026-11-16)*
 
 En la primera pantalla del cuadro de mando (va con `UX-12`), para el mes en
 curso:

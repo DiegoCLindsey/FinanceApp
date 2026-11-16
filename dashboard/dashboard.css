@@ -84,3 +84,34 @@
   .chart-expense-donut-wrap { flex-direction:column; align-items:stretch; }
   .chart-expense-donut-wrap > .donut-canvas { width:120px; height:120px; align-self:center; }
 }
+
+/* ── Tarjeta «Este mes»: préstamos · facturas · otros · margen ─────────────── */
+.mes-card { margin-bottom: 14px; }
+.mes-cabecera { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.mes-ingresos { font-size: 12px; color: var(--text2); }
+.mes-ingresos strong { color: var(--text); font-family: var(--font-mono); }
+.mes-rejilla { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 900px) { .mes-rejilla { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.mes-bloque { background: var(--surface); border: 1px solid var(--hairline-soft); border-radius: var(--radius); padding: 12px 14px; min-width: 0; }
+.mes-bloque-titulo { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); }
+.mes-bloque-total { font-family: var(--font-mono); font-size: 20px; font-weight: 700; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 480px) { .mes-bloque-total { font-size: 17px; } .mes-bloque { padding: 10px 11px; } }
+.mes-barra { height: 4px; border-radius: 999px; background: rgba(255,255,255,.08); margin: 8px 0 6px; overflow: hidden; }
+.mes-barra span { display: block; height: 100%; border-radius: 999px; background: currentColor; opacity: .85; }
+.mes-bloque--prestamos .mes-barra { color: #a855f7; }
+.mes-bloque--facturas .mes-barra { color: #4d9fff; }
+.mes-bloque--otros .mes-barra { color: #ffb020; }
+.mes-bloque-pie { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 11.5px; color: var(--text2); }
+.mes-bloque-pie strong { color: var(--text); font-family: var(--font-mono); }
+.mes-bloque--margen.es-positivo { border-color: rgba(46,230,168,.35); background: rgba(46,230,168,.06); }
+.mes-bloque--margen.es-positivo .mes-bloque-total { color: var(--accent); }
+.mes-bloque--margen.es-negativo { border-color: rgba(255,77,109,.4); background: rgba(255,77,109,.07); }
+.mes-bloque--margen.es-negativo .mes-bloque-total { color: var(--red); }
+.mes-bloque--margen .mes-bloque-pie { margin-top: 6px; }
+.mes-detalle { margin-top: 8px; font-size: 12px; }
+.mes-detalle summary { cursor: pointer; color: var(--text3); font-size: 11.5px; padding: 4px 0; min-height: 28px; display: flex; align-items: center; }
+.mes-fila { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: baseline; padding: 3px 0; border-top: 1px solid var(--hairline-soft); }
+.mes-fila-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mes-fila-dia { color: var(--text3); font-size: 11px; white-space: nowrap; }
+.mes-fila-importe { font-family: var(--font-mono); white-space: nowrap; }
+.mes-fila--hecha { color: var(--text3); }

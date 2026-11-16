@@ -128,6 +128,13 @@ const DashboardModule = (() => {
     </div>`;
   }
 
+  /** Meses de calendario del periodo; con el paquete nuevo ausente, la aproximación de siempre. */
+  function _mesesDelPeriodo(desde, hasta) {
+    const f = window.FinanceApp?.engine?.mes?.mesesDeCalendario;
+    if (f) return Math.max(1, f(desde, hasta));
+    return Math.max(1, (new Date(hasta+'T00:00:00') - new Date(desde+'T00:00:00')) / (30.44*86400000));
+  }
+
   /**
    * Gastos que se repiten (mismo concepto, dos o más veces) en el mes o el
    * periodo: agrupados en una línea con el conteo y la suma, en vez de listarlos
@@ -595,7 +602,10 @@ const DashboardModule = (() => {
 
     const dS = new Date(config.dashboardStart+'T00:00:00');
     const dE = new Date(config.dashboardEnd+'T00:00:00');
-    const numMeses = Math.max(1, (dE - dS) / (30.44*86400000));
+    // Meses POR CALENDARIO, no milisegundos/30,44: con la división antigua las
+    // medias mensuales «bailaban» al mover el periodo un par de días aunque no
+    // entrara ni saliera ningún cargo (docs/14, MEJ-13).
+    const numMeses = _mesesDelPeriodo(config.dashboardStart, config.dashboardEnd);
 
     // Media mensual en el intervalo del dashboard (extracto del dashboard, sin transferencias)
     const evSinTransf        = extracto.filter(e=>e.sourceType!=='transfer-out'&&e.sourceType!=='transfer-in');
@@ -865,6 +875,17 @@ const DashboardModule = (() => {
           basico: splitPeriodo.basico, deseo: splitPeriodo.deseo, ingresos: ingresosTotalPeriodo,
         });
 
+    // ── «Este mes»: préstamos, facturas, otros gastos y margen de ahorro ─────────
+    // Sale del extracto del MES NATURAL completo (no del periodo elegido), así
+    // que no cambia al mover el intervalo ni al avanzar el día (NEW-09).
+    let tarjetaMesHtml = '';
+    try {
+      const fa = window.FinanceApp;
+      if (fa?.engine?.mes && fa.ui?.tarjetaMes) {
+        tarjetaMesHtml = fa.ui.tarjetaMes(fa.engine.mes.desgloseDelMes(extractoMesActual, expenses, loans, hoyStr), mesActualLabel, hoyStr);
+      }
+    } catch (e) { console.error('[Dashboard] No se ha podido calcular el desglose del mes:', e); }
+
     view.innerHTML=`
       <div class="page-header">
         <h1 class="page-title">Cuadro de <span>Mando</span></h1>
@@ -873,6 +894,8 @@ const DashboardModule = (() => {
           <button class="btn-secondary btn-sm" data-dash-actualizar onclick="DashboardModule.actualizar()" title="Volver a calcular con los datos actuales">&#8635; Actualizar</button>
         </div>
       </div>
+
+      ${tarjetaMesHtml}
 
       <!-- Config (colapsable) — arriba del todo: sus controles (fecha de
            referencia, filtrar cuentas, histórico, actualizar) afectan a TODAS
@@ -1470,7 +1493,7 @@ const DashboardModule = (() => {
         : chartMode === 'lines'
           ? linesDatasets
           : [{ label:'Saldo estimado', data:saldoXY, borderColor:'#2ee6a8', backgroundColor:'rgba(46,230,168,0.07)',
-               fill:true, tension:0.3, pointRadius:0, borderWidth:2, pointHitRadius:20, order:5 }]
+               fill:true, tension:0, stepped:'after', pointRadius:0, borderWidth:2, pointHitRadius:20, order:5 }]
       ),
     ];
     if (histDataset) datasets.push(histDataset);
@@ -1825,7 +1848,7 @@ const DashboardModule = (() => {
     const ctx=document.getElementById('chart-media-mensual'); if(!ctx) return;
     const tagMap=_tagMapConGrupos(extracto, grupoTags, mode);
     const dS=new Date(config.dashboardStart+'T00:00:00'), dE=new Date(config.dashboardEnd+'T00:00:00');
-    const meses=Math.max(1,(dE-dS)/(30.44*86400000));
+    const meses=_mesesDelPeriodo(config.dashboardStart, config.dashboardEnd);
     const filtered=[...tagMap.entries()]
       .filter(([t])=>activeTags.size===0||activeTags.has(t))
       .map(([t,v])=>({label:t, media:v/meses}))
