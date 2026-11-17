@@ -94,6 +94,10 @@ describe('desgloseDelMes', () => {
     expect(principio.gastosTotales).toBe(fin.gastosTotales);
     expect(fin.otros.pendiente).toBe(0);
   });
+  it('los intereses de cuentas y fondos no cuentan como ingreso', () => {
+    const conInteres = [...eventos, ev({ tipo: 'ingreso', cuantia: 606, sourceType: 'account-interest', sourceId: 'fondo' })];
+    expect(desgloseDelMes(conInteres, gastos, prestamos, '2026-11-16').ingresosNetos).toBe(2400);
+  });
   it('sin ingresos no hay porcentaje', () => {
     expect(desgloseDelMes([], [], [], '2026-11-16').margenPct).toBeNull();
   });
@@ -120,5 +124,56 @@ describe('mesesDeCalendario', () => {
   });
   it('mover el periodo unos días no cambia el número de meses', () => {
     expect(mesesDeCalendario('2026-03-10', '2027-03-09')).toBe(mesesDeCalendario('2026-03-13', '2027-03-12'));
+  });
+});
+
+import { desglosePorMeses, mesesEntre, sumarDesgloses, sumarMesesA } from '@/engine/mes';
+
+describe('varios meses', () => {
+  it('mesesEntre incluye los dos extremos y cruza años', () => {
+    expect(mesesEntre('2026-11', '2027-02')).toEqual(['2026-11', '2026-12', '2027-01', '2027-02']);
+    expect(mesesEntre('2026-05', '2026-05')).toEqual(['2026-05']);
+    expect(mesesEntre('2026-06', '2026-05')).toEqual([]);
+  });
+  it('sumarMesesA va hacia atrás y hacia delante', () => {
+    expect(sumarMesesA('2026-01', -1)).toBe('2025-12');
+    expect(sumarMesesA('2026-11', 2)).toBe('2027-01');
+  });
+
+  const gastos = [
+    { _id: 'luz', concepto: 'Luz', tipoFrecuencia: 'mensual' },
+    { _id: 'super', concepto: 'Supermercado', tipoFrecuencia: 'mensual' },
+  ];
+  const eventos = [
+    ev({ tipo: 'ingreso', cuantia: 2000, sourceType: 'nomina', sourceId: 'n', fecha: '2026-09-28' }),
+    ev({ cuantia: -50, sourceId: 'luz', fecha: '2026-09-10' }),
+    ev({ cuantia: -300, sourceId: 'super', fecha: '2026-09-12' }),
+    ev({ tipo: 'ingreso', cuantia: 2000, sourceType: 'nomina', sourceId: 'n', fecha: '2026-11-28' }),
+    ev({ cuantia: -70, sourceId: 'luz', fecha: '2026-11-10' }),
+    ev({ cuantia: -500, sourceType: 'loan', sourceId: 'hip', fecha: '2026-11-01' }),
+    ev({ cuantia: -999, sourceId: 'luz', fecha: '2026-12-10' }), // fuera del rango pedido
+  ];
+  const meses = desglosePorMeses(eventos, gastos, [{ _id: 'hip', nombre: 'Hipoteca' }], ['2026-09', '2026-10', '2026-11'], '2026-11-17');
+
+  it('un desglose por mes pedido, con los meses vacíos a cero', () => {
+    expect(meses.map((m) => m.mes)).toEqual(['2026-09', '2026-10', '2026-11']);
+    expect(meses[0].desglose).toMatchObject({ ingresosNetos: 2000, gastosTotales: 350, margen: 1650 });
+    expect(meses[0].desglose.facturas.total).toBe(50);
+    expect(meses[1].desglose).toMatchObject({ ingresosNetos: 0, gastosTotales: 0, margen: 0, margenPct: null });
+    expect(meses[2].desglose.prestamos.total).toBe(500);
+  });
+
+  it('el acumulado suma por concepto y recalcula el margen sobre los totales', () => {
+    const acc = sumarDesgloses(meses.map((m) => m.desglose));
+    expect(acc.ingresosNetos).toBe(4000);
+    expect(acc.gastosTotales).toBe(920);
+    expect(acc.margen).toBe(3080);
+    expect(acc.margenPct).toBeCloseTo(77, 5);
+    expect(acc.facturas.partidas).toEqual([{ id: 'luz', concepto: 'Luz', total: 120, vencido: 120, fechas: ['2026-09-10', '2026-11-10'] }]);
+    expect(acc.otros.partidas[0]).toMatchObject({ concepto: 'Supermercado', total: 300 });
+  });
+
+  it('el acumulado de la lista vacía es cero', () => {
+    expect(sumarDesgloses([])).toMatchObject({ ingresosNetos: 0, gastosTotales: 0, margen: 0, margenPct: null });
   });
 });

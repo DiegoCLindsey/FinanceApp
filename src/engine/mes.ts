@@ -23,7 +23,8 @@
 //
 // ── Qué NO cuenta como gasto del mes ─────────────────────────────────────────
 // Transferencias y aportaciones entre cuentas propias (el dinero cambia de
-// sitio, no se gasta), y el IRPF y la SS de una nómina en modo «detallado»:
+// sitio, no se gasta); los intereses de cuentas y fondos (ver RENDIMIENTOS);
+// y el IRPF y la SS de una nómina en modo «detallado»:
 // esos se restan de los ingresos para dar el neto, que es lo que llega al banco.
 
 import type { ISODate } from '@/core/dates';
@@ -107,6 +108,16 @@ export interface DesgloseMes {
 }
 
 const INTERNOS = new Set(['transfer-out', 'transfer-in', 'aportacion-out', 'aportacion-in']);
+/**
+ * Intereses y rentabilidad de cuentas y fondos: no cuentan como ingreso del
+ * mes. No es dinero que entre para gastar —se queda en la propia cuenta, y en
+ * un fondo ni siquiera es líquido— y en un fondo de inversión al 6 % podía
+ * sumar cientos de euros de «margen de ahorro» que no existen. Además su
+ * cálculo depende de desde qué fecha se genera el extracto (docs/14, BUG-28):
+ * contarlo hacía que el mismo mes diera cifras distintas en la tarjeta y en el
+ * histórico.
+ */
+const RENDIMIENTOS = new Set(['account-interest']);
 const esRetencionNomina = (e: CashEvent) => e.sourceType === 'nomina' && e.tipo === 'gasto';
 
 /** Céntimos enteros para sumar: evita que 0,1 + 0,2 acabe en la pantalla. */
@@ -146,7 +157,7 @@ export function desgloseDelMes(
 ): DesgloseMes {
   const gastoPorId = new Map(gastos.map((g) => [g._id, g]));
   const prestamoPorId = new Map(prestamos.map((p) => [p._id, p]));
-  const propios = eventos.filter((e) => !INTERNOS.has(e.sourceType ?? ''));
+  const propios = eventos.filter((e) => !INTERNOS.has(e.sourceType ?? '') && !RENDIMIENTOS.has(e.sourceType ?? ''));
 
   const ingresosBrutos = propios.filter((e) => e.tipo === 'ingreso').reduce((s, e) => s + cts(e.cuantia), 0);
   const retenciones = propios.filter(esRetencionNomina).reduce((s, e) => s + cts(e.cuantia), 0);
@@ -209,4 +220,91 @@ export function mesesDeCalendario(desde: ISODate, hasta: ISODate): number {
   const diasResto = Math.round((fin.getTime() - desdeAncla.getTime()) / 86400000);
   const diasDelMes = new Date(desdeAncla.getFullYear(), desdeAncla.getMonth() + 1, 0).getDate();
   return Math.max(1 / 31, enteros + diasResto / diasDelMes);
+}
+
+// ── Varios meses ──────────────────────────────────────────────────────────────
+
+/** Meses `YYYY-MM` entre dos meses, ambos incluidos y en orden. */
+export function mesesEntre(desde: string, hasta: string): string[] {
+  const [y1, m1] = desde.split('-').map(Number);
+  const [y2, m2] = hasta.split('-').map(Number);
+  if (![y1, m1, y2, m2].every(Number.isFinite)) return [];
+  const out: string[] = [];
+  for (let y = y1, m = m1; y < y2 || (y === y2 && m <= m2); m === 12 ? ((m = 1), y++) : m++) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    if (out.length > 240) break; // 20 años: un periodo así es un error de entrada
+  }
+  return out;
+}
+
+/** Suma `n` meses a un mes `YYYY-MM` (n puede ser negativo). */
+export function sumarMesesA(mes: string, n: number): string {
+  const [y, m] = mes.split('-').map(Number);
+  const d = new Date(y, m - 1 + n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export interface DesgloseDeMes {
+  mes: string;
+  desglose: DesgloseMes;
+}
+
+/**
+ * El desglose de `desgloseDelMes` para cada mes de la lista, a partir de un
+ * único extracto que los cubra todos. Los meses sin ningún evento salen a cero:
+ * un mes vacío también es un dato, y saltárselo descolocaría las barras.
+ */
+export function desglosePorMeses(
+  eventos: CashEvent[],
+  gastos: GastoClasificable[],
+  prestamos: PrestamoNombrado[],
+  meses: string[],
+  hoy: ISODate,
+): DesgloseDeMes[] {
+  const porMes = new Map<string, CashEvent[]>(meses.map((m) => [m, []]));
+  for (const e of eventos) porMes.get(e.fecha.slice(0, 7))?.push(e);
+  return meses.map((mes) => ({ mes, desglose: desgloseDelMes(porMes.get(mes) ?? [], gastos, prestamos, hoy) }));
+}
+
+function sumarBloques(bloques: BloqueMes[]): BloqueMes {
+  const porId = new Map<string, { concepto: string; total: number; vencido: number; fechas: ISODate[] }>();
+  for (const b of bloques) {
+    for (const p of b.partidas) {
+      const acc = porId.get(p.id) ?? { concepto: p.concepto, total: 0, vencido: 0, fechas: [] };
+      acc.total += cts(p.total);
+      acc.vencido += cts(p.vencido);
+      acc.fechas.push(...p.fechas);
+      porId.set(p.id, acc);
+    }
+  }
+  const partidas: PartidaMes[] = [...porId.entries()]
+    .map(([id, p]) => ({ id, concepto: p.concepto, total: p.total / 100, vencido: p.vencido / 100, fechas: p.fechas.sort() }))
+    .sort((a, b) => b.total - a.total || a.concepto.localeCompare(b.concepto));
+  const total = [...porId.values()].reduce((s, p) => s + p.total, 0);
+  const vencido = [...porId.values()].reduce((s, p) => s + p.vencido, 0);
+  return { total: total / 100, vencido: vencido / 100, pendiente: (total - vencido) / 100, partidas };
+}
+
+/**
+ * Acumulado de varios meses: cada bloque suma sus partidas por concepto (el
+ * mismo gasto en seis meses es UNA fila con seis cargos), y el margen y su
+ * porcentaje se recalculan sobre los totales, no se promedian.
+ */
+export function sumarDesgloses(lista: DesgloseMes[]): DesgloseMes {
+  const prestamos = sumarBloques(lista.map((d) => d.prestamos));
+  const facturas = sumarBloques(lista.map((d) => d.facturas));
+  const otros = sumarBloques(lista.map((d) => d.otros));
+  const ingresosCts = lista.reduce((s, d) => s + Math.round(d.ingresosNetos * 100), 0);
+  const gastosCts = cts(prestamos.total) + cts(facturas.total) + cts(otros.total);
+  const ingresosNetos = ingresosCts / 100;
+  const margen = (ingresosCts - gastosCts) / 100;
+  return {
+    ingresosNetos,
+    prestamos,
+    facturas,
+    otros,
+    gastosTotales: gastosCts / 100,
+    margen,
+    margenPct: ingresosNetos > 0 ? (margen / ingresosNetos) * 100 : null,
+  };
 }

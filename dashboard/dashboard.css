@@ -98,9 +98,12 @@
 @media (max-width: 480px) { .mes-bloque-total { font-size: 17px; } .mes-bloque { padding: 10px 11px; } }
 .mes-barra { height: 4px; border-radius: 999px; background: rgba(255,255,255,.08); margin: 8px 0 6px; overflow: hidden; }
 .mes-barra span { display: block; height: 100%; border-radius: 999px; background: currentColor; opacity: .85; }
-.mes-bloque--prestamos .mes-barra { color: #a855f7; }
-.mes-bloque--facturas .mes-barra { color: #4d9fff; }
-.mes-bloque--otros .mes-barra { color: #ffb020; }
+.mes-bloque--prestamos { --grupo: #9085e9; }
+.mes-bloque--facturas { --grupo: #d95926; }
+.mes-bloque--otros { --grupo: #3987e5; }
+.mes-bloque .mes-barra { color: var(--grupo); }
+.mes-punto { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--grupo, transparent); margin-right: 6px; vertical-align: 0; }
+.mes-bloque--margen .mes-punto { display: none; }
 .mes-bloque-pie { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 11.5px; color: var(--text2); }
 .mes-bloque-pie strong { color: var(--text); font-family: var(--font-mono); }
 .mes-bloque--margen.es-positivo { border-color: rgba(46,230,168,.35); background: rgba(46,230,168,.06); }
@@ -115,3 +118,32 @@
 .mes-fila-dia { color: var(--text3); font-size: 11px; white-space: nowrap; }
 .mes-fila-importe { font-family: var(--font-mono); white-space: nowrap; }
 .mes-fila--hecha { color: var(--text3); }
+
+.mes-cabecera-der { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* ── Ventana «Meses anteriores» ────────────────────────────────────────────── */
+.modal-box.modal-box--ancho { max-width: 980px; }
+.hist-filtros { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.hist-filtros .period-btn { min-height: 36px; }
+.hist-rango { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--text2); }
+.hist-rango label { display: flex; align-items: center; gap: 6px; }
+.hist-rango .form-input { width: auto; min-height: 36px; }
+.hist-grafica { margin-top: 18px; }
+.hist-grafica-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.hist-titulo { font-size: 13px; font-weight: 700; margin: 0; color: var(--text); }
+.hist-total { font-family: var(--font-mono); font-size: 13px; font-weight: 700; }
+.hist-total.es-positivo, .hist-ficha-margen.es-positivo { color: var(--accent); }
+.hist-total.es-negativo, .hist-ficha-margen.es-negativo { color: var(--red); }
+.hist-lienzo { position: relative; height: 240px; }
+.hist-lienzo--bajo { height: 200px; }
+@media (max-width: 600px) { .hist-lienzo { height: 210px; } .hist-lienzo--bajo { height: 180px; } }
+.hist-fichas { display: flex; gap: 6px; overflow-x: auto; padding: 12px 0 4px; scrollbar-width: thin; }
+.hist-ficha { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 76px; min-height: 44px;
+  padding: 6px 10px; border-radius: 12px; border: 1px solid var(--hairline-soft); background: var(--surface); color: var(--text2); cursor: pointer; font-family: inherit; }
+.hist-ficha.activa { border-color: var(--accent); background: var(--accent-dim); color: var(--text); }
+.hist-ficha:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hist-ficha-mes { font-size: 11px; text-transform: capitalize; }
+.hist-ficha-margen { font-family: var(--font-mono); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.hist-vista { margin-top: 14px; }
+[data-hist-detalle] { margin-top: 12px; }
+.hist-detalle-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }

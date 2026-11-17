@@ -18,6 +18,7 @@ import * as avisos from './engine/avisos';
 import * as dashboard from './engine/dashboard';
 import * as mes from './engine/mes';
 import { tarjetaMes } from './features/dashboard/mes-card';
+import { abrirHistoricoMeses } from './features/dashboard/mes-historico';
 import { proyectarGastos } from './engine/providers/expenses';
 import { proyectarPrestamos } from './engine/providers/loans';
 import { proyectarTransferencias } from './engine/providers/transfers';
@@ -101,6 +102,8 @@ export interface FinanceAppNamespace {
   ui: {
     /** HTML de la tarjeta «Este mes» del cuadro de mando. */
     tarjetaMes: typeof tarjetaMes;
+    /** Ventana «Meses anteriores» con el mismo desglose por mes. */
+    abrirHistoricoMeses: typeof abrirHistoricoMeses;
     /** Abre la ventana de configuración de funcionalidades. */
     openFeatures: () => void;
     /** Abre la ventana de proyectos: cambiar, crear, renombrar, duplicar, importar. */
@@ -429,6 +432,7 @@ function bootstrap(): FinanceAppNamespace {
     featureRegistry: { all: FEATURES, porGrupo: featuresPorGrupo },
     ui: {
       tarjetaMes,
+      abrirHistoricoMeses,
       openFeatures: featuresModal.open,
       openProyectos: proyectosModal.open,
       openPersonas: personasModal.open,

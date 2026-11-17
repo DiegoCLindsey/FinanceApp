@@ -133,6 +133,9 @@ const DashboardModule = (() => {
    * en cuando y ocupaban la primera pantalla entera, por delante de las cifras
    * que se vienen a mirar (docs/14, UX-12). Solo `false` explícito la abre.
    */
+  /** Último contexto pintado, para la ventana «Meses anteriores». */
+  let _ctxHistorico = null;
+
   function _cfgPlegada(cfg) { return cfg.configCollapsed !== false; }
 
   /** Meses de calendario del periodo; con el paquete nuevo ausente, la aproximación de siempre. */
@@ -885,6 +888,23 @@ const DashboardModule = (() => {
     // ── «Este mes»: préstamos, facturas, otros gastos y margen de ahorro ─────────
     // Sale del extracto del MES NATURAL completo (no del periodo elegido), así
     // que no cambia al mover el intervalo ni al avanzar el día (NEW-09).
+    // Lo que necesita la ventana «Meses anteriores» para generar otros meses
+    // con exactamente los mismos datos y filtros que esta tarjeta.
+    _ctxHistorico = {
+      generarExtracto: (desde, hasta) => FinanceMath.generarExtracto(
+        loans, expenses, accountsForExtracto, { ...config, dashboardStart: desde, dashboardEnd: hasta },
+        filtroAccounts.length > 0 ? filtroAccounts : null, nominas, inflPeriodos),
+      gastos: expenses, prestamos: loans, hoy: hoyStr,
+    };
+    if (!view.dataset.histCableado) {
+      // Delegado en la vista, que no se sustituye al repintar: un solo listener.
+      view.addEventListener('click', e => {
+        if (!e.target.closest('[data-mes-historico]')) return;
+        try { window.FinanceApp?.ui?.abrirHistoricoMeses?.(_ctxHistorico); }
+        catch (err) { console.error('[Dashboard] No se ha podido abrir «Meses anteriores»:', err); UI.toast('No se ha podido abrir «Meses anteriores»', 'err'); }
+      });
+      view.dataset.histCableado = '1';
+    }
     let tarjetaMesHtml = '';
     try {
       const fa = window.FinanceApp;

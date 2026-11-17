@@ -74,6 +74,8 @@ export function contenedorModalLimpio(doc: Document = document): HTMLElement | n
   if (!actual) return null;
   const limpio = actual.cloneNode(false) as HTMLElement;
   actual.replaceWith(limpio);
+  // Una ventana ancha (meses anteriores) no debe dejar ancha la siguiente.
+  doc.getElementById('modal-box')?.classList.remove('modal-box--ancho');
   return limpio;
 }
 

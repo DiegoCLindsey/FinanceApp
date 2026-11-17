@@ -2,7 +2,7 @@
 // Depends on: State (common/state.js)
 const UI = (() => {
   function toast(msg, type='ok') { const el=document.createElement('div'); el.className=`toast toast-${type}`; el.textContent=msg; document.getElementById('toast-container').appendChild(el); setTimeout(()=>el.remove(),3500); }
-  function openModal(html, title='') { document.getElementById('modal-content').innerHTML=(title?`<div class="modal-title">${title}</div>`:'')+html; document.getElementById('modal-overlay').classList.remove('hidden'); }
+  function openModal(html, title='') { document.getElementById('modal-box')?.classList.remove('modal-box--ancho'); document.getElementById('modal-content').innerHTML=(title?`<div class="modal-title">${title}</div>`:'')+html; document.getElementById('modal-overlay').classList.remove('hidden'); }
   function closeModal() { document.getElementById('modal-overlay').classList.add('hidden'); }
   function confirm(msg) { return window.confirm(msg); }
   function input(id, label, type='text', value='', placeholder='', extra='') {

@@ -118,7 +118,7 @@ avanzada, y todo lo que exija un servidor propio.
 
 | Sección | Tareas | P0 | P1 | P2 | P3 |
 |---|---:|---:|---:|---:|---:|
-| 3 · Fallos | 27 | 8 | 9 | 9 | 1 |
+| 3 · Fallos | 28 | 8 | 10 | 9 | 1 |
 | 4 · Seguridad | 11 | 0 | 5 | 5 | 1 |
 | 5 · UI/UX | 29 | 0 | 7 | 16 | 6 |
 | 6 · Mejoras de lo existente | 12 | — | — | — | — |
@@ -414,6 +414,29 @@ avanzada, y todo lo que exija un servidor propio.
 - **Solución aplicada.** Las copias llevan `_schemaVersion`; para las anteriores
   se deduce del contenido (`inferirVersionDeCopia`). Al aplicar se escribe esa
   versión y las colecciones retiradas que traiga, y el store migra al recargar.
+
+#### [ ] BUG-28 · Los intereses de las cuentas dependen del día desde el que se genera el extracto
+
+- **Prioridad** P1 · **Esfuerzo** M · **Evidencia** ✔ reproducido (encontrado al hacer «Meses anteriores»)
+- **Ficheros** `finance-math/finance-math.js:326-390` (`proyectarInteresesCuentas`)
+  y su gemelo `src/engine/providers/interests.ts`
+- **Problema.** El interés arranca del saldo en `dateStart` (el primer día del
+  rango pedido) y avanza en periodos contados desde ese día. Consecuencias:
+  1. Si el rango empieza antes de `fechaInicialSaldo` de la cuenta, el saldo de
+     partida es 0, el ancla no entra como movimiento, y la cuenta **no genera
+     interés en todo el rango**. Con un fondo al 6 % anclado el 1-sep, el mismo
+     noviembre daba 606 € de rentabilidad generado solo y 0 € generado desde junio.
+  2. El día del abono y el saldo medio dependen del día de inicio del rango:
+     el mismo mes da intereses distintos según el periodo visible (32,50 € frente
+     a 2,86 € en una cuenta remunerada). Es una de las causas de que las cifras
+     «bailen» (`MEJ-13`).
+- **Solución.** Calcular los intereses sobre periodos anclados al calendario
+  (o a `fechaInicialSaldo`), arrancando del saldo real en el primer día de cada
+  periodo según `saldoEnFecha` tras aplicar el ancla, e independientes del rango
+  pedido; recortar al rango solo al final. Actualizar los tests de paridad del
+  legacy y del motor nuevo en el mismo commit.
+- **Mitigación ya aplicada.** El desglose de «Este mes» y «Meses anteriores»
+  no cuenta intereses ni rentabilidad como ingreso.
 
 #### [x] BUG-07 · El asistente duplica el ingreso y el gasto al volver atrás
 
@@ -1429,6 +1452,18 @@ nada y se pueda corregir a mano:
 **Hecho cuando**: la suma de los cuatro bloques cuadra con «Gastos estimados» y
 «Ahorro esperado» actuales para el mismo mes; hay tests del clasificador; los
 anuales solo cuentan en el mes en que vencen.
+
+#### [x] NEW-10 · «Meses anteriores» desde la tarjeta «Este mes» — *pedido por el propietario (2026-11-17)*
+
+Botón en la tarjeta que abre una ventana con: periodo seleccionable (3, 6 o 12
+meses, este año o meses a elegir, hasta 36), barras apiladas de préstamos,
+facturas y otros gastos por mes, gráfica aparte de impacto en el ahorro (margen
+de cada mes y acumulado del periodo), selección de mes al pulsar cualquiera de
+las dos gráficas o su ficha (desglose por grupo y concepto, como en la
+tarjeta), y vista «Acumulado del periodo» con totales y media mensual por
+grupo. Importes estimados, como la tarjeta. **Siguiente paso posible**: un
+conmutador «estimado / real» que use los movimientos importados y su
+asignación a estimaciones.
 
 **Descartado**: conexión directa con bancos (PSD2 exige servidor y licencia),
 multimoneda, categorización con servicios externos (los datos saldrían del
