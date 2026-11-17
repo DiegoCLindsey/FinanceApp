@@ -344,6 +344,12 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
         </td>
         <td style="padding:7px 8px;text-align:right;font-family:var(--font-mono);font-size:13px;white-space:nowrap">${eurColor(fromCents(t.importeCts))}</td>
         <td style="padding:7px 8px;text-align:right;white-space:nowrap">
+          ${
+            t.importeCts < 0 && t.tipo !== 'transferencia'
+              ? `<button type="button" class="btn-secondary tx-imprevisto${t.imprevisto ? ' activo' : ''}" data-tx-imprevisto="${esc(t._id)}" aria-pressed="${t.imprevisto ? 'true' : 'false'}"
+                  title="${t.imprevisto ? (t.estimacionId ? 'Marcado como imprevisto, pero cuenta a través de su estimación' : 'Marcado como imprevisto. Pulsa para quitar la marca') : 'Marcar como imprevisto'}">⚡${t.imprevisto ? ' Imprevisto' : ''}</button>`
+              : ''
+          }
           <button class="btn-secondary" data-tx-editar="${esc(t._id)}" style="padding:3px 7px;font-size:11px">Editar</button>
           <button class="btn-secondary" data-tx-borrar="${esc(t._id)}" style="padding:3px 7px;font-size:11px;color:var(--red)">×</button>
         </td>
@@ -570,6 +576,10 @@ export function renderTransactionsPanel(deps: TransactionsPanelDeps, estado: Est
               .map((t) => `<option value="${esc(t)}"></option>`)
               .join('')}</datalist>
           </div>
+          <label class="flex gap-8 items-center mb-8" style="font-size:12px;color:var(--text2)">
+            <label class="toggle"><input type="checkbox" id="nt-imprevisto"/><span class="toggle-slider"></span></label>
+            Imprevisto (una avería, el dentista…)
+          </label>
           <div class="form-group">
             <label class="form-label">Estimación relacionada</label>
             <select class="form-input" id="nt-estimacion">${opcionesEstimacion(null)}</select>
@@ -746,6 +756,7 @@ export function wireTransactionsPanel(
       tags,
       tipo: valor(container, '#nt-tipo') as TipoTransaccion,
       estimacionId: valor(container, '#nt-estimacion') || null,
+      imprevisto: (container.querySelector('#nt-imprevisto') as HTMLInputElement | null)?.checked || undefined,
     });
     toast('Movimiento registrado');
     deps.onDatosCambiados();
@@ -771,6 +782,23 @@ export function wireTransactionsPanel(
     if (!Number.isFinite(parsed) || parsed <= 0) return toast('Importe no válido', 'err');
     ledger.actualizar(id, { importe: parsed });
     toast('Movimiento actualizado');
+    deps.onDatosCambiados();
+    refrescar();
+  });
+
+  onClick(container, '[data-tx-imprevisto]', (el) => {
+    const id = el.getAttribute('data-tx-imprevisto') as string;
+    const tx = ledger.transacciones().find((t) => t._id === id);
+    if (!tx) return;
+    const marcar = !tx.imprevisto;
+    ledger.actualizar(id, { imprevisto: marcar || undefined });
+    toast(
+      marcar
+        ? tx.estimacionId
+          ? 'Marcado como imprevisto. Ojo: está asignado a una estimación y cuenta a través de ella'
+          : 'Marcado como imprevisto'
+        : 'Ya no es un imprevisto',
+    );
     deps.onDatosCambiados();
     refrescar();
   });

@@ -318,6 +318,8 @@ function filaSinPrever(g: GrupoSinEstimacion, meses: number, opciones: string, c
         <option value="">Asignar a…</option>
         ${opciones}
       </select>
+      <button class="btn-secondary btn-sm" data-cie-imprevisto="${esc(g.clave)}" title="Marcar estos movimientos como imprevisto: se siguen aparte en «Este mes» y entran en la estimación de imprevistos"
+              style="font-size:11px;padding:2px 8px;margin-left:4px">⚡ Imprevisto</button>
       <button class="btn-secondary btn-sm" data-cie-omitir="${esc(g.clave)}" title="No contar este concepto en el cierre"
               style="font-size:11px;padding:2px 8px;margin-left:4px">Omitir</button>
     </td>
@@ -427,6 +429,19 @@ export function wireCierrePanel(raiz: HTMLElement, deps: CierrePanelDeps, estado
     if (actuales.includes(clave)) return;
     deps.setOmitidos([...actuales, clave]);
     toast('Concepto omitido: deja de contar en el cierre');
+    refrescar();
+  });
+
+  // Marca los movimientos del grupo, no el concepto: un taller puede ser
+  // imprevisto una vez y una revisión programada otra.
+  onClick(raiz, '[data-cie-imprevisto]', (el) => {
+    const clave = el.getAttribute('data-cie-imprevisto') as string;
+    const c = calcularCierre(deps, estado);
+    const grupo = c.sinEstimacion.find((g) => g.clave === clave);
+    if (!grupo) return;
+    for (const id of grupo.ids) deps.ledger.actualizar(id, { imprevisto: true });
+    toast(`${grupo.ids.length} movimiento${grupo.ids.length === 1 ? '' : 's'} marcado${grupo.ids.length === 1 ? '' : 's'} como imprevisto`);
+    deps.onDatosCambiados?.();
     refrescar();
   });
 

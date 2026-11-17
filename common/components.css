@@ -262,3 +262,7 @@ tr:hover td { background: var(--surface); }
 /* ---- Barras de progreso ---- */
 .meter { height: 8px; border-radius: var(--radius-pill); background: var(--surface-strong); overflow: hidden; }
 .meter > i { display: block; height: 100%; border-radius: var(--radius-pill); transition: width 0.5s cubic-bezier(0.2, 0.8, 0.3, 1); }
+
+/* ── Marca «Imprevisto» en un movimiento real ──────────────────────────────── */
+.tx-imprevisto { padding: 3px 7px; font-size: 11px; }
+.tx-imprevisto.activo { border-color: rgba(213,81,129,.55); background: rgba(213,81,129,.14); color: #e87ba4; }

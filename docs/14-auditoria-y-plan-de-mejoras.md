@@ -1465,6 +1465,26 @@ grupo. Importes estimados, como la tarjeta. **Siguiente paso posible**: un
 conmutador «estimado / real» que use los movimientos importados y su
 asignación a estimaciones.
 
+#### [x] NEW-11 · Imprevistos: marca, seguimiento y estimación automática — *pedido por el propietario (2026-11-17)*
+
+- **Marca «Imprevisto»** en un gasto (interruptor en el formulario, solo para
+  gastos) y en un movimiento real (⚡ en su fila, casilla al registrarlo, y
+  «⚡ Imprevisto» en los grupos sin prever del cierre de mes, que marca todos
+  sus movimientos). Un movimiento marcado solo cuenta si NO está asignado a una
+  estimación: asignado, cuenta a través de ella y no se duplica. La marca de
+  imprevisto tiene prioridad sobre la de factura.
+- **Quinto bloque «Imprevistos»** en «Este mes» y cuarta serie, arriba del
+  todo, en las barras de «Meses anteriores» (color validado para daltonismo
+  con los otros tres).
+- **Estimación automática**: media mensual de lo marcado en los 12 meses
+  anteriores al mes en curso (sin contarlo); con menos de un año de
+  seguimiento, entre los meses que hay desde el primer movimiento registrado o
+  el primer imprevisto. En el mes en curso se reserva lo que falte hasta la
+  estimación y se descuenta del margen de ahorro; si ya se ha gastado más, se
+  avisa de cuánto se ha pasado.
+- **Pendiente, a decidir**: llevar la estimación también a la proyección de
+  saldo (gráfica y extracto) como un gasto mensual sintético.
+
 **Descartado**: conexión directa con bancos (PSD2 exige servidor y licencia),
 multimoneda, categorización con servicios externos (los datos saldrían del
 dispositivo), y simulación Monte Carlo (ya se retiró).

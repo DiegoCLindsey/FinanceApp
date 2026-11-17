@@ -38,6 +38,8 @@ export interface NuevaTransaccion {
   nota?: string;
   /** Solo para 'ajuste': permite importe negativo explícito. */
   negativo?: boolean;
+  /** Marcado como imprevisto (ver `Transaccion.imprevisto`). */
+  imprevisto?: boolean;
 }
 
 export interface FiltroTransacciones {
@@ -95,6 +97,7 @@ export function createLedger(store: LedgerStoreLike) {
       tipo: entrada.tipo,
       origen: entrada.origen ?? 'manual',
       ...(entrada.nota ? { nota: entrada.nota } : {}),
+      ...(entrada.imprevisto ? { imprevisto: true } : {}),
     };
     store.set('transacciones', [...store.get('transacciones'), tx]);
     return tx;

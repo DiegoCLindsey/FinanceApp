@@ -322,6 +322,22 @@ describe('previsión completa e imprevistos accionables', () => {
     expect(store.get('config').cierreOmitidos).toEqual([]);
   });
 
+  it('un grupo sin prever se marca entero como imprevisto', () => {
+    const { ledger, registry } = entorno();
+    const a = registrar(ledger, '2026-07-12', 120, 'TALLER GARCIA');
+    const b = registrar(ledger, '2026-07-25', 80, 'TALLER GARCIA');
+    const c = registrar(ledger, '2026-07-15', 40, 'BAR PEPE');
+    montarEnCierre(registry);
+
+    (cierre().querySelector('[data-cie-imprevisto="taller garcia"]') as HTMLElement).click();
+    const marcados = ledger
+      .transacciones()
+      .filter((t) => t.imprevisto)
+      .map((t) => t._id);
+    expect(marcados.sort()).toEqual([a._id, b._id].sort());
+    expect(marcados).not.toContain(c._id);
+  });
+
   it('asignar un grupo de imprevistos lo mete en su estimación', () => {
     const { store, ledger, registry } = entorno();
     const luz = store.addItem('expenses', gasto({ concepto: 'Luz', cuantia: 100, tags: [] }));

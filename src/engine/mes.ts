@@ -41,6 +41,29 @@ export interface GastoClasificable {
   clasificacion?: string | null;
   /** Marca explícita del usuario. `undefined` = decidir automáticamente. */
   esFactura?: boolean;
+  /** Gasto imprevisto: va a su propio bloque, antes que factura. */
+  imprevisto?: boolean;
+  fechaInicio?: ISODate;
+}
+
+/** Lo que hace falta de un movimiento real para contarlo como imprevisto. */
+export interface MovimientoReal {
+  _id: string;
+  fecha: ISODate;
+  concepto: string;
+  importeCts: number;
+  tipo?: string;
+  estimacionId?: string | null;
+  imprevisto?: boolean;
+}
+
+/**
+ * ¿Este movimiento real cuenta como imprevisto? Solo si está marcado, es una
+ * salida, no es un traspaso entre cuentas propias, y NO está asignado a una
+ * estimación: asignado, ya cuenta a través de ella y se contaría dos veces.
+ */
+export function esMovimientoImprevisto(m: MovimientoReal): boolean {
+  return m.imprevisto === true && m.importeCts < 0 && m.tipo !== 'transferencia' && !m.estimacionId;
 }
 
 export interface PrestamoNombrado {
@@ -100,8 +123,21 @@ export interface DesgloseMes {
   prestamos: BloqueMes;
   facturas: BloqueMes;
   otros: BloqueMes;
+  /** Lo marcado como imprevisto: gastos estimados y movimientos reales. */
+  imprevistos: BloqueMes;
+  /** Préstamos + facturas + otros + imprevistos. */
   gastosTotales: number;
-  /** Ingresos netos − gastos totales. */
+  /**
+   * Estimación de imprevistos aplicada a este mes (media de los últimos 12),
+   * o null si no se aplicó ninguna. Solo se aplica al mes en curso.
+   */
+  estimacionImprevistos: number | null;
+  /**
+   * Lo que se aparta para imprevistos que aún no han llegado: la estimación
+   * menos lo ya marcado este mes, nunca negativa.
+   */
+  reservaImprevistos: number;
+  /** Ingresos netos − gastos totales − reserva para imprevistos. */
   margen: number;
   /** Margen sobre ingresos netos, en %. `null` sin ingresos. */
   margenPct: number | null;
@@ -149,11 +185,19 @@ function bloque(eventos: CashEvent[], hoy: ISODate, nombre: (e: CashEvent) => st
  * un recorte del periodo que se esté mirando: así la cifra del mes no depende
  * de qué intervalo haya elegido el usuario ni de en qué día se consulte.
  */
+export interface OpcionesDesglose {
+  /** Movimientos reales de ESTE mes (se cuentan los imprevistos sin asignar). */
+  movimientos?: MovimientoReal[];
+  /** Estimación mensual de imprevistos a reservar este mes. */
+  estimacionImprevistos?: number | null;
+}
+
 export function desgloseDelMes(
   eventos: CashEvent[],
   gastos: GastoClasificable[],
   prestamos: PrestamoNombrado[],
   hoy: ISODate,
+  opciones: OpcionesDesglose = {},
 ): DesgloseMes {
   const gastoPorId = new Map(gastos.map((g) => [g._id, g]));
   const prestamoPorId = new Map(prestamos.map((p) => [p._id, p]));
@@ -164,28 +208,54 @@ export function desgloseDelMes(
 
   const dePrestamo: CashEvent[] = [];
   const deFactura: CashEvent[] = [];
+  const deImprevisto: CashEvent[] = [];
   const resto: CashEvent[] = [];
   for (const e of propios) {
     if (e.tipo !== 'gasto' || esRetencionNomina(e)) continue;
+    const gasto = e.sourceType === 'expense' ? gastoPorId.get(e.sourceId ?? '') : undefined;
     if (e.sourceType === 'loan' || e.sourceType === 'loan-amort') dePrestamo.push(e);
-    else if (e.sourceType === 'expense' && esFactura(gastoPorId.get(e.sourceId ?? ''))) deFactura.push(e);
+    else if (gasto?.imprevisto) deImprevisto.push(e);
+    else if (gasto && esFactura(gasto)) deFactura.push(e);
     else resto.push(e);
+  }
+  // Movimientos reales marcados como imprevisto, agrupados por concepto: tres
+  // visitas al taller son UNA fila con tres cargos.
+  for (const m of opciones.movimientos ?? []) {
+    if (!esMovimientoImprevisto(m)) continue;
+    const clave = sinAcentos(m.concepto).replace(/\s+/g, ' ').trim();
+    deImprevisto.push({
+      fecha: m.fecha,
+      concepto: m.concepto,
+      cuantia: m.importeCts / 100,
+      tipo: 'gasto',
+      tags: [],
+      cuenta: '',
+      sourceId: `mov:${clave}`,
+      sourceType: 'movimiento',
+    } as unknown as CashEvent);
   }
 
   const nombreGasto = (e: CashEvent) => gastoPorId.get(e.sourceId ?? '')?.concepto ?? e.concepto;
   const prestamosB = bloque(dePrestamo, hoy, (e) => prestamoPorId.get(e.sourceId ?? '')?.nombre ?? e.concepto);
   const facturasB = bloque(deFactura, hoy, nombreGasto);
   const otrosB = bloque(resto, hoy, nombreGasto);
+  const imprevistosB = bloque(deImprevisto, hoy, nombreGasto);
 
-  const ingresosNetos = (ingresosBrutos - retenciones) / 100;
-  const gastosTotales = (cts(prestamosB.total) + cts(facturasB.total) + cts(otrosB.total)) / 100;
-  const margen = (Math.round(ingresosNetos * 100) - Math.round(gastosTotales * 100)) / 100;
+  const ingresosCts = ingresosBrutos - retenciones;
+  const gastosCts = cts(prestamosB.total) + cts(facturasB.total) + cts(otrosB.total) + cts(imprevistosB.total);
+  const estimacion = opciones.estimacionImprevistos ?? null;
+  const reservaCts = estimacion !== null ? Math.max(0, cts(estimacion) - cts(imprevistosB.total)) : 0;
+  const ingresosNetos = ingresosCts / 100;
+  const margen = (ingresosCts - gastosCts - reservaCts) / 100;
   return {
     ingresosNetos,
     prestamos: prestamosB,
     facturas: facturasB,
     otros: otrosB,
-    gastosTotales,
+    imprevistos: imprevistosB,
+    gastosTotales: gastosCts / 100,
+    estimacionImprevistos: estimacion,
+    reservaImprevistos: reservaCts / 100,
     margen,
     margenPct: ingresosNetos > 0 ? (margen / ingresosNetos) * 100 : null,
   };
@@ -260,10 +330,19 @@ export function desglosePorMeses(
   prestamos: PrestamoNombrado[],
   meses: string[],
   hoy: ISODate,
+  opciones: { movimientos?: MovimientoReal[]; estimacion?: { mes: string; importe: number } | null } = {},
 ): DesgloseDeMes[] {
   const porMes = new Map<string, CashEvent[]>(meses.map((m) => [m, []]));
   for (const e of eventos) porMes.get(e.fecha.slice(0, 7))?.push(e);
-  return meses.map((mes) => ({ mes, desglose: desgloseDelMes(porMes.get(mes) ?? [], gastos, prestamos, hoy) }));
+  const movsPorMes = new Map<string, MovimientoReal[]>(meses.map((m) => [m, []]));
+  for (const m of opciones.movimientos ?? []) movsPorMes.get(m.fecha.slice(0, 7))?.push(m);
+  return meses.map((mes) => ({
+    mes,
+    desglose: desgloseDelMes(porMes.get(mes) ?? [], gastos, prestamos, hoy, {
+      movimientos: movsPorMes.get(mes),
+      estimacionImprevistos: opciones.estimacion?.mes === mes ? opciones.estimacion.importe : null,
+    }),
+  }));
 }
 
 function sumarBloques(bloques: BloqueMes[]): BloqueMes {
@@ -294,17 +373,111 @@ export function sumarDesgloses(lista: DesgloseMes[]): DesgloseMes {
   const prestamos = sumarBloques(lista.map((d) => d.prestamos));
   const facturas = sumarBloques(lista.map((d) => d.facturas));
   const otros = sumarBloques(lista.map((d) => d.otros));
+  const imprevistos = sumarBloques(lista.map((d) => d.imprevistos));
   const ingresosCts = lista.reduce((s, d) => s + Math.round(d.ingresosNetos * 100), 0);
-  const gastosCts = cts(prestamos.total) + cts(facturas.total) + cts(otros.total);
+  const gastosCts = cts(prestamos.total) + cts(facturas.total) + cts(otros.total) + cts(imprevistos.total);
+  const reservaCts = lista.reduce((s, d) => s + cts(d.reservaImprevistos), 0);
   const ingresosNetos = ingresosCts / 100;
-  const margen = (ingresosCts - gastosCts) / 100;
+  const margen = (ingresosCts - gastosCts - reservaCts) / 100;
   return {
     ingresosNetos,
     prestamos,
     facturas,
     otros,
+    imprevistos,
     gastosTotales: gastosCts / 100,
+    estimacionImprevistos: null,
+    reservaImprevistos: reservaCts / 100,
     margen,
     margenPct: ingresosNetos > 0 ? (margen / ingresosNetos) * 100 : null,
   };
+}
+
+// ── Estimación de imprevistos ─────────────────────────────────────────────────
+
+export interface EstimacionImprevistos {
+  /** Lo que se espera gastar en imprevistos en un mes. */
+  mediaMensual: number;
+  /** Total marcado como imprevisto en la ventana. */
+  total: number;
+  /** Meses sobre los que se ha hecho la media (1–12; 0 si no hay datos). */
+  meses: number;
+  /** Primer y último mes de la ventana usada. */
+  desde: string | null;
+  hasta: string | null;
+}
+
+/**
+ * Media mensual de lo marcado como imprevisto en los 12 meses ANTERIORES a
+ * `mes` (el mes en curso no entra: está a medias y bajaría la media).
+ *
+ * Se divide entre 12, salvo que el seguimiento empezara hace menos: entonces
+ * entre los meses que hay desde `primerDato` (el primer movimiento registrado
+ * o el primer imprevisto, lo que sea antes). Dividir siempre entre 12 a quien
+ * lleva dos meses usando la aplicación daría una estimación seis veces menor
+ * que la real.
+ */
+export function estimarImprevistos(porMes: DesgloseDeMes[], mes: string, primerDato: ISODate | null): EstimacionImprevistos {
+  const vacio: EstimacionImprevistos = { mediaMensual: 0, total: 0, meses: 0, desde: null, hasta: null };
+  if (!primerDato) return vacio;
+  const desdeVentana = sumarMesesA(mes, -12);
+  const hastaVentana = sumarMesesA(mes, -1);
+  const desde = primerDato.slice(0, 7) > desdeVentana ? primerDato.slice(0, 7) : desdeVentana;
+  if (desde > hastaVentana) return vacio;
+  const meses = mesesEntre(desde, hastaVentana);
+  const totalCts = porMes.filter((m) => m.mes >= desde && m.mes <= hastaVentana).reduce((s, m) => s + cts(m.desglose.imprevistos.total), 0);
+  return {
+    mediaMensual: Math.round(totalCts / meses.length) / 100,
+    total: totalCts / 100,
+    meses: meses.length,
+    desde,
+    hasta: hastaVentana,
+  };
+}
+
+export interface FuenteMes {
+  /** Extracto estimado entre dos fechas, con los mismos filtros que la vista. */
+  generarExtracto: (desde: ISODate, hasta: ISODate) => CashEvent[];
+  gastos: GastoClasificable[];
+  prestamos: PrestamoNombrado[];
+  /** Movimientos reales (todos; aquí se filtran). */
+  movimientos: MovimientoReal[];
+  hoy: ISODate;
+}
+
+/** Último día de un mes `YYYY-MM`. */
+export function finDeMes(mes: string): ISODate {
+  const [y, m] = mes.split('-').map(Number);
+  return `${mes}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+}
+
+/** Primer dato de seguimiento: primer movimiento real o primer gasto imprevisto. */
+export function primerDatoDeSeguimiento(f: Pick<FuenteMes, 'gastos' | 'movimientos'>): ISODate | null {
+  let primero: string | null = null;
+  for (const m of f.movimientos) if (!primero || m.fecha < primero) primero = m.fecha;
+  for (const g of f.gastos) if (g.imprevisto && g.fechaInicio && (!primero || g.fechaInicio < primero)) primero = g.fechaInicio;
+  return primero;
+}
+
+/** La estimación de imprevistos para `mes`, con el extracto de los 12 meses anteriores. */
+export function estimacionImprevistosPara(mes: string, f: FuenteMes): EstimacionImprevistos {
+  const meses = mesesEntre(sumarMesesA(mes, -12), sumarMesesA(mes, -1));
+  const eventos = f.generarExtracto(`${meses[0]}-01`, finDeMes(meses[meses.length - 1]));
+  const porMes = desglosePorMeses(eventos, f.gastos, f.prestamos, meses, f.hoy, { movimientos: f.movimientos });
+  return estimarImprevistos(porMes, mes, primerDatoDeSeguimiento(f));
+}
+
+/**
+ * Desglose del mes en curso con la reserva de imprevistos aplicada. Es lo que
+ * pinta la tarjeta «Este mes»; la ventana de meses anteriores usa lo mismo.
+ */
+export function mesEnCurso(f: FuenteMes, eventosDelMes: CashEvent[]): { desglose: DesgloseMes; estimacion: EstimacionImprevistos } {
+  const mes = f.hoy.slice(0, 7);
+  const estimacion = estimacionImprevistosPara(mes, f);
+  const movimientos = f.movimientos.filter((m) => m.fecha.startsWith(mes));
+  const desglose = desgloseDelMes(eventosDelMes, f.gastos, f.prestamos, f.hoy, {
+    movimientos,
+    estimacionImprevistos: estimacion.meses > 0 ? estimacion.mediaMensual : null,
+  });
+  return { desglose, estimacion };
 }

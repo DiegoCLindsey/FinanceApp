@@ -116,6 +116,12 @@ export interface Expense {
    * decidirlo automáticamente (ver `engine/mes.esFactura`).
    */
   esFactura?: boolean;
+  /**
+   * Gasto imprevisto (una avería, el dentista…): se sigue aparte en «Este mes»
+   * y alimenta la estimación automática de imprevistos. Tiene prioridad sobre
+   * `esFactura`.
+   */
+  imprevisto?: boolean;
   /** Estimación de la que proviene por un ajuste automático (F4, tarea 4.6). */
   ajustadaDesdeId?: string;
   /** Fecha en la que se aplicó el ajuste que la creó. */
@@ -206,6 +212,12 @@ export interface Transaccion {
   tipo: TipoTransaccion;
   origen: 'manual' | 'importado';
   nota?: string;
+  /**
+   * Movimiento real marcado como imprevisto. Solo cuenta como tal si NO está
+   * asignado a una estimación: si lo está, lo que cuenta es la estimación (y
+   * esa puede ser imprevista o no), para no contarlo dos veces.
+   */
+  imprevisto?: boolean;
 }
 
 /**

@@ -165,7 +165,8 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
         ${exp.tipo === 'gasto' && exp.clasificacion === 'deseo' ? '<span class="badge" style="background:rgba(255,209,102,0.15);color:#ffb020" title="Gasto clasificado como deseo">deseo</span>' : ''}
         ${exp.tipo === 'gasto' && exp.clasificacion === null ? '<span class="badge badge-inactive" title="Excluido del análisis de distribución">sin clasificar</span>' : ''}
         ${exp.basico ? '<span class="badge badge-orange" title="Gasto básico">⚑ básico</span>' : ''}
-        ${exp.tipo === 'gasto' && esFactura(exp) ? '<span class="badge" style="background:rgba(77,159,255,0.12);color:#4d9fff" title="Cuenta como factura en «Este mes»">factura</span>' : ''}
+        ${exp.tipo === 'gasto' && exp.imprevisto ? '<span class="badge" style="background:rgba(213,81,129,0.14);color:#e87ba4" title="Cuenta como imprevisto en «Este mes»">imprevisto</span>' : ''}
+        ${exp.tipo === 'gasto' && !exp.imprevisto && esFactura(exp) ? '<span class="badge" style="background:rgba(77,159,255,0.12);color:#4d9fff" title="Cuenta como factura en «Este mes»">factura</span>' : ''}
         ${exp.ajustadaDesdeId ? `<span class="badge" style="background:rgba(99,179,237,0.12);color:#63b3ed" title="Creada por un ajuste automático el ${esc(exp.ajustadaEn ?? '')}">ajustada</span>` : ''}
         ${resumenReparto ? `<span class="badge" style="background:rgba(139,92,246,0.12);color:#a78bfa" title="${esc(resumenReparto)}">👥 reparto</span>` : ''}
         ${expirado ? '<span class="badge badge-inactive">Exp.</span>' : ''}
@@ -262,6 +263,11 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
         <div class="form-group"><label class="form-label">Cuenta destino</label>
           <select class="form-select" id="ef-cuenta-dest">${opcionesCuenta(exp?.cuentaDestino ?? 'default')}</select></div>
       </div>
+      <div class="form-row mt-8" id="ef-imprevisto-wrap"${exp?.tipo === 'gasto' || !exp?.tipo ? '' : ' style="display:none"'}>
+        <label class="form-label" for="ef-imprevisto">Imprevisto</label>
+        <label class="toggle"><input type="checkbox" id="ef-imprevisto"${exp?.imprevisto ? ' checked' : ''}/><span class="toggle-slider"></span></label>
+        <span class="text-sm" style="margin-left:6px">Una avería, el dentista… Se sigue aparte y entra en la estimación de imprevistos</span>
+      </div>
       <div class="form-row mt-8">
         <label class="form-label">Activo</label>
         <label class="toggle"><input type="checkbox" id="ef-activo"${exp?.activo !== false ? ' checked' : ''}/><span class="toggle-slider"></span></label>
@@ -332,6 +338,7 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
     mostrar('#ef-irpf-wrap', tipo === 'ingreso');
     mostrar('#ef-clasificacion-wrap', tipo === 'gasto');
     mostrar('#ef-factura-wrap', tipo === 'gasto');
+    mostrar('#ef-imprevisto-wrap', tipo === 'gasto');
   }
 
   function abrirFormulario(exp: Partial<Expense> | null, titulo: string, refrescar: () => void): void {
@@ -408,6 +415,7 @@ export function createExpensesFeature(deps: ExpensesViewDeps): FeatureManifest {
       // Una transferencia no se clasifica; en gasto, '' significa "sin clasificar"
       clasificacion: tipo === 'gasto' ? ((clasificacionRaw || null) as Expense['clasificacion']) : undefined,
       esFactura: tipo === 'gasto' ? (val('#ef-factura') === 'si' ? true : val('#ef-factura') === 'no' ? false : undefined) : undefined,
+      imprevisto: tipo === 'gasto' && marcado('#ef-imprevisto') ? true : undefined,
       tags,
       repartoConsumo: esTransferencia ? undefined : leerRepartoWidget(content, 'consumo'),
       repartoPago: esTransferencia ? undefined : leerRepartoWidget(content, 'pago'),

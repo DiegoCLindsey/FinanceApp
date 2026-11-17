@@ -90,8 +90,9 @@
 .mes-cabecera { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .mes-ingresos { font-size: 12px; color: var(--text2); }
 .mes-ingresos strong { color: var(--text); font-family: var(--font-mono); }
-.mes-rejilla { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-@media (max-width: 900px) { .mes-rejilla { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.mes-rejilla { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 1180px) { .mes-rejilla { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .mes-rejilla { grid-template-columns: repeat(2, minmax(0, 1fr)); } .mes-bloque--margen { grid-column: 1 / -1; } }
 .mes-bloque { background: var(--surface); border: 1px solid var(--hairline-soft); border-radius: var(--radius); padding: 12px 14px; min-width: 0; }
 .mes-bloque-titulo { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); }
 .mes-bloque-total { font-family: var(--font-mono); font-size: 20px; font-weight: 700; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -101,6 +102,10 @@
 .mes-bloque--prestamos { --grupo: #9085e9; }
 .mes-bloque--facturas { --grupo: #d95926; }
 .mes-bloque--otros { --grupo: #3987e5; }
+.mes-bloque--imprevistos { --grupo: #d55181; }
+.mes-bloque--imprevistos.es-excedido { border-color: rgba(213,81,129,.55); }
+.mes-bloque-de { font-size: 12px; font-weight: 500; color: var(--text3); margin-left: 4px; }
+.mes-bloque-nota { color: var(--text3); font-size: 11px; margin-top: 2px; }
 .mes-bloque .mes-barra { color: var(--grupo); }
 .mes-punto { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--grupo, transparent); margin-right: 6px; vertical-align: 0; }
 .mes-bloque--margen .mes-punto { display: none; }
@@ -147,3 +152,5 @@
 .hist-vista { margin-top: 14px; }
 [data-hist-detalle] { margin-top: 12px; }
 .hist-detalle-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.hist-estimacion { font-size: 12px; color: var(--text2); margin: 2px 0 8px; line-height: 1.5; }
+.hist-estimacion strong { color: var(--text); font-family: var(--font-mono); }

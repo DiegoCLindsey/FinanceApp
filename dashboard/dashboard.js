@@ -895,6 +895,10 @@ const DashboardModule = (() => {
         loans, expenses, accountsForExtracto, { ...config, dashboardStart: desde, dashboardEnd: hasta },
         filtroAccounts.length > 0 ? filtroAccounts : null, nominas, inflPeriodos),
       gastos: expenses, prestamos: loans, hoy: hoyStr,
+      // Movimientos reales: de ahí salen los marcados como imprevisto. Con el
+      // filtro de cuentas activo, solo los de esas cuentas, igual que el resto.
+      movimientos: (window.FinanceApp?.store?.get('transacciones') || [])
+        .filter(t => filtroAccounts.length === 0 || filtroAccounts.includes(t.cuentaId)),
     };
     if (!view.dataset.histCableado) {
       // Delegado en la vista, que no se sustituye al repintar: un solo listener.
@@ -909,7 +913,10 @@ const DashboardModule = (() => {
     try {
       const fa = window.FinanceApp;
       if (fa?.engine?.mes && fa.ui?.tarjetaMes) {
-        tarjetaMesHtml = fa.ui.tarjetaMes(fa.engine.mes.desgloseDelMes(extractoMesActual, expenses, loans, hoyStr), mesActualLabel, hoyStr);
+        // Con la reserva de imprevistos: la media de lo marcado como imprevisto
+        // en los 12 meses anteriores se aparta del margen de este mes.
+        const { desglose, estimacion } = fa.engine.mes.mesEnCurso(_ctxHistorico, extractoMesActual);
+        tarjetaMesHtml = fa.ui.tarjetaMes(desglose, mesActualLabel, hoyStr, estimacion);
       }
     } catch (e) { console.error('[Dashboard] No se ha podido calcular el desglose del mes:', e); }
 

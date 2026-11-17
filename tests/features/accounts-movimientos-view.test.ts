@@ -138,6 +138,37 @@ describe('vista fusionada — pestaña Movimientos', () => {
     expect(contenedor().querySelectorAll('[data-tx]')).toHaveLength(1);
   });
 
+  it('un movimiento se registra como imprevisto y la marca se quita y se pone desde su fila', () => {
+    const { registry, ledger } = entorno();
+    registry.mount('accounts');
+    irAPestana('movimientos');
+    let c = contenedor();
+    (c.querySelector('#acc-mes') as HTMLInputElement).value = '2026-07';
+    (c.querySelector('#nt-fecha') as HTMLInputElement).value = '2026-07-12';
+    (c.querySelector('#nt-concepto') as HTMLInputElement).value = 'Taller';
+    (c.querySelector('#nt-importe') as HTMLInputElement).value = '320';
+    (c.querySelector('#nt-imprevisto') as HTMLInputElement).checked = true;
+    (c.querySelector('#nt-guardar') as HTMLElement).click();
+    const tx = ledger.transacciones().find((t) => t.concepto === 'Taller');
+    expect(tx?.imprevisto).toBe(true);
+
+    c = contenedor();
+    const boton = c.querySelector<HTMLElement>(`[data-tx-imprevisto="${tx?._id}"]`) as HTMLElement;
+    expect(boton.getAttribute('aria-pressed')).toBe('true');
+    boton.click();
+    expect(ledger.transacciones().find((t) => t._id === tx?._id)?.imprevisto).toBeUndefined();
+    (contenedor().querySelector<HTMLElement>(`[data-tx-imprevisto="${tx?._id}"]`) as HTMLElement).click();
+    expect(ledger.transacciones().find((t) => t._id === tx?._id)?.imprevisto).toBe(true);
+  });
+
+  it('los ingresos no ofrecen la marca de imprevisto', () => {
+    const { registry, ledger } = entorno();
+    ledger.registrar({ fecha: '2026-07-05', cuentaId: 'default', importe: 100, concepto: 'Bizum', tipo: 'ingreso' });
+    registry.mount('accounts');
+    irAPestana('movimientos');
+    expect(contenedor().querySelector('[data-tx-imprevisto]')).toBeNull();
+  });
+
   it('valida concepto e importe antes de registrar', () => {
     const { registry, ledger } = entorno();
     registry.mount('accounts');

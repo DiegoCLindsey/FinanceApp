@@ -9,7 +9,7 @@
 
 import { formatEUR } from '@/core/money';
 import type { ISODate } from '@/core/dates';
-import type { BloqueMes, DesgloseMes } from '@/engine/mes';
+import type { BloqueMes, DesgloseMes, EstimacionImprevistos } from '@/engine/mes';
 import { esc, nombreMes } from '../accounting/dom';
 
 /**
@@ -18,7 +18,7 @@ import { esc, nombreMes } from '../accounting/dom';
  * préstamos/otros no queda nunca contiguo, que es el único que daltónicos no
  * distinguirían bien. La tarjeta y las barras usan los mismos.
  */
-export const COLORES_GRUPO = { prestamos: '#9085e9', facturas: '#d95926', otros: '#3987e5' } as const;
+export const COLORES_GRUPO = { prestamos: '#9085e9', facturas: '#d95926', otros: '#3987e5', imprevistos: '#d55181' } as const;
 
 const dia = (f: ISODate) => String(Number(f.slice(8, 10)));
 
@@ -31,6 +31,8 @@ export interface OpcionesCuerpo {
    * enseña su media mensual sobre este número de meses.
    */
   meses?: number;
+  /** Estimación de imprevistos, para enseñarla en su bloque. */
+  estimacion?: EstimacionImprevistos | null;
 }
 
 function detalle(b: BloqueMes, o: OpcionesCuerpo): string {
@@ -75,6 +77,38 @@ function bloque(titulo: string, ayuda: string, b: BloqueMes, o: OpcionesCuerpo, 
 }
 
 /** Los cuatro bloques: préstamos, facturas, otros y margen. */
+/**
+ * Bloque de imprevistos. En el mes en curso la barra mide lo gastado frente a
+ * lo estimado (se pasa del 100 % si ya se ha superado) y el pie dice de dónde
+ * sale la estimación; en meses pasados y en el acumulado es un bloque más.
+ */
+function bloqueImprevistos(d: DesgloseMes, o: OpcionesCuerpo): string {
+  const b = d.imprevistos;
+  const e = o.estimacion;
+  const conEstimacion = o.meses === undefined && e && e.meses > 0;
+  if (!conEstimacion) {
+    return bloque('Imprevistos', 'Gastos marcados como imprevisto: en el gasto o en el movimiento real', b, o, 'mes-bloque--imprevistos');
+  }
+  const media = e.mediaMensual;
+  const progreso = media > 0 ? Math.min(100, (b.total / media) * 100) : b.total > 0 ? 100 : 0;
+  const pasado = b.total > media + 0.004;
+  const pie = pasado
+    ? `<span>Te has pasado <strong>${esc(formatEUR(b.total - media))}</strong></span>`
+    : d.reservaImprevistos > 0
+      ? `<span>Reservado <strong>${esc(formatEUR(d.reservaImprevistos))}</strong></span>`
+      : '<span>Sin imprevistos previstos</span>';
+  const origen = `Estimación ${formatEUR(media)}/mes · media de ${e.meses} ${e.meses === 1 ? 'mes' : 'meses'}`;
+  return `<section class="mes-bloque mes-bloque--imprevistos${pasado ? ' es-excedido' : ''}" aria-label="Imprevistos">
+    <div class="mes-bloque-titulo" title="Gastos marcados como imprevisto: en el gasto o en el movimiento real. La estimación es la media de lo marcado en los últimos 12 meses."><span class="mes-punto" aria-hidden="true"></span>Imprevistos</div>
+    <div class="mes-bloque-total">${esc(formatEUR(b.total))}<span class="mes-bloque-de"> de ${esc(formatEUR(media))}</span></div>
+    <div class="mes-barra" role="img" aria-label="${Math.round(progreso)} % de la estimación"><span style="width:${progreso.toFixed(1)}%"></span></div>
+    <div class="mes-bloque-pie">${pie}</div>
+    <div class="mes-bloque-pie mes-bloque-nota"><span>${esc(origen)}</span></div>
+    ${detalle(b, o)}
+  </section>`;
+}
+
+/** Los bloques: préstamos, facturas, otros, imprevistos y margen. */
 export function cuerpoDesglose(d: DesgloseMes, o: OpcionesCuerpo): string {
   const positivo = d.margen >= 0;
   const pct = d.margenPct === null ? '' : ` · ${Math.abs(d.margenPct).toFixed(0)} % de lo que entra`;
@@ -82,22 +116,28 @@ export function cuerpoDesglose(d: DesgloseMes, o: OpcionesCuerpo): string {
     o.meses !== undefined && o.meses > 1
       ? `<div class="mes-bloque-pie"><span>Media ${positivo ? '+' : '−'}${esc(formatEUR(Math.abs(d.margen) / o.meses))}/mes</span></div>`
       : '';
+  const reserva =
+    d.reservaImprevistos > 0
+      ? `<div class="mes-bloque-pie"><span>Ya descontados ${esc(formatEUR(d.reservaImprevistos))} para imprevistos</span></div>`
+      : '';
   return `<div class="mes-rejilla">
       ${bloque('Préstamos', 'Cuotas y amortizaciones previstas', d.prestamos, o, 'mes-bloque--prestamos')}
       ${bloque('Facturas', 'Gastos fijos y recurrentes: recibos, alquiler, seguros, suscripciones. Se puede marcar a mano en cada gasto.', d.facturas, o, 'mes-bloque--facturas')}
       ${bloque('Otros gastos', 'El resto de gastos previstos: compra, ocio, puntuales', d.otros, o, 'mes-bloque--otros')}
+      ${bloqueImprevistos(d, o)}
       <section class="mes-bloque mes-bloque--margen ${positivo ? 'es-positivo' : 'es-negativo'}" aria-label="Margen de ahorro esperado">
-        <div class="mes-bloque-titulo" title="Ingresos netos menos préstamos, facturas y otros gastos">Margen de ahorro</div>
+        <div class="mes-bloque-titulo" title="Ingresos netos menos préstamos, facturas, otros gastos e imprevistos, y menos lo que queda por reservar para imprevistos">Margen de ahorro</div>
         <div class="mes-bloque-total">${positivo ? '+' : '−'}${esc(formatEUR(Math.abs(d.margen)))}</div>
         <div class="mes-bloque-pie"><span>${positivo ? 'Te sobra' : 'Te falta'}${esc(pct)}</span></div>
         ${media}
+        ${reserva}
         <div class="mes-bloque-pie"><span>Gastos previstos: ${esc(formatEUR(d.gastosTotales))}</span></div>
       </section>
     </div>`;
 }
 
 /** HTML de la tarjeta. `mes` en formato `YYYY-MM`. */
-export function tarjetaMes(d: DesgloseMes, mes: string, hoy: ISODate): string {
+export function tarjetaMes(d: DesgloseMes, mes: string, hoy: ISODate, estimacion: EstimacionImprevistos | null = null): string {
   return `<div class="card mes-card" data-mes-card>
     <div class="mes-cabecera">
       <div class="card-title" style="margin:0">Este mes · ${esc(nombreMes(mes))}</div>
@@ -106,6 +146,6 @@ export function tarjetaMes(d: DesgloseMes, mes: string, hoy: ISODate): string {
         <button type="button" class="btn-secondary btn-sm" data-mes-historico>Meses anteriores</button>
       </div>
     </div>
-    ${cuerpoDesglose(d, { hoy })}
+    ${cuerpoDesglose(d, { hoy, estimacion })}
   </div>`;
 }

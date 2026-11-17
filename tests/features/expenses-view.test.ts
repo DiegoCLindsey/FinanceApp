@@ -446,6 +446,28 @@ describe('formulario de gastos', () => {
     expect(store.get('expenses')[0].tags).toEqual(['ahorro', 'vacaciones', 'transferencia']);
   });
 
+  it('un gasto se marca como imprevisto y lo enseña en la lista', () => {
+    const { registry, store } = entorno({ expenses: [] });
+    abrirNuevo(registry);
+    escribir('#ef-concepto', 'Avería lavadora');
+    escribir('#ef-cuantia', '180');
+    (modal().querySelector('#ef-imprevisto') as HTMLInputElement).checked = true;
+    guardar();
+    expect(store.get('expenses')[0].imprevisto).toBe(true);
+    expect(vista().textContent).toContain('imprevisto');
+  });
+
+  it('un ingreso no puede ser imprevisto', () => {
+    const { registry, store } = entorno({ expenses: [] });
+    abrirNuevo(registry);
+    escribir('#ef-concepto', 'Lotería');
+    escribir('#ef-cuantia', '20');
+    (modal().querySelector('#ef-imprevisto') as HTMLInputElement).checked = true;
+    fijar(modal(), '#ef-tipo', 'ingreso');
+    guardar();
+    expect(store.get('expenses')[0].imprevisto).toBeUndefined();
+  });
+
   it('editar un gasto con reparto lo precarga marcado en el formulario', () => {
     const conReparto = gasto({
       _id: 'e2',
