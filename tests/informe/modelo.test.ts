@@ -1,110 +1,53 @@
-// «Crear informe»: lo que se comprueba aquí es que TODO CUADRA. El pasado sale
-// del libro de movimientos, el futuro del extracto, y las dos mitades tienen que
-// encajar en el saldo real de hoy, en el puente, en la tabla mes a mes y en las
-// cuentas.
+// «Crear informe» contra el SALDO DE LAS CUENTAS: lo real son los saldos
+// anotados (y el inicial) de cada cuenta; lo previsto, el extracto del motor.
+// Lo que se comprueba aquí es que todo cuadra: el puente, la tabla mes a mes y
+// las cuentas encajan en el último saldo real conocido (el corte).
 import { describe, expect, it } from 'vitest';
-import { createStore } from '@/state/store';
-import { createMemoryAdapter } from '@/state/storage/local';
-import { createLedger } from '@/accounting/ledger';
 import { construirInforme, type EntradaInforme } from '@/informe/modelo';
 import { informeHtml } from '@/informe/html';
 import type { CashEvent } from '@/engine/types';
-import type { Expense } from '@/state/schema';
+import type { Account, Expense } from '@/state/schema';
 
 const HOY = '2026-11-20';
 
-function entorno() {
-  const store = createStore({ adapter: createMemoryAdapter(), hoy: new Date(2026, 10, 20) });
-  store.load();
-  store.set('accounts', [
-    { ...store.get('accounts')[0], nombre: 'Nómina', saldoInicial: 3000, fechaInicialSaldo: '2026-08-31' },
-    {
-      ...store.get('accounts')[0],
-      _id: 'aho',
-      nombre: 'Ahorro',
-      esCuentaPrincipal: false,
-      saldoInicial: 500,
-      fechaInicialSaldo: '2026-08-31',
-    },
-  ]);
-  const ledger = createLedger(store);
-  const g = (concepto: string, cuantia: number, extra: Partial<Expense> = {}) =>
-    store.addItem('expenses', {
-      concepto,
-      cuantia,
-      tipo: 'gasto',
-      tipoFrecuencia: 'mensual',
-      frecuencia: 1,
-      fechaInicio: '2026-01-01',
-      fechaFin: null,
-      cuenta: 'default',
-      activo: true,
-      tags: [],
-      ...extra,
-    } as Omit<Expense, '_id'>);
-  const alquiler = g('Alquiler', 900, { diaPago: 'dia:1' });
-  const superm = g('Supermercado', 300);
-  const sueldo = g('Sueldo', 2000, { tipo: 'ingreso', diaPago: 'dia:28' });
+/** Saldos anotados por cuenta: [fecha, saldo al empezar ese día]. */
+type Saldos = Record<string, [string, number][]>;
 
-  ledger.registrarPuntoControl('default', '2026-08-31', 3000);
-  ledger.registrarPuntoControl('aho', '2026-08-31', 500);
-  for (const m of ['09', '10']) {
-    ledger.registrar({
-      fecha: `2026-${m}-01`,
-      cuentaId: 'default',
-      importe: 900,
-      concepto: 'ALQUILER',
-      tipo: 'gasto',
-      estimacionId: alquiler._id,
-    });
-    ledger.registrar({
-      fecha: `2026-${m}-12`,
-      cuentaId: 'default',
-      importe: m === '10' ? 450 : 300,
-      concepto: 'SUPER',
-      tipo: 'gasto',
-      estimacionId: superm._id,
-    });
-    ledger.registrar({
-      fecha: `2026-${m}-28`,
-      cuentaId: 'default',
-      importe: 2000,
-      concepto: 'NOMINA',
-      tipo: 'ingreso',
-      estimacionId: sueldo._id,
-    });
-    ledger.registrar({
-      fecha: `2026-${m}-29`,
-      cuentaId: 'default',
-      importe: 200,
-      concepto: 'A AHORRO',
-      tipo: 'transferencia',
-      negativo: true,
-    });
-    ledger.registrar({ fecha: `2026-${m}-29`, cuentaId: 'aho', importe: 200, concepto: 'DESDE NOMINA', tipo: 'transferencia' });
-  }
-  ledger.registrar({
-    fecha: '2026-11-01',
-    cuentaId: 'default',
-    importe: 900,
-    concepto: 'ALQUILER',
-    tipo: 'gasto',
-    estimacionId: alquiler._id,
-  });
-  ledger.registrar({ fecha: '2026-11-04', cuentaId: 'default', importe: 120, concepto: 'TALLER', tipo: 'gasto', imprevisto: true });
-  // Un saldo anotado a mano que no explican los movimientos: faltan 25 €.
-  ledger.registrarPuntoControl('default', '2026-10-31', ledger.saldoCuenta('default', '2026-10-31') - 25);
+function entorno(saldos: Saldos = {}) {
+  const anotados: Saldos = {
+    // Septiembre cuadra; en octubre faltan 150; del 1 al 15 de noviembre, 50 más.
+    default: [
+      ['2026-09-01', 3000],
+      ['2026-10-01', 3800],
+      ['2026-11-01', 4450],
+      ['2026-11-15', 3200],
+    ],
+    // El ahorro no se actualiza desde septiembre.
+    aho: [['2026-09-01', 500]],
+    ...saldos,
+  };
+  const cuentas = [
+    { _id: 'default', nombre: 'Nómina', activo: true },
+    { _id: 'aho', nombre: 'Ahorro', activo: true },
+  ] as unknown as Account[];
+  const gastos = [
+    { _id: 'alq', concepto: 'Alquiler', tipo: 'gasto', tipoFrecuencia: 'mensual' },
+    { _id: 'sup', concepto: 'Supermercado', tipo: 'gasto', tipoFrecuencia: 'mensual' },
+    { _id: 'sue', concepto: 'Sueldo', tipo: 'ingreso', tipoFrecuencia: 'mensual' },
+  ] as unknown as Expense[];
 
-  /** Extracto «del motor»: las tres estimaciones, en las fechas de cada mes. */
+  const entrada_ = (c: Account, fecha: string) => (anotados[c._id] ?? []).filter(([f]) => f <= fecha).at(-1);
+
+  /** Extracto «del motor»: alquiler y súper el día 1, sueldo el 28. */
   const generarExtracto = (desde: string, hasta: string): CashEvent[] => {
     const out: CashEvent[] = [];
     for (let y = 2026, m = 1; y < 2028; m === 12 ? ((m = 1), y++) : m++) {
       const mm = `${y}-${String(m).padStart(2, '0')}`;
       const ev = (dia: string, concepto: string, cuantia: number, tipo: 'gasto' | 'ingreso', sourceId: string) =>
         out.push({ fecha: `${mm}-${dia}`, concepto, cuantia, tipo, tags: [], cuenta: 'default', sourceId, sourceType: 'expense' });
-      ev('01', 'Alquiler', 900, 'gasto', alquiler._id);
-      ev('01', 'Supermercado', 300, 'gasto', superm._id);
-      ev('28', 'Sueldo', 2000, 'ingreso', sueldo._id);
+      ev('01', 'Alquiler', 900, 'gasto', 'alq');
+      ev('01', 'Supermercado', 300, 'gasto', 'sup');
+      ev('28', 'Sueldo', 2000, 'ingreso', 'sue');
     }
     return out.filter((e) => e.fecha >= desde && e.fecha <= hasta);
   };
@@ -114,65 +57,76 @@ function entorno() {
     hasta,
     hoy: HOY,
     proyecto: 'Mis finanzas',
-    cuentas: store.get('accounts'),
-    gastos: store.get('expenses'),
-    ledger,
+    cuentas,
+    gastos,
+    prestamos: [],
     generarExtracto,
-    saldoSinLibro: (c) => c.saldoInicial,
-    opcionesCierre: { hoy: HOY, nominas: [], loans: [] },
+    saldoEnFecha: (c, fecha) => entrada_(c, fecha)?.[1] ?? 0,
+    ultimoSaldoConocido: (c, fecha) => entrada_(c, fecha)?.[0] ?? '',
     ...extra,
   });
-  return { store, ledger, entrada };
+  return { cuentas, entrada };
 }
 
-describe('construirInforme', () => {
-  it('pasado y futuro: el puente, la tabla mes a mes y las cuentas cuadran', () => {
+describe('construirInforme (contra el saldo de las cuentas)', () => {
+  it('parte en el último saldo real y todo cuadra', () => {
     const { entrada } = entorno();
-    const inf = construirInforme(entrada('2026-09-01', '2027-02-28'));
+    const inf = construirInforme(entrada('2026-09-01', '2026-12-31'));
 
     expect(inf.comprobaciones.every((c) => c.ok)).toBe(true);
+    expect(inf.corte).toBe('2026-11-15');
     expect(inf.saldoInicio).toBe(3500);
-    // Pasado: +4000 − (900+300+900+450+900+120) − 25 (saldo anotado)
-    expect(inf.saldoHoy).toBe(3500 + 4000 - 3570 - 25);
-    const ajuste = inf.puente.find((p) => p.concepto === 'Ajuste por saldos anotados');
-    expect(ajuste?.importe).toBe(-25);
-    // Los traspasos se compensan: no aparecen
-    expect(inf.puente.some((p) => p.concepto.startsWith('Traspasos'))).toBe(false);
+    // Previsto hasta el corte: sep +800, oct +800, 1 nov −1200
+    expect(inf.saldoPrevistoCorte).toBe(3900);
+    // Real en el corte: 3200 de la nómina + 500 del ahorro
+    expect(inf.saldoCorte).toBe(3700);
+    expect(inf.diferencia).toBe(-200);
+    // Futuro: sueldo de noviembre y diciembre entero
+    expect(inf.saldoFinal).toBe(3700 + 2000 + 800);
 
-    // Futuro desde mañana: la nómina de noviembre y tres meses enteros
-    expect(inf.puente.find((p) => p.concepto === 'Ingresos previstos')?.importe).toBe(2000 * 4);
-    expect(inf.puente.find((p) => p.concepto === 'Gastos previstos')?.importe).toBe(-1200 * 3);
-    expect(inf.saldoFinal).toBe(inf.saldoHoy + 8000 - 3600);
-
-    // Tabla mes a mes: cada fila encadena con la siguiente y la última es el final
-    for (let i = 0; i < inf.meses.length; i++) {
-      const m = inf.meses[i];
-      expect(m.saldoInicial + m.neto + m.otros).toBeCloseTo(m.saldoFinal, 2);
-      if (i > 0) expect(m.saldoInicial).toBeCloseTo(inf.meses[i - 1].saldoFinal, 2);
-    }
-    expect(inf.meses.map((m) => m.tipo)).toEqual(['real', 'real', 'en-curso', 'previsto', 'previsto', 'previsto']);
-    expect(inf.meses[inf.meses.length - 1].saldoFinal).toBeCloseTo(inf.saldoFinal, 2);
-    // El saldo anotado aparece como «otros» en octubre
-    expect(inf.meses[1].otros).toBeCloseTo(-25, 2);
-
-    // Cuentas: el ahorro recibe 400 por traspasos
-    const aho = inf.cuentas.find((c) => c._id === 'aho');
-    expect(aho).toMatchObject({ saldoInicio: 500, saldoHoy: 900, fuente: 'movimientos' });
+    const paso = (c: string) => inf.puente.find((p) => p.concepto === c)?.importe;
+    expect(paso('Diferencia con el saldo real')).toBe(-200);
+    expect(paso('Ingresos previstos hasta el corte')).toBe(4000);
+    expect(paso('Gastos previstos hasta el corte')).toBe(-3600);
+    expect(paso('Ingresos previstos desde el corte')).toBe(4000);
+    expect(paso('Gastos previstos desde el corte')).toBe(-1200);
   });
 
-  it('el pasado: lo previsto frente a lo real, por grupo y por estimación', () => {
+  it('mes a mes: el saldo final de los meses pasados es el real y la diferencia lo explica', () => {
     const { entrada } = entorno();
-    const inf = construirInforme(entrada('2026-09-01', '2027-02-28'));
-    const grupo = (g: string) => inf.grupos.find((x) => x.grupo === g);
-    expect(grupo('ingresos')).toMatchObject({ previsto: 4000, real: 4000 });
-    expect(grupo('sinPrever')).toMatchObject({ previsto: 0, real: 120 });
-    // súper: previstos 3 × 300 (también el del 1 de noviembre); reales 300 + 450 y
-    // ninguno en noviembre → 150 por debajo
-    expect(inf.desviaciones[0]).toMatchObject({ concepto: 'Supermercado', estimado: 900, real: 750, desviacion: -150 });
-    // Debías tener hoy = inicio + neto previsto; la diferencia con lo real se explica entera
-    const neto = inf.cierre!;
-    expect(inf.saldoHoyPrevisto).toBeCloseTo(3500 + neto.netoEstimado, 2);
-    expect(inf.saldoHoy - inf.saldoHoyPrevisto).toBeCloseTo(neto.desviacionNeta - 25, 2);
+    const inf = construirInforme(entrada('2026-09-01', '2026-12-31'));
+    expect(inf.meses.map((m) => m.tipo)).toEqual(['real', 'real', 'en-curso', 'previsto']);
+    expect(inf.meses.map((m) => m.desviacion)).toEqual([0, -150, -50, 0]);
+    // septiembre y octubre acaban en el saldo real del día 1 siguiente
+    expect(inf.meses[0].saldoFinal).toBe(4300);
+    expect(inf.meses[1].saldoFinal).toBe(4950);
+    for (let i = 0; i < inf.meses.length; i++) {
+      const m = inf.meses[i];
+      expect(m.saldoInicial + m.ingresos - m.gastos + m.otros + m.desviacion).toBeCloseTo(m.saldoFinal, 2);
+      if (i > 0) expect(m.saldoInicial).toBeCloseTo(inf.meses[i - 1].saldoFinal, 2);
+    }
+    expect(inf.meses.at(-1)!.saldoFinal).toBe(inf.saldoFinal);
+    // lo previsto desde el inicio, sin corregir con los saldos reales
+    expect(inf.meses.at(-1)!.saldoPrevistoDesdeInicio).toBe(3500 + 800 * 4);
+  });
+
+  it('por cuenta: previsto frente a real en el corte, y avisa de la que no se actualiza', () => {
+    const { entrada } = entorno();
+    const inf = construirInforme(entrada('2026-09-01', '2026-12-31'));
+    const nomina = inf.cuentas.find((c) => c._id === 'default')!;
+    expect(nomina).toMatchObject({ saldoInicio: 3000, saldoPrevisto: 3400, saldoReal: 3200, diferencia: -200, saldoFinal: 6000 });
+    const aho = inf.cuentas.find((c) => c._id === 'aho')!;
+    expect(aho).toMatchObject({ saldoInicio: 500, saldoReal: 500, diferencia: 0, ultimoDato: '2026-09-01' });
+    expect(inf.avisos.some((a) => a.includes('«Ahorro»') && a.includes('2026-09-01'))).toBe(true);
+    expect(inf.avisos.some((a) => a.includes('2026-11-15') && a.includes('previsión'))).toBe(true);
+  });
+
+  it('lo previsto del pasado, por grupo, sin repartir la diferencia', () => {
+    const { entrada } = entorno();
+    const inf = construirInforme(entrada('2026-09-01', '2026-12-31'));
+    const g = (n: string) => inf.previstoPasado.find((f) => f.nombre === n)?.importe;
+    expect(g('Ingresos netos')).toBe(4000);
+    expect(g('Facturas')! + g('Otros gastos')!).toBe(-3600);
   });
 
   it('reserva para imprevistos: lo que falta este mes y la media en los siguientes', () => {
@@ -189,10 +143,20 @@ describe('construirInforme', () => {
   });
 
   it('solo pasado y solo futuro también cuadran', () => {
-    const { entrada } = entorno();
+    const { entrada } = entorno({
+      default: [
+        ['2026-09-01', 3000],
+        ['2026-10-01', 3800],
+        ['2026-11-01', 4450],
+        ['2026-11-15', 3200],
+        ['2026-11-20', 3180],
+      ],
+    });
     const pasado = construirInforme(entrada('2026-09-01', '2026-10-31'));
     expect(pasado.tieneFuturo).toBe(false);
-    expect(pasado.saldoFinal).toBe(pasado.saldoHoy);
+    expect(pasado.corte).toBe('2026-11-01');
+    expect(pasado.saldoFinal).toBe(4950);
+    expect(pasado.diferencia).toBe(-150);
     expect(pasado.comprobaciones.every((c) => c.ok)).toBe(true);
 
     const futuro = construirInforme(entrada('2026-12-01', '2027-03-31'));
@@ -201,21 +165,24 @@ describe('construirInforme', () => {
     expect(futuro.comprobaciones.every((c) => c.ok)).toBe(true);
   });
 
-  it('avisa si el cuadro de mando parte de otro saldo', () => {
+  it('compara con el saldo final del cuadro de mando', () => {
     const { entrada } = entorno();
-    const inf = construirInforme(entrada('2026-09-01', '2027-02-28', { cuadroDeMando: { saldoHoy: 1000, saldoFinal: 5400 } }));
-    const c = inf.comprobaciones.find((x) => x.texto.includes('cuadro de mando'));
+    const igual = construirInforme(entrada('2026-09-01', '2026-12-31', { cuadroDeMando: { saldoFinal: 6500 } }));
+    expect(igual.comprobaciones.find((x) => x.texto.includes('cuadro de mando'))?.ok).toBe(true);
+    const distinto = construirInforme(entrada('2026-09-01', '2026-12-31', { cuadroDeMando: { saldoFinal: 6000 } }));
+    const c = distinto.comprobaciones.find((x) => x.texto.includes('cuadro de mando'));
     expect(c?.ok).toBe(false);
-    expect(c?.texto).toContain('Parte de');
   });
 
   it('el HTML es una página autónoma y escapa el texto del usuario', () => {
-    const { entrada, store } = entorno();
-    store.updateItem('accounts', 'aho', { nombre: '<img src=x onerror=alert(1)>' });
-    const html = informeHtml(construirInforme(entrada('2026-09-01', '2027-02-28')));
+    const { entrada, cuentas } = entorno();
+    cuentas[1].nombre = '<img src=x onerror=alert(1)>';
+    const html = informeHtml(construirInforme(entrada('2026-09-01', '2026-12-31')));
     expect(html.startsWith('<!doctype html>')).toBe(true);
     expect(html).not.toMatch(/<script[^>]*src=/);
     expect(html).not.toContain('<img src=x');
     expect(html).toContain('&lt;img src=x');
+    expect(html).toContain('saldo previsto frente a saldo real');
+    expect(html).not.toContain('Gasto sin prever');
   });
 });

@@ -82,12 +82,12 @@ function grafica(inf: Informe): string {
     .join('');
   const hoy =
     inf.tienePasado && inf.tieneFuturo
-      ? `<line x1="${x(inf.corte).toFixed(1)}" x2="${x(inf.corte).toFixed(1)}" y1="${m.arr}" y2="${H - m.aba}" stroke="${COLOR.hoy}" stroke-dasharray="3 3"/><text x="${(x(inf.corte) + 4).toFixed(1)}" y="${m.arr + 10}" class="eje" fill="${COLOR.hoy}">hoy</text>`
+      ? `<line x1="${x(inf.corte).toFixed(1)}" x2="${x(inf.corte).toFixed(1)}" y1="${m.arr}" y2="${H - m.aba}" stroke="${COLOR.hoy}" stroke-dasharray="3 3"/><text x="${(x(inf.corte) + 4).toFixed(1)}" y="${m.arr + 10}" class="eje" fill="${COLOR.hoy}">último saldo real</text>`
       : '';
   const minimo = inf.minimo
     ? `<circle cx="${x(inf.minimo.fecha).toFixed(1)}" cy="${y(inf.minimo.saldo).toFixed(1)}" r="5" fill="none" stroke="${COLOR.hoy}" stroke-width="2"/>`
     : '';
-  const resumen = `Saldo real de ${eur(inf.saldoInicio)} a ${eur(inf.saldoHoy)} hoy y previsto ${eur(inf.saldoFinal)} al final.`;
+  const resumen = `Saldo real de ${eur(inf.saldoInicio)} al empezar${inf.tienePasado ? ` y ${eur(inf.saldoCorte)} el ${esc(fecha(inf.corte))}` : ''}; previsto ${eur(inf.saldoFinal)} al final.`;
   return `<figure class="grafica">
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${resumen}">
       ${rejilla}${etiquetasX}${hoy}
@@ -99,7 +99,7 @@ function grafica(inf: Informe): string {
     <figcaption>
       <span><i style="background:${COLOR.real}"></i>Saldo real</span>
       ${inf.tienePasado ? `<span><i class="punteada" style="border-color:${COLOR.previstoInicio}"></i>Lo previsto al empezar el periodo</span>` : ''}
-      ${inf.tieneFuturo ? `<span><i class="discontinua" style="border-color:${COLOR.prevision}"></i>Previsión desde hoy</span>` : ''}
+      ${inf.tieneFuturo ? `<span><i class="discontinua" style="border-color:${COLOR.prevision}"></i>Previsión desde el último saldo real</span>` : ''}
       ${inf.minimo ? `<span><i class="anillo"></i>Saldo mínimo previsto</span>` : ''}
     </figcaption>
   </figure>`;
@@ -115,100 +115,89 @@ function puente(pasos: PasoPuente[]): string {
         : `<tr><th scope="row">${esc(p.concepto)}${p.nota ? `<span class="nota">${esc(p.nota)}</span>` : ''}</th><td class="num ${clase(p.importe)}">${conSigno(p.importe)}</td></tr>`,
     )
     .join('');
-  return `<table class="puente"><tbody>${filas}</tbody></table></div>`;
+  return `<div class="tabla-ancha"><table class="puente"><tbody>${filas}</tbody></table></div>`;
 }
 
 function tablaMeses(meses: FilaMes[]): string {
   const etiqueta = { real: 'Real', 'en-curso': 'Real + previsto', previsto: 'Previsto' } as const;
+  const conDesviacion = meses.some((m) => m.tipo !== 'previsto');
   const filas = meses
     .map(
       (m) => `<tr class="${m.tipo}">
-      <th scope="row">${esc(nombreMes(m.mes))}<span class="nota">${etiqueta[m.tipo]}</span></th>
+      <th scope="row">${esc(nombreMes(m.mes))}<span class="nota">${etiqueta[m.tipo]}${m.tipo !== 'previsto' && !m.conSaldoReal ? ' · sin saldo anotado' : ''}</span></th>
       <td class="num">${eur(m.saldoInicial)}</td>
       <td class="num pos">${eur(m.ingresos)}</td>
       <td class="num neg">${eur(m.gastos)}</td>
-      <td class="num ${clase(m.neto)}">${conSigno(m.neto)}</td>
       <td class="num tenue">${conSigno(m.otros)}</td>
+      ${conDesviacion ? `<td class="num ${clase(m.desviacion)}">${m.tipo === 'previsto' ? '—' : conSigno(m.desviacion)}</td>` : ''}
       <td class="num fuerte">${eur(m.saldoFinal)}</td>
-      <td class="num">${m.netoPrevisto !== undefined ? conSigno(m.netoPrevisto) : '—'}</td>
-      <td class="num ${m.desviacion !== undefined ? clase(m.desviacion) : ''}">${m.desviacion !== undefined ? conSigno(m.desviacion) : '—'}</td>
     </tr>`,
     )
     .join('');
   return `<div class="tabla-ancha"><table class="datos meses">
     <thead><tr>
-      <th>Mes</th><th class="num">Saldo inicial</th><th class="num">Ingresos</th><th class="num">Gastos</th>
-      <th class="num">Neto</th><th class="num" title="Traspasos, saldos anotados, intereses: lo que mueve el saldo sin ser ingreso ni gasto">Otros</th>
-      <th class="num">Saldo final</th><th class="num">Neto previsto</th><th class="num">Desviación</th>
+      <th>Mes</th><th class="num">Saldo inicial</th><th class="num" title="Ingresos previstos, netos">Ingresos</th><th class="num" title="Gastos previstos">Gastos</th>
+      <th class="num" title="Intereses y traspasos previstos: lo que mueve el saldo sin ser ingreso ni gasto">Otros</th>
+      ${conDesviacion ? '<th class="num" title="Saldo real menos el saldo que daban las previsiones">Diferencia</th>' : ''}
+      <th class="num">Saldo final</th>
     </tr></thead>
     <tbody>${filas}</tbody>
   </table></div>
-  <p class="pie-tabla">En cada fila, saldo inicial + neto + otros = saldo final. «Neto previsto» y «Desviación» solo existen en los meses ya cerrados: es lo que se preveía para ese mes frente a lo que registran las cuentas.</p>`;
+  <p class="pie-tabla">Ingresos y gastos son siempre los previstos. En cada fila, saldo inicial + ingresos − gastos + otros${conDesviacion ? ' + diferencia' : ''} = saldo final. ${conDesviacion ? 'En los meses pasados el saldo final es el real de tus cuentas, y la diferencia es lo que no explican las previsiones.' : ''} En los meses de previsión, el saldo final es el previsto.</p>`;
 }
 
 function seccionPasado(inf: Informe): string {
-  if (!inf.tienePasado || !inf.cierre) return '';
-  const c = inf.cierre;
-  const desviacion = inf.saldoHoy - inf.saldoHoyPrevisto;
-  const grupos = inf.grupos
-    .map(
-      (g) => `<tr><th scope="row">${esc(g.nombre)}</th><td class="num">${eur(g.previsto)}</td><td class="num">${eur(g.real)}</td>
-      <td class="num ${g.grupo === 'ingresos' ? clase(g.desviacion) : clase(-g.desviacion)}">${conSigno(g.desviacion)}</td></tr>`,
-    )
+  if (!inf.tienePasado) return '';
+  const previsto = inf.previstoPasado
+    .map((f) => `<tr><th scope="row">${esc(f.nombre)}</th><td class="num ${clase(f.importe)}">${conSigno(f.importe)}</td></tr>`)
     .join('');
-  const desv = inf.desviaciones
-    .map(
-      (
-        f,
-      ) => `<tr><th scope="row">${esc(f.concepto)}<span class="nota">${esc(f.periodicidad)}${f.sinMovimiento ? ' · sin ningún movimiento' : ''}</span></th>
-      <td class="num">${eur(f.estimado)}</td><td class="num">${eur(f.real)}</td>
-      <td class="num ${f.tipo === 'ingreso' ? clase(f.desviacion) : clase(-f.desviacion)}">${conSigno(f.desviacion)}</td></tr>`,
-    )
-    .join('');
-  const sinPrever = inf.sinPrever
-    .map((g) => `<tr><th scope="row">${esc(g.concepto)}</th><td class="num">${g.movimientos}</td><td class="num">${eur(g.total)}</td></tr>`)
-    .join('');
+  const total = inf.saldoPrevistoCorte - inf.saldoInicio;
   return `<section>
-    <h2>2 · El pasado: lo previsto frente a lo real</h2>
-    <p class="intro">Del ${esc(fecha(inf.desde))} al ${esc(fecha(inf.corte))}. Lo previsto son tus estimaciones, nóminas y cuotas de préstamo; lo real, lo que registran tus cuentas. Es el mismo cálculo que Cuentas → Cierre y precisión.</p>
+    <h2>2 · El pasado: saldo previsto frente a saldo real</h2>
+    <p class="intro">Del ${esc(fecha(inf.desde))} al ${esc(fecha(inf.corte))}, el último saldo real que tienes anotado. Lo real es el saldo de tus cuentas; lo previsto, lo que tus estimaciones, nóminas y préstamos decían que pasaría con él. No se mira movimiento a movimiento: solo si el saldo cuadra.</p>
     <div class="cifras">
-      <div><span>Debías tener hoy</span><strong>${eur(inf.saldoHoyPrevisto)}</strong><em>saldo inicial + neto previsto</em></div>
-      <div><span>Tienes hoy</span><strong>${eur(inf.saldoHoy)}</strong><em>según tus cuentas</em></div>
-      <div class="${clase(desviacion)}"><span>Diferencia</span><strong>${conSigno(desviacion)}</strong><em>${desviacion >= 0 ? 'mejor de lo previsto' : 'peor de lo previsto'}</em></div>
+      <div><span>Debías tener</span><strong>${eur(inf.saldoPrevistoCorte)}</strong><em>saldo al empezar + lo previsto</em></div>
+      <div><span>Tienes</span><strong>${eur(inf.saldoCorte)}</strong><em>saldo real · ${esc(fecha(inf.corte))}</em></div>
+      <div class="${clase(inf.diferencia)}"><span>Diferencia</span><strong>${conSigno(inf.diferencia)}</strong><em>${inf.diferencia >= 0 ? 'mejor de lo previsto' : 'peor de lo previsto'}</em></div>
     </div>
     ${
-      Math.abs(desviacion - c.desviacionNeta) >= 0.01
-        ? `<p class="pie-tabla">De esa diferencia, ${conSigno(c.desviacionNeta)} es lo que se ingresó y gastó distinto de lo previsto (la tabla de abajo) y ${conSigno(desviacion - c.desviacionNeta)} es lo que mueve el saldo sin ser ingreso ni gasto: traspasos, conceptos omitidos y saldos anotados (ver el puente).</p>`
+      previsto
+        ? `<h3>Lo que estaba previsto en ese tramo</h3>
+    <div class="tabla-ancha"><table class="datos"><thead><tr><th>Grupo</th><th class="num">Previsto</th></tr></thead>
+      <tbody>${previsto}</tbody>
+      <tfoot><tr><th scope="row">Total previsto</th><td class="num ${clase(total)}">${conSigno(total)}</td></tr></tfoot>
+    </table></div>
+    <p class="pie-tabla">Solo previsto: el informe no reparte la diferencia entre grupos, porque se hace contra el saldo de las cuentas. Mira en la tabla mes a mes en qué meses aparece.</p>`
         : ''
     }
-    <div class="tabla-ancha"><table class="datos"><thead><tr><th>Grupo</th><th class="num">Previsto</th><th class="num">Real</th><th class="num">Diferencia</th></tr></thead>
-      <tbody>${grupos}</tbody>
-      <tfoot><tr><th scope="row">Neto (ingresos − gastos)</th><td class="num">${conSigno(c.netoEstimado)}</td><td class="num">${conSigno(c.netoReal)}</td><td class="num ${clase(c.desviacionNeta)}">${conSigno(c.desviacionNeta)}</td></tr></tfoot>
-    </table></div>
-    <p class="pie-tabla">En los gastos, una diferencia en rojo es gasto de más; en los ingresos, ha entrado menos. «Gasto sin prever» es lo que se pagó sin ninguna estimación que lo cubriera.</p>
-    ${desv ? `<h3>Las estimaciones que más se desviaron</h3><div class="tabla-ancha"><table class="datos"><thead><tr><th>Estimación</th><th class="num">Previsto</th><th class="num">Real</th><th class="num">Diferencia</th></tr></thead><tbody>${desv}</tbody></table></div>` : ''}
-    ${sinPrever ? `<h3>Gasto sin prever · ${eur(inf.totalSinPrever)}</h3><div class="tabla-ancha"><table class="datos"><thead><tr><th>Concepto</th><th class="num">Movimientos</th><th class="num">Total</th></tr></thead><tbody>${sinPrever}</tbody></table></div>` : ''}
   </section>`;
 }
 
 function seccionCuentas(inf: Informe): string {
+  const p = inf.tienePasado;
   const filas = inf.cuentas
     .map(
-      (
-        c,
-      ) => `<tr><th scope="row">${esc(c.nombre)}<span class="nota">${c.fuente === 'movimientos' ? 'según movimientos y saldos anotados' : 'sin movimientos: saldo inicial'}</span></th>
-      <td class="num">${eur(c.saldoInicio)}</td><td class="num">${eur(c.saldoHoy)}</td>
-      <td class="num ${clase(c.saldoHoy - c.saldoInicio)}">${conSigno(c.saldoHoy - c.saldoInicio)}</td>
+      (c) => `<tr><th scope="row">${esc(c.nombre)}</th>
+      <td class="num">${eur(c.saldoInicio)}</td>
+      ${p ? `<td class="num">${eur(c.saldoPrevisto)}</td><td class="num">${eur(c.saldoReal)}</td><td class="num ${clase(c.diferencia)}">${conSigno(c.diferencia)}</td>` : ''}
       <td class="num">${inf.tieneFuturo ? eur(c.saldoFinal) : '—'}</td>
-      <td>${c.ultimoDato ? esc(fecha(c.ultimoDato)) : '—'}</td></tr>`,
+      <td>${c.ultimoDato ? esc(fecha(c.ultimoDato)) : 'ninguno'}</td></tr>`,
     )
     .join('');
+  const sumaPrev = inf.cuentas.reduce((s, c) => s + c.saldoPrevisto, 0);
+  const sumaFinal = inf.cuentas.reduce((s, c) => s + c.saldoFinal, 0);
+  const sinCuenta = (p && Math.abs(sumaPrev - inf.saldoPrevistoCorte) >= 0.01) || Math.abs(sumaFinal - inf.saldoFinal) >= 0.01;
   return `<section>
     <h2>4 · Cuentas</h2>
-    <div class="tabla-ancha"><table class="datos"><thead><tr><th>Cuenta</th><th class="num">Al empezar</th><th class="num">Hoy</th><th class="num">Variación</th><th class="num">Al final (previsto)</th><th>Último dato real</th></tr></thead>
+    <div class="tabla-ancha"><table class="datos"><thead><tr><th>Cuenta</th><th class="num">Al empezar</th>
+      ${p ? `<th class="num">Previsto al ${esc(fecha(inf.corte))}</th><th class="num">Real al ${esc(fecha(inf.corte))}</th><th class="num">Diferencia</th>` : ''}
+      <th class="num">Al final (previsto)</th><th>Último saldo anotado</th></tr></thead>
       <tbody>${filas}</tbody>
-      <tfoot><tr><th scope="row">Total</th><td class="num">${eur(inf.saldoInicio)}</td><td class="num">${eur(inf.saldoHoy)}</td><td class="num ${clase(inf.saldoHoy - inf.saldoInicio)}">${conSigno(inf.saldoHoy - inf.saldoInicio)}</td><td class="num">${inf.tieneFuturo ? eur(inf.saldoFinal) : '—'}</td><td></td></tr></tfoot>
-    </table>
+      <tfoot><tr><th scope="row">Total</th><td class="num">${eur(inf.saldoInicio)}</td>
+      ${p ? `<td class="num">${eur(inf.saldoPrevistoCorte)}</td><td class="num">${eur(inf.saldoCorte)}</td><td class="num ${clase(inf.diferencia)}">${conSigno(inf.diferencia)}</td>` : ''}
+      <td class="num">${inf.tieneFuturo ? eur(inf.saldoFinal) : '—'}</td><td></td></tr></tfoot>
+    </table></div>
+    ${sinCuenta ? '<p class="pie-tabla">El total no es la suma de las filas porque hay previsiones sin cuenta asignada o de cuentas archivadas: cuentan en el total, no en ninguna fila.</p>' : ''}
   </section>`;
 }
 
@@ -298,19 +287,19 @@ export function informeHtml(inf: Informe): string {
 <main class="hoja">
   <header>
     <h1>Informe financiero · ${esc(inf.proyecto)}</h1>
-    <p>Del ${esc(fecha(inf.desde))} al ${esc(fecha(inf.hasta))} · ${inf.tienePasado && inf.tieneFuturo ? `pasado real hasta el ${esc(fecha(inf.corte))}, previsión desde entonces` : inf.tieneFuturo ? 'todo el periodo es previsión' : 'todo el periodo es pasado real'} · generado el ${esc(fecha(inf.generadoEl))}</p>
+    <p>Del ${esc(fecha(inf.desde))} al ${esc(fecha(inf.hasta))} · ${inf.tienePasado && inf.tieneFuturo ? `saldo real hasta el ${esc(fecha(inf.corte))}, previsión desde entonces` : inf.tieneFuturo ? 'todo el periodo es previsión' : 'todo el periodo tiene saldo real'} · generado el ${esc(fecha(inf.generadoEl))}</p>
   </header>
 
   <section>
     <h2 style="border-top:0;margin-top:0">1 · Resumen: del saldo inicial al final</h2>
     <div class="cifras">
       <div><span>Saldo al empezar</span><strong>${eur(inf.saldoInicio)}</strong><em>real</em></div>
-      ${inf.tienePasado ? `<div><span>Saldo hoy</span><strong>${eur(inf.saldoHoy)}</strong><em>real · ${esc(fecha(inf.corte))}</em></div>` : ''}
+      ${inf.tienePasado ? `<div><span>Último saldo real</span><strong>${eur(inf.saldoCorte)}</strong><em>${esc(fecha(inf.corte))}</em></div><div class="${clase(inf.diferencia)}"><span>Frente a lo previsto</span><strong>${conSigno(inf.diferencia)}</strong><em>${inf.diferencia >= 0 ? 'mejor' : 'peor'} de lo previsto</em></div>` : ''}
       ${futuroTexto}
     </div>
     ${grafica(inf)}
     <h3>El puente de saldo</h3>
-    <p class="intro">Cada línea suma a la anterior. El pasado sale de tus cuentas reales; el futuro, de tus estimaciones, nóminas y préstamos. El saldo real de hoy cierra uno y abre el otro.</p>
+    <p class="intro">Cada línea suma a la anterior. Lo real es el saldo de tus cuentas; lo previsto, tus estimaciones, nóminas y préstamos. El último saldo real anotado cierra el pasado y abre la previsión.</p>
     ${puente(inf.puente)}
   </section>
 

@@ -1506,40 +1506,40 @@ próximos 12 meses o fechas a elegir) y el informe se abre en una pestaña como
 página autónoma —sin red, lista para imprimir o guardar como PDF— o se descarga
 como `.html`.
 
-**Diseño.** El periodo se parte en «hoy». El pasado sale del libro de
-movimientos (la verdad del pasado); lo previsto para el pasado, del mismo
-cálculo que el cierre de mes; el futuro, del mismo motor que el cuadro de
-mando. El saldo real de hoy es el final de uno y el arranque del otro.
+**Diseño (revisado el 2026-11-20: contra el saldo de las cuentas).** El
+propietario pidió que el informe no use la contabilidad desglosada: lo real es
+el **saldo de cada cuenta** en cada fecha (saldo inicial y saldos anotados, con
+`FinanceMath.saldoEnFecha`, lo mismo que el cuadro de mando) y lo previsto es el
+extracto del mismo motor que el cuadro de mando. No se mira movimiento a
+movimiento. El periodo se parte en el **último saldo real conocido** (el
+«corte», `fechaUltimoSaldoConocido`), que es también donde el cuadro de mando
+ancla su previsión: por eso los dos dan el mismo saldo final.
 
-1. **Resumen**: saldo al empezar, hoy, al final, con la reserva para
-   imprevistos y el mínimo previsto; gráfica con el saldo real, lo que se
-   preveía al empezar el periodo y la previsión desde hoy.
-   **Puente de saldo**: saldo real inicial + ingresos reales − gastos reales
-   ± traspasos ± conceptos omitidos ± ajuste por saldos anotados = saldo real
-   de hoy; + ingresos previstos − gastos previstos ± rentabilidad ± movimientos
-   entre cuentas = saldo previsto al final; − reserva para imprevistos. Cada
-   residuo tiene nombre: no hay un «otros» que esconda una diferencia.
-2. **El pasado, previsto frente a real**: «debías tener hoy» (saldo inicial +
-   neto previsto) frente a «tienes hoy», con la diferencia descompuesta en
-   desviación de ingresos y gastos más lo que mueve el saldo sin serlo; tabla
-   por grupo (ingresos, préstamos, facturas, otros, imprevistos, sin prever);
-   las estimaciones que más se desviaron; el gasto sin prever.
-3. **Mes a mes**: una sola tabla con pasado (real), mes en curso (real +
-   previsto) y futuro (previsto). En cada fila, saldo inicial + neto + otros =
-   saldo final; los meses cerrados añaden su neto previsto y la desviación.
-4. **Cuentas**: saldo al empezar, hoy, variación, final previsto y fecha del
-   último dato real de cada una.
-5. **Comprobaciones** (✓/✗) de que todo suma —el puente, la tabla, las cuentas,
-   los grupos frente al cierre— y de que el saldo final coincide con el del
-   cuadro de mando (si no, de qué saldo de hoy parte cada uno); y **avisos** de
-   calidad de datos: cuentas sin datos recientes, gasto sin asignar, traspasos
-   que no suman cero, ajustes grandes por saldos anotados.
+1. **Resumen**: saldo real al empezar, último saldo real, diferencia frente a
+   lo previsto, saldo final previsto (con la reserva para imprevistos) y el
+   mínimo previsto; gráfica con el saldo real, lo que se preveía al empezar el
+   periodo y la previsión desde el corte.
+   **Puente de saldo**: saldo real al empezar + ingresos previstos − gastos
+   previstos (± intereses y traspasos) = saldo previsto al corte; ± diferencia
+   con el saldo real = saldo real al corte; + lo previsto hasta el final =
+   saldo previsto al final; − reserva para imprevistos.
+2. **El pasado, saldo previsto frente a saldo real**: «debías tener», «tienes»,
+   diferencia; y lo que estaba previsto en ese tramo por grupo (solo previsto:
+   la diferencia no se reparte entre grupos).
+3. **Mes a mes**: los meses pasados acaban en el saldo real de sus cuentas; en
+   cada fila, saldo inicial + ingresos − gastos + otros + diferencia = saldo
+   final. El mes del corte es real + previsto; los siguientes, previsión.
+4. **Cuentas**: al empezar, previsto y real en el corte, diferencia, final
+   previsto y fecha del último saldo anotado.
+5. **Comprobaciones** (puente, tabla, cuentas, cuadro de mando) y **avisos**:
+   cuentas sin saldo o con el último de hace más de 30 días, meses sin ningún
+   saldo anotado, y que desde el corte hasta hoy ya es previsión.
 
-**Hallazgo al probarlo**: el cuadro de mando arranca la previsión del saldo de
-cada cuenta que guarda la parte antigua (`historicoSaldos` / `saldoInicial`), no
-del libro de movimientos. Si una cuenta tiene movimientos registrados sin que se
-haya sincronizado ese saldo, el cuadro de mando parte de otro saldo de hoy. El
-informe lo detecta y lo dice; arreglarlo de raíz es parte de `TEC-01`.
+**Limitación conocida**: una cuenta que no se actualiza cuenta con su último
+saldo anotado también en el corte (igual que en el cuadro de mando), así que lo
+que se le preveía desde entonces aparece como diferencia. El informe lo avisa.
+Proyectar cada cuenta desde su propio último dato exige cambiar también el
+ancla del cuadro de mando (`_anclaSaldo`).
 
 **Descartado**: conexión directa con bancos (PSD2 exige servidor y licencia),
 multimoneda, categorización con servicios externos (los datos saldrían del

@@ -396,6 +396,7 @@ function bootstrap(): FinanceAppNamespace {
       FinanceMath?: {
         generarExtracto: (...a: unknown[]) => import('./engine/types').CashEvent[];
         saldoEnFecha: (acc: unknown, fecha: string) => number;
+        fechaUltimoSaldoConocido: (cuentas: unknown[], fecha: string) => string | null;
       };
     };
     const fm = g.FinanceMath;
@@ -442,16 +443,10 @@ function bootstrap(): FinanceAppNamespace {
             proyecto,
             cuentas,
             gastos,
-            ledger,
+            prestamos: loans,
             generarExtracto,
-            saldoSinLibro: (c, fecha) => fm.saldoEnFecha(c, fecha),
-            opcionesCierre: {
-              hoy,
-              nominas,
-              loans,
-              resolverTramosIRPF: store.resolverTramosIRPF(),
-              omitidos: config.cierreOmitidos ?? [],
-            },
+            saldoEnFecha: (c, fecha) => fm.saldoEnFecha(c, fecha),
+            ultimoSaldoConocido: (c, fecha) => fm.fechaUltimoSaldoConocido([c], fecha) ?? '',
             imprevistos,
             imprevistosMesEnCurso,
             cuadroDeMando: (() => {
@@ -459,11 +454,8 @@ function bootstrap(): FinanceAppNamespace {
               try {
                 const ext = generarExtracto(desde, hasta, hoy);
                 if (ext.length === 0) return null;
-                const pasado = ext.filter((ev) => ev.fecha <= hoy);
-                const ultimo = (lista: typeof ext) => Number(lista[lista.length - 1]?.saldoAcum ?? NaN);
-                const saldoFinal = ultimo(ext);
-                const saldoHoy = pasado.length ? ultimo(pasado) : saldoFinal;
-                return Number.isFinite(saldoFinal) && Number.isFinite(saldoHoy) ? { saldoHoy, saldoFinal } : null;
+                const saldoFinal = Number(ext[ext.length - 1]?.saldoAcum ?? NaN);
+                return Number.isFinite(saldoFinal) ? { saldoFinal } : null;
               } catch {
                 return null;
               }
