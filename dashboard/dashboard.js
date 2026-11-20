@@ -903,6 +903,7 @@ const DashboardModule = (() => {
     if (!view.dataset.histCableado) {
       // Delegado en la vista, que no se sustituye al repintar: un solo listener.
       view.addEventListener('click', e => {
+        if (e.target.closest('[data-crear-informe]')) { window.FinanceApp?.ui?.abrirCrearInforme?.(); return; }
         if (!e.target.closest('[data-mes-historico]')) return;
         try { window.FinanceApp?.ui?.abrirHistoricoMeses?.(_ctxHistorico); }
         catch (err) { console.error('[Dashboard] No se ha podido abrir «Meses anteriores»:', err); UI.toast('No se ha podido abrir «Meses anteriores»', 'err'); }
@@ -925,6 +926,7 @@ const DashboardModule = (() => {
         <h1 class="page-title">Cuadro de <span>Mando</span></h1>
         <div class="page-actions" style="display:flex;align-items:center;gap:10px">
           <span class="text-sm" data-dash-sello style="color:var(--text3);font-size:11px"></span>
+          <button type="button" class="btn-secondary btn-sm" data-crear-informe title="Pasado real y previsión del periodo, cuadrados al céntimo">Crear informe</button>
           <button class="btn-secondary btn-sm" data-dash-actualizar onclick="DashboardModule.actualizar()" title="Volver a calcular con los datos actuales">&#8635; Actualizar</button>
         </div>
       </div>

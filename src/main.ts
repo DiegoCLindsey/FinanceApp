@@ -19,6 +19,10 @@ import * as dashboard from './engine/dashboard';
 import * as mes from './engine/mes';
 import { tarjetaMes } from './features/dashboard/mes-card';
 import { abrirHistoricoMeses } from './features/dashboard/mes-historico';
+import { abrirCrearInforme } from './features/informe/dialogo';
+import { construirInforme } from './informe/modelo';
+import { informeHtml } from './informe/html';
+import { todayISO } from './core/dates';
 import { proyectarGastos } from './engine/providers/expenses';
 import { proyectarPrestamos } from './engine/providers/loans';
 import { proyectarTransferencias } from './engine/providers/transfers';
@@ -104,6 +108,8 @@ export interface FinanceAppNamespace {
     tarjetaMes: typeof tarjetaMes;
     /** Ventana «Meses anteriores» con el mismo desglose por mes. */
     abrirHistoricoMeses: typeof abrirHistoricoMeses;
+    /** Ventana «Crear informe». */
+    abrirCrearInforme: () => void;
     /** Abre la ventana de configuración de funcionalidades. */
     openFeatures: () => void;
     /** Abre la ventana de proyectos: cambiar, crear, renombrar, duplicar, importar. */
@@ -380,6 +386,93 @@ function bootstrap(): FinanceAppNamespace {
       console.error('[FinanceApp] No se ha podido repintar el cuadro de mando tras el cambio:', e);
     }
   };
+  /**
+   * «Crear informe». Usa el motor legacy (FinanceMath) para la previsión, que
+   * es el que pinta el cuadro de mando: así el informe y la pantalla dan las
+   * mismas cifras futuras.
+   */
+  function abrirInforme(): void {
+    const g = globalThis as {
+      FinanceMath?: {
+        generarExtracto: (...a: unknown[]) => import('./engine/types').CashEvent[];
+        saldoEnFecha: (acc: unknown, fecha: string) => number;
+      };
+    };
+    const fm = g.FinanceMath;
+    if (!fm) {
+      console.error('[informe] FinanceMath no está cargado');
+      return;
+    }
+    const hoy = todayISO();
+    const config = store.get('config');
+    const cuentas = store.get('accounts').filter((a) => a.activo);
+    const gastos = store.get('expenses');
+    const loans = store.get('loans');
+    const nominas = store.get('nominas');
+    const generarExtracto = (desde: string, hasta: string, fechaReferencia = hoy) =>
+      fm.generarExtracto(
+        loans,
+        gastos,
+        store.get('accounts'),
+        { ...config, dashboardStart: desde, dashboardEnd: hasta, fechaReferencia },
+        null,
+        nominas,
+        store.get('inflacion'),
+      );
+    const fuente = { generarExtracto, gastos, prestamos: loans, movimientos: store.get('transacciones'), hoy };
+    let imprevistos = null;
+    let imprevistosMesEnCurso = 0;
+    try {
+      const mesActual = mes.mesEnCurso(fuente, generarExtracto(`${hoy.slice(0, 7)}-01`, mes.finDeMes(hoy.slice(0, 7))));
+      imprevistos = mesActual.estimacion;
+      imprevistosMesEnCurso = mesActual.desglose.imprevistos.total;
+    } catch (e) {
+      console.error('[informe] Sin estimación de imprevistos:', e);
+    }
+    const proyecto = proyectosAPI.activo().nombre;
+    abrirCrearInforme({
+      hoy,
+      proyecto,
+      construir: (desde, hasta) =>
+        informeHtml(
+          construirInforme({
+            desde,
+            hasta,
+            hoy,
+            proyecto,
+            cuentas,
+            gastos,
+            ledger,
+            generarExtracto,
+            saldoSinLibro: (c, fecha) => fm.saldoEnFecha(c, fecha),
+            opcionesCierre: {
+              hoy,
+              nominas,
+              loans,
+              resolverTramosIRPF: store.resolverTramosIRPF(),
+              omitidos: config.cierreOmitidos ?? [],
+            },
+            imprevistos,
+            imprevistosMesEnCurso,
+            cuadroDeMando: (() => {
+              // Lo mismo que pinta el cuadro de mando para este periodo.
+              try {
+                const ext = generarExtracto(desde, hasta, hoy);
+                if (ext.length === 0) return null;
+                const pasado = ext.filter((ev) => ev.fecha <= hoy);
+                const ultimo = (lista: typeof ext) => Number(lista[lista.length - 1]?.saldoAcum ?? NaN);
+                const saldoFinal = ultimo(ext);
+                const saldoHoy = pasado.length ? ultimo(pasado) : saldoFinal;
+                return Number.isFinite(saldoFinal) && Number.isFinite(saldoHoy) ? { saldoHoy, saldoFinal } : null;
+              } catch {
+                return null;
+              }
+            })(),
+          }),
+        ),
+    });
+  }
+
   const personasModal = createPersonasModal({ store, onDatosCambiados: refrescarLegacy });
 
   // El ORDEN IMPORTA: el registro añade cada botón al final de su sección, así
@@ -433,6 +526,7 @@ function bootstrap(): FinanceAppNamespace {
     ui: {
       tarjetaMes,
       abrirHistoricoMeses,
+      abrirCrearInforme: () => abrirInforme(),
       openFeatures: featuresModal.open,
       openProyectos: proyectosModal.open,
       openPersonas: personasModal.open,
@@ -617,6 +711,7 @@ if (app) {
         app.store.patchConfig({ archivoMigracion011: { ...archivo, avisado: true } });
       }
       document.getElementById('btn-personas')?.addEventListener('click', () => app.ui.openPersonas());
+      document.getElementById('btn-informe')?.addEventListener('click', () => app.ui.abrirCrearInforme());
     }
   };
   if (document.readyState === 'loading') {

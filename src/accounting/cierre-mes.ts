@@ -168,7 +168,7 @@ export function mesAnterior(hoy: ISODate): string {
 }
 
 /** Normaliza un concepto para agrupar: minúsculas, sin acentos ni dígitos. */
-function claveConcepto(concepto: string): string {
+export function claveConcepto(concepto: string): string {
   return concepto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\d+/g, '').replace(/\s+/g, ' ').trim();
 }
 

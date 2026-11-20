@@ -1490,6 +1490,49 @@ cada bloque y el margen medio recalculado sobre las cifras redondeadas.
 - **Pendiente, a decidir**: llevar la estimación también a la proyección de
   saldo (gráfica y extracto) como un gasto mensual sintético.
 
+#### [x] NEW-12 · «Crear informe»: pasado real y previsión, cuadrados — *pedido por el propietario (2026-11-20)*
+
+Botón «Crear informe» en el menú lateral y en la cabecera del cuadro de mando.
+Se elige el periodo (seis meses atrás y seis adelante, últimos 12 meses, el año,
+próximos 12 meses o fechas a elegir) y el informe se abre en una pestaña como
+página autónoma —sin red, lista para imprimir o guardar como PDF— o se descarga
+como `.html`.
+
+**Diseño.** El periodo se parte en «hoy». El pasado sale del libro de
+movimientos (la verdad del pasado); lo previsto para el pasado, del mismo
+cálculo que el cierre de mes; el futuro, del mismo motor que el cuadro de
+mando. El saldo real de hoy es el final de uno y el arranque del otro.
+
+1. **Resumen**: saldo al empezar, hoy, al final, con la reserva para
+   imprevistos y el mínimo previsto; gráfica con el saldo real, lo que se
+   preveía al empezar el periodo y la previsión desde hoy.
+   **Puente de saldo**: saldo real inicial + ingresos reales − gastos reales
+   ± traspasos ± conceptos omitidos ± ajuste por saldos anotados = saldo real
+   de hoy; + ingresos previstos − gastos previstos ± rentabilidad ± movimientos
+   entre cuentas = saldo previsto al final; − reserva para imprevistos. Cada
+   residuo tiene nombre: no hay un «otros» que esconda una diferencia.
+2. **El pasado, previsto frente a real**: «debías tener hoy» (saldo inicial +
+   neto previsto) frente a «tienes hoy», con la diferencia descompuesta en
+   desviación de ingresos y gastos más lo que mueve el saldo sin serlo; tabla
+   por grupo (ingresos, préstamos, facturas, otros, imprevistos, sin prever);
+   las estimaciones que más se desviaron; el gasto sin prever.
+3. **Mes a mes**: una sola tabla con pasado (real), mes en curso (real +
+   previsto) y futuro (previsto). En cada fila, saldo inicial + neto + otros =
+   saldo final; los meses cerrados añaden su neto previsto y la desviación.
+4. **Cuentas**: saldo al empezar, hoy, variación, final previsto y fecha del
+   último dato real de cada una.
+5. **Comprobaciones** (✓/✗) de que todo suma —el puente, la tabla, las cuentas,
+   los grupos frente al cierre— y de que el saldo final coincide con el del
+   cuadro de mando (si no, de qué saldo de hoy parte cada uno); y **avisos** de
+   calidad de datos: cuentas sin datos recientes, gasto sin asignar, traspasos
+   que no suman cero, ajustes grandes por saldos anotados.
+
+**Hallazgo al probarlo**: el cuadro de mando arranca la previsión del saldo de
+cada cuenta que guarda la parte antigua (`historicoSaldos` / `saldoInicial`), no
+del libro de movimientos. Si una cuenta tiene movimientos registrados sin que se
+haya sincronizado ese saldo, el cuadro de mando parte de otro saldo de hoy. El
+informe lo detecta y lo dice; arreglarlo de raíz es parte de `TEC-01`.
+
 **Descartado**: conexión directa con bancos (PSD2 exige servidor y licencia),
 multimoneda, categorización con servicios externos (los datos saldrían del
 dispositivo), y simulación Monte Carlo (ya se retiró).
