@@ -321,11 +321,25 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
     return true;
   }
 
-  function abrirFormularioAmortizacion(loanId: string, amortId: string | null, refrescar: (abrir?: string[]) => void): void {
+  /**
+   * Formulario de amortización. Con `duplicar`, se abre relleno con una COPIA
+   * de `amortId` pero sin su id: al guardar se crea una nueva y la original no
+   * se toca. Sirve para las amortizaciones que se repiten (la paga extra de
+   * cada junio) cambiando solo la fecha o la cantidad.
+   */
+  function abrirFormularioAmortizacion(
+    loanId: string,
+    amortId: string | null,
+    refrescar: (abrir?: string[]) => void,
+    { duplicar = false }: { duplicar?: boolean } = {},
+  ): void {
     const loan = deps.store.get('loans').find((l) => l._id === loanId);
     if (!loan) return;
-    const am = amortId ? ((loan.amortizaciones || []).find((a) => a._id === amortId) ?? null) : null;
-    const el = abrirModal(amortId ? 'Editar amortización' : 'Añadir amortización', formularioAmortizacion(loanId, am, hoy()));
+    const original = amortId ? ((loan.amortizaciones || []).find((a) => a._id === amortId) ?? null) : null;
+    if (duplicar && !original) return;
+    const am = duplicar && original ? { ...original, _id: '' } : original;
+    const titulo = duplicar ? 'Duplicar amortización' : amortId ? 'Editar amortización' : 'Añadir amortización';
+    const el = abrirModal(titulo, formularioAmortizacion(loanId, am, hoy()));
     if (!el) return;
     onClick(el, '[data-guardar-amort]', (btn) => {
       const [lid, aid] = (btn.getAttribute('data-guardar-amort') || '').split('|');
@@ -401,6 +415,11 @@ export function createLoansFeature(deps: LoansViewDeps): FeatureManifest {
       const id = el.getAttribute('data-amort-loan') as string;
       abiertas.add(id); // tras guardar, el usuario quiere ver el cuadro
       abrirFormularioAmortizacion(id, null, refrescar);
+    });
+    onClick(container, '[data-duplicar-amort]', (el) => {
+      const [loanId, amortId] = (el.getAttribute('data-duplicar-amort') || '').split('|');
+      abiertas.add(loanId);
+      abrirFormularioAmortizacion(loanId, amortId, refrescar, { duplicar: true });
     });
     onClick(container, '[data-editar-amort]', (el) => {
       const [loanId, amortId] = (el.getAttribute('data-editar-amort') || '').split('|');

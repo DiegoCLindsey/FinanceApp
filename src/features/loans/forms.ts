@@ -114,6 +114,6 @@ export function formularioAmortizacion(loanId: string, am: AmortizacionLoan | nu
     </div>
     <div class="flex gap-8 mt-16" style="justify-content:flex-end">
       <button class="btn-secondary" data-cancelar>Cancelar</button>
-      <button class="btn-primary" data-guardar-amort="${esc(loanId)}|${esc(am?._id ?? '')}">${am ? 'Guardar cambios' : 'Añadir'}</button>
+      <button class="btn-primary" data-guardar-amort="${esc(loanId)}|${esc(am?._id ?? '')}">${am?._id ? 'Guardar cambios' : 'Añadir'}</button>
     </div>`;
 }

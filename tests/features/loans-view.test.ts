@@ -462,6 +462,30 @@ describe('amortizaciones', () => {
     expect(store.get('loans')[0].amortizaciones?.[0]).toMatchObject({ _id: 'a1', cantidad: 7500 });
   });
 
+  it('duplica una amortización: abre una copia y al guardar crea otra sin tocar la original', () => {
+    const amortizaciones = [{ _id: 'a1', fecha: '2026-06-15', cantidad: 3000, tipo: 'plazo', simulacion: false }];
+    const { registry, store } = entorno({ loans: [prestamo({ amortizaciones })] });
+    registry.mount('loans');
+    (vista().querySelector('[data-toggle-loan="l1"]') as HTMLElement).click();
+    (vista().querySelector('[data-duplicar-amort="l1|a1"]') as HTMLElement).click();
+
+    expect(modal().querySelector('.modal-title')?.textContent).toBe('Duplicar amortización');
+    expect((modal().querySelector('#am-cant') as HTMLInputElement).value).toBe('3000');
+    expect((modal().querySelector('#am-tipo') as HTMLSelectElement | null)?.value ?? 'plazo').toBe('plazo');
+    const boton = modal().querySelector('[data-guardar-amort]') as HTMLElement;
+    expect(boton.textContent).toBe('Añadir');
+
+    escribir('#am-fecha', '2027-06-15');
+    boton.click();
+
+    const lista = store.get('loans')[0].amortizaciones ?? [];
+    expect(lista).toHaveLength(2);
+    expect(lista[0]).toMatchObject({ _id: 'a1', fecha: '2026-06-15', cantidad: 3000 });
+    expect(lista[1]).toMatchObject({ fecha: '2027-06-15', cantidad: 3000, tipo: 'plazo' });
+    expect(lista[1]._id).toBeTruthy();
+    expect(lista[1]._id).not.toBe('a1');
+  });
+
   it('elimina una amortización', () => {
     const amortizaciones = [
       { _id: 'a1', fecha: '2026-01-01', cantidad: 5000, tipo: 'cuota', simulacion: false },
