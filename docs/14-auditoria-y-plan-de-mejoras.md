@@ -1465,6 +1465,11 @@ grupo. Importes estimados, como la tarjeta. **Siguiente paso posible**: un
 conmutador «estimado / real» que use los movimientos importados y su
 asignación a estimaciones.
 
+**Añadido (2026-11-20)**: tercera vista, «Media del periodo», entre «Mes
+seleccionado» y «Acumulado del periodo»: cada grupo y cada concepto divididos
+entre los meses del periodo (los vacíos cuentan), con el total del periodo en
+cada bloque y el margen medio recalculado sobre las cifras redondeadas.
+
 #### [x] NEW-11 · Imprevistos: marca, seguimiento y estimación automática — *pedido por el propietario (2026-11-17)*
 
 - **Marca «Imprevisto»** en un gasto (interruptor en el formulario, solo para

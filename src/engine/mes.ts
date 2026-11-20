@@ -393,6 +393,54 @@ export function sumarDesgloses(lista: DesgloseMes[]): DesgloseMes {
   };
 }
 
+/**
+ * Media mensual de varios meses: el acumulado dividido entre el número de
+ * meses, bloque a bloque y concepto a concepto (un gasto de 600 € que solo
+ * aparece en uno de seis meses pesa 100 € al mes). Los meses vacíos cuentan:
+ * un mes sin imprevistos también forma parte de la media.
+ *
+ * Cada cifra se redondea al céntimo y el margen se recalcula con las cifras
+ * ya redondeadas, para que lo que se ve cuadre al sumarlo a mano. Puede
+ * diferir en un céntimo del acumulado dividido entre los meses.
+ */
+export function mediaDeDesgloses(lista: DesgloseMes[]): DesgloseMes {
+  const acc = sumarDesgloses(lista);
+  const n = lista.length;
+  if (n <= 1) return acc;
+  const r = (euros: number) => Math.round((euros * 100) / n) / 100;
+  const bloqueMedio = (b: BloqueMes): BloqueMes => {
+    const total = r(b.total);
+    const vencido = r(b.vencido);
+    return {
+      total,
+      vencido,
+      pendiente: Math.round((total - vencido) * 100) / 100,
+      partidas: b.partidas.map((p) => ({ ...p, total: r(p.total), vencido: r(p.vencido) })),
+    };
+  };
+  const prestamos = bloqueMedio(acc.prestamos);
+  const facturas = bloqueMedio(acc.facturas);
+  const otros = bloqueMedio(acc.otros);
+  const imprevistos = bloqueMedio(acc.imprevistos);
+  const ingresosCts = cts(r(acc.ingresosNetos));
+  const gastosCts = cts(prestamos.total) + cts(facturas.total) + cts(otros.total) + cts(imprevistos.total);
+  const reservaCts = cts(r(acc.reservaImprevistos));
+  const ingresosNetos = ingresosCts / 100;
+  const margen = (ingresosCts - gastosCts - reservaCts) / 100;
+  return {
+    ingresosNetos,
+    prestamos,
+    facturas,
+    otros,
+    imprevistos,
+    gastosTotales: gastosCts / 100,
+    estimacionImprevistos: null,
+    reservaImprevistos: reservaCts / 100,
+    margen,
+    margenPct: ingresosNetos > 0 ? (margen / ingresosNetos) * 100 : null,
+  };
+}
+
 // ── Estimación de imprevistos ─────────────────────────────────────────────────
 
 export interface EstimacionImprevistos {

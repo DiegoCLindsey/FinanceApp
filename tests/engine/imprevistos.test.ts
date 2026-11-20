@@ -3,6 +3,7 @@ import {
   desgloseDelMes,
   desglosePorMeses,
   esMovimientoImprevisto,
+  mediaDeDesgloses,
   estimarImprevistos,
   mesEnCurso,
   mesesEntre,
@@ -157,5 +158,54 @@ describe('estimación de imprevistos', () => {
     expect(estimacion).toMatchObject({ meses: 6, total: 0, mediaMensual: 0 });
     expect(desglose.estimacionImprevistos).toBe(0);
     expect(desglose.imprevistos.total).toBe(10);
+  });
+});
+
+describe('media del periodo', () => {
+  const ingreso = (fecha: string) => ev({ fecha, tipo: 'ingreso', cuantia: 2000, sourceType: 'nomina', sourceId: 'n' });
+  const meses = desglosePorMeses(
+    [
+      ingreso('2026-08-28'),
+      ingreso('2026-09-28'),
+      ingreso('2026-10-28'),
+      ev({ fecha: '2026-08-10', sourceId: 'luz', cuantia: -60 }),
+      ev({ fecha: '2026-09-10', sourceId: 'luz', cuantia: -70 }),
+      ev({ fecha: '2026-10-10', sourceId: 'luz', cuantia: -80 }),
+      ev({ fecha: '2026-09-14', sourceId: 'averia', cuantia: -600 }),
+    ],
+    gastos,
+    [],
+    ['2026-08', '2026-09', '2026-10'],
+    '2026-11-17',
+  ).map((m) => m.desglose);
+  const media = mediaDeDesgloses(meses);
+
+  it('divide cada grupo y cada concepto entre los meses del periodo, vacíos incluidos', () => {
+    expect(media.ingresosNetos).toBe(2000);
+    expect(media.facturas.total).toBe(70);
+    expect(media.facturas.partidas[0]).toMatchObject({ concepto: 'Luz', total: 70, fechas: ['2026-08-10', '2026-09-10', '2026-10-10'] });
+    // la avería solo pasó en septiembre, pero pesa en la media de los tres meses
+    expect(media.imprevistos.total).toBe(200);
+  });
+
+  it('el margen cuadra con las cifras medias ya redondeadas', () => {
+    expect(media.gastosTotales).toBe(270);
+    expect(media.margen).toBe(1730);
+    expect(media.margenPct).toBeCloseTo(86.5, 5);
+  });
+
+  it('redondea al céntimo', () => {
+    const tres = desglosePorMeses(
+      [ev({ fecha: '2026-08-10', sourceId: 'luz', cuantia: -100 })],
+      gastos,
+      [],
+      ['2026-08', '2026-09', '2026-10'],
+      '2026-11-17',
+    );
+    expect(mediaDeDesgloses(tres.map((m) => m.desglose)).facturas.total).toBe(33.33);
+  });
+
+  it('con un solo mes, la media es ese mes', () => {
+    expect(mediaDeDesgloses([meses[0]])).toEqual(meses[0]);
   });
 });

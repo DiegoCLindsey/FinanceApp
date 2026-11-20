@@ -26,6 +26,7 @@ import {
   sumarDesgloses,
   sumarMesesA,
   estimacionImprevistosPara,
+  mediaDeDesgloses,
   type DesgloseDeMes,
   type EstimacionImprevistos,
   type MovimientoReal,
@@ -47,7 +48,7 @@ export interface HistoricoDeps {
 }
 
 type Preset = '3' | '6' | '12' | 'anio' | 'personalizado';
-type Vista = 'mes' | 'acumulado';
+type Vista = 'mes' | 'media' | 'acumulado';
 
 /** Lo que el usuario eligió la última vez, mientras dure la sesión. */
 const recuerdo: { preset: Preset; desde?: string; hasta?: string; vista: Vista } = { preset: '6', vista: 'mes' };
@@ -170,6 +171,19 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
 
   function detalle(): string {
     if (datos.length === 0) return '';
+    if (recuerdo.vista === 'media') {
+      const lista = datos.map((d) => d.desglose);
+      const media = mediaDeDesgloses(lista);
+      const acumulado = sumarDesgloses(lista);
+      const titulo = `${nombreMes(datos[0].mes)} – ${nombreMes(datos[datos.length - 1].mes)}`;
+      const enCurso = datos.some((d) => d.mes === mesActual);
+      return `<div class="hist-detalle-cab">
+          <div><div class="card-title" style="margin:0">Media mensual · ${datos.length} ${datos.length === 1 ? 'mes' : 'meses'}</div>
+          <div class="text-sm" style="color:var(--text3)">${esc(titulo)}${enCurso ? ' · incluye el mes en curso' : ''}</div></div>
+          <span class="mes-ingresos">Entran <strong>${esc(formatEUR(media.ingresosNetos))}</strong> netos al mes</span>
+        </div>
+        ${cuerpoDesglose(media, { hoy: deps.hoy, media: { meses: datos.length, acumulado } })}`;
+    }
     if (recuerdo.vista === 'acumulado') {
       const acc = sumarDesgloses(datos.map((d) => d.desglose));
       const titulo = `${nombreMes(datos[0].mes)} – ${nombreMes(datos[datos.length - 1].mes)}`;
@@ -237,6 +251,7 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
       ${datos.some((d) => d.mes === mesActual) ? '<div class="text-sm" style="color:var(--text3);margin-top:4px">* Mes en curso: incluye lo que queda por cargar.</div>' : ''}
       <div class="hist-filtros hist-vista" role="group" aria-label="Qué desglose ver">
         <button type="button" class="period-btn${recuerdo.vista === 'mes' ? ' active' : ''}" data-hist-vista="mes" aria-pressed="${recuerdo.vista === 'mes'}">Mes seleccionado</button>
+        <button type="button" class="period-btn${recuerdo.vista === 'media' ? ' active' : ''}" data-hist-vista="media" aria-pressed="${recuerdo.vista === 'media'}">Media del periodo</button>
         <button type="button" class="period-btn${recuerdo.vista === 'acumulado' ? ' active' : ''}" data-hist-vista="acumulado" aria-pressed="${recuerdo.vista === 'acumulado'}">Acumulado del periodo</button>
       </div>
       <div data-hist-detalle>${detalle()}</div>`

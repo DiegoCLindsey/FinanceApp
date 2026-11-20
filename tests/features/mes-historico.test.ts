@@ -96,6 +96,33 @@ describe('ventana «Meses anteriores»', () => {
     expect($$('.hist-ficha.activa')).toHaveLength(0);
   });
 
+  it('la media del periodo divide cada grupo entre los meses y recuerda el total', () => {
+    abrirHistoricoMeses(deps());
+    $('[data-hist-preset="3"]').click();
+    $('[data-hist-vista="media"]').click();
+    expect($('[data-hist-vista="media"]').getAttribute('aria-pressed')).toBe('true');
+    const det = $('[data-hist-detalle]').textContent ?? '';
+    expect(det).toContain('Media mensual · 3 meses');
+    expect(det).toContain('incluye el mes en curso');
+    // súper: 300 + 900 + 300 → 500 al mes
+    expect(det).toContain('500,00');
+    // préstamos: 700 al mes, 2100 en el periodo
+    expect(det).toContain('700,00');
+    expect(det).toContain('2100,00');
+    // margen medio 740 al mes, 2220 en los tres
+    expect(det).toContain('+740,00');
+    expect(det).toContain('+2220,00');
+    expect($$('.hist-ficha.activa')).toHaveLength(0);
+  });
+
+  it('pulsar un mes desde la media vuelve a «Mes seleccionado»', () => {
+    abrirHistoricoMeses(deps());
+    $('[data-hist-vista="media"]').click();
+    ($$('[data-hist-mes]').find((b) => b.dataset.histMes === '2026-09') as HTMLElement).click();
+    expect($('[data-hist-vista="mes"]').getAttribute('aria-pressed')).toBe('true');
+    expect($('[data-hist-detalle]').textContent).toContain('septiembre 2026');
+  });
+
   it('el periodo personalizado se elige por meses', () => {
     const d = deps();
     abrirHistoricoMeses(d);
