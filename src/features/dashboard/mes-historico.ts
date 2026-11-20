@@ -34,7 +34,7 @@ import {
   type PrestamoNombrado,
 } from '@/engine/mes';
 import { contenedorModalLimpio, esc, nombreMes, onChange, onClick } from '../accounting/dom';
-import { COLORES_GRUPO, cuerpoDesglose } from './mes-card';
+import { COLORES_GRUPO, cuerpoDesglose, toggleImprevistos } from './mes-card';
 
 export interface HistoricoDeps {
   /** Extracto estimado (sin recortar por cuentas internas) entre dos fechas. */
@@ -44,6 +44,14 @@ export interface HistoricoDeps {
   hoy: ISODate;
   /** Movimientos reales: de ahí salen los marcados como imprevisto. */
   movimientos?: MovimientoReal[];
+  /**
+   * Toggle «Contar con la estimación de imprevistos». Sin definir = sí. En el
+   * cuadro de mando la reserva ya viene dentro del extracto; si no viene, la
+   * ventana la aparta igual en el mes en curso y los futuros.
+   */
+  contarImprevistos?: boolean;
+  /** Al cambiar el toggle: guarda la opción y devuelve el contexto nuevo. */
+  onContarImprevistos?: (valor: boolean) => HistoricoDeps | null | undefined;
   doc?: Document;
 }
 
@@ -116,7 +124,11 @@ export function rangoDe(preset: Preset, mesActual: string, desde?: string, hasta
 }
 
 /** Abre la ventana. Devuelve el contenedor (útil en los tests). */
-export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
+export function abrirHistoricoMeses(depsIniciales: HistoricoDeps): HTMLElement | null {
+  // Cambia si el usuario mueve el toggle de imprevistos: el cuadro de mando se
+  // repinta y devuelve su contexto nuevo.
+  let deps = depsIniciales;
+  const contar = () => deps.contarImprevistos !== false;
   const doc = deps.doc ?? document;
   const overlay = doc.getElementById('modal-overlay');
   const limpio = contenedorModalLimpio(doc);
@@ -129,7 +141,7 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
   // Por defecto, el último mes CERRADO: quien pide «meses anteriores» viene a
   // mirar el pasado; el mes en curso ya lo tiene en la tarjeta.
   let seleccionado = sumarMesesA(mesActual, -1);
-  const movimientos = deps.movimientos ?? [];
+  let movimientos = deps.movimientos ?? [];
   // La estimación de imprevistos del mes en curso, la misma que la tarjeta. Se
   // calcula una vez al abrir: no depende del periodo que se esté mirando.
   let estimacion: EstimacionImprevistos | null = null;
@@ -153,7 +165,7 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
       movimientos,
       // El mes en curso y los futuros reservan para imprevistos la media
       // estimada; en los pasados ya se sabe lo que hubo.
-      estimacionPorMes: (mes) => (estimacion && estimacion.meses > 0 && mes >= mesActual ? estimacion.mediaMensual : null),
+      estimacionPorMes: (mes) => (contar() && estimacion && estimacion.meses > 0 && mes >= mesActual ? estimacion.mediaMensual : null),
     });
     if (!meses.includes(seleccionado)) {
       // El último mes cerrado del periodo; si no hay ninguno (solo previsión),
@@ -215,7 +227,7 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
           <div class="text-sm" style="color:var(--text3)">${esc(titulo)}${notaPeriodo()}</div></div>
           <span class="mes-ingresos">Entran <strong>${esc(formatEUR(media.ingresosNetos))}</strong> netos al mes</span>
         </div>
-        ${cuerpoDesglose(media, { hoy: deps.hoy, media: { meses: datos.length, acumulado } })}`;
+        ${cuerpoDesglose(media, { hoy: deps.hoy, media: { meses: datos.length, acumulado }, contarImprevistos: contar() })}`;
     }
     if (recuerdo.vista === 'acumulado') {
       const acc = sumarDesgloses(datos.map((d) => d.desglose));
@@ -225,7 +237,7 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
           <div class="text-sm" style="color:var(--text3)">${esc(titulo)}${notaPeriodo()}</div></div>
           <span class="mes-ingresos">${datos.every((d) => d.mes > mesActual) ? 'Entrarán' : 'Entran'} <strong>${esc(formatEUR(acc.ingresosNetos))}</strong> netos</span>
         </div>
-        ${cuerpoDesglose(acc, { hoy: deps.hoy, meses: datos.length })}`;
+        ${cuerpoDesglose(acc, { hoy: deps.hoy, meses: datos.length, contarImprevistos: contar() })}`;
     }
     const d = datos.find((x) => x.mes === seleccionado) ?? datos[datos.length - 1];
     const enCurso = d.mes === mesActual;
@@ -234,7 +246,7 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
         <div class="card-title" style="margin:0">${esc(nombreMes(d.mes))}${enCurso ? ' · en curso' : futuro ? ' · previsión' : ''}</div>
         <span class="mes-ingresos">${futuro ? 'Entrarán' : enCurso ? 'Entran' : 'Entraron'} <strong>${esc(formatEUR(d.desglose.ingresosNetos))}</strong> netos</span>
       </div>
-      ${cuerpoDesglose(d.desglose, { hoy: deps.hoy, abierto: true, estimacion: enCurso || futuro ? estimacion : null })}`;
+      ${cuerpoDesglose(d.desglose, { hoy: deps.hoy, abierto: true, estimacion: enCurso || futuro ? estimacion : null, contarImprevistos: contar() })}`;
   }
 
   /** «· incluye el mes en curso», «· 4 meses de previsión»… para las vistas de periodo. */
@@ -280,7 +292,7 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
         </div>
         <div class="hist-estimacion">${
           estimacion && estimacion.meses > 0
-            ? `<span class="mes-punto" style="--grupo:${COLORES_GRUPO.imprevistos}" aria-hidden="true"></span>Imprevistos estimados: <strong>${esc(formatEUR(estimacion.mediaMensual))}/mes</strong> · media de lo marcado en ${estimacion.meses} ${estimacion.meses === 1 ? 'mes' : 'meses'} (${esc(formatEUR(estimacion.total))} en total)`
+            ? `<span><span class="mes-punto" style="--grupo:${COLORES_GRUPO.imprevistos}" aria-hidden="true"></span>Imprevistos estimados: <strong>${esc(formatEUR(estimacion.mediaMensual))}/mes</strong> · media de lo marcado en ${estimacion.meses} ${estimacion.meses === 1 ? 'mes' : 'meses'} (${esc(formatEUR(estimacion.total))} en total)</span>${toggleImprevistos(contar())}`
             : 'Marca gastos o movimientos como «Imprevisto» y aquí aparecerá cuánto suelen costarte al mes.'
         }
         </div>
@@ -297,7 +309,7 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
       ${datos.some((d) => d.mes === mesActual) ? '<div class="text-sm" style="color:var(--text3);margin-top:4px">* Mes en curso: incluye lo que queda por cargar.</div>' : ''}
       ${
         datos.some((d) => d.mes > mesActual)
-          ? `<div class="text-sm" style="color:var(--text3);margin-top:4px">Los meses de la zona «Previsión» salen de lo que tienes configurado (gastos, nóminas y préstamos)${estimacion && estimacion.meses > 0 ? `, y cada uno reserva ${esc(formatEUR(estimacion.mediaMensual))} para imprevistos` : ''}.</div>`
+          ? `<div class="text-sm" style="color:var(--text3);margin-top:4px">Los meses de la zona «Previsión» salen de lo que tienes configurado (gastos, nóminas y préstamos)${contar() && estimacion && estimacion.meses > 0 ? `, y cada uno reserva ${esc(formatEUR(estimacion.mediaMensual))} para imprevistos` : ''}.</div>`
           : ''
       }
       <div class="hist-filtros hist-vista" role="group" aria-label="Qué desglose ver">
@@ -334,6 +346,7 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
   const POSITIVO = '#2ee6a8';
   const NEGATIVO = '#ff6b6b';
   const ACUMULADO = '#c9d3e3';
+  const SALDO = '#e5b73b';
 
   /** `#rrggbb` con opacidad. */
   const rgba = (hex: string, alfa: number) => {
@@ -560,6 +573,13 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
     if (lienzoAhorro) {
       let corrido = 0;
       const acumulado = datos.map((d) => (corrido = Math.round((corrido + d.desglose.margen) * 100) / 100));
+      // Con intereses y rentabilidad: lo que sube el saldo, la cifra de la
+      // gráfica de saldo del cuadro de mando. Solo si hay rendimientos.
+      const hayRend = datos.some((d) => Math.abs(d.desglose.rendimientos ?? 0) >= 0.005);
+      let corridoSaldo = 0;
+      const saldo = datos.map(
+        (d) => (corridoSaldo = Math.round((corridoSaldo + d.desglose.margen + (d.desglose.rendimientos ?? 0)) * 100) / 100),
+      );
       graficas.push(
         new Chart(lienzoAhorro, {
           type: 'bar',
@@ -590,6 +610,25 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
                 tension: 0,
                 order: 1,
               },
+              ...(hayRend
+                ? [
+                    {
+                      type: 'line',
+                      label: 'Saldo (con intereses)',
+                      data: saldo,
+                      borderColor: SALDO,
+                      backgroundColor: SALDO,
+                      borderWidth: 2,
+                      borderDash: [6, 4],
+                      pointRadius: 3,
+                      pointHoverRadius: 5,
+                      pointBorderColor: SUPERFICIE,
+                      pointBorderWidth: 2,
+                      tension: 0,
+                      order: 0,
+                    },
+                  ]
+                : []),
             ],
           },
           plugins: [zonaPrevision],
@@ -597,12 +636,16 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
             ...comunes,
             scales: ejes(false),
             plugins: {
-              legend: leyenda([POSITIVO, ACUMULADO]),
+              legend: leyenda([POSITIVO, ACUMULADO, SALDO]),
               tooltip: tooltip((i) => {
                 const d = datos[i].desglose;
                 const pct =
                   d.margenPct === null ? '' : `${d.margenPct.toFixed(0)} % de lo que ${datos[i].mes > mesActual ? 'entrará' : 'entra'}`;
-                return d.reservaImprevistos > 0 ? `${pct}\nDescontados ${formatEUR(d.reservaImprevistos)} para imprevistos` : pct;
+                const lineas = [pct];
+                if (d.reservaImprevistos > 0) lineas.push(`Descontados ${formatEUR(d.reservaImprevistos)} para imprevistos`);
+                if (Math.abs(d.rendimientos ?? 0) >= 0.005)
+                  lineas.push(`Intereses y rentabilidad: ${conSigno(d.rendimientos)} (fuera del margen)`);
+                return lineas.filter(Boolean).join('\n');
               }),
             },
           },
@@ -629,6 +672,18 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
     const hasta = (content.querySelector('[data-hist-hasta]') as HTMLInputElement | null)?.value;
     if (desde) recuerdo.desde = desde;
     if (hasta) recuerdo.hasta = hasta;
+    render();
+  });
+  onChange(content, '[data-contar-imprevistos]', (el) => {
+    const valor = (el as HTMLInputElement).checked;
+    let nuevo: HistoricoDeps | null | undefined = null;
+    try {
+      nuevo = deps.onContarImprevistos?.(valor);
+    } catch (e) {
+      console.error('[Otros meses] No se ha podido cambiar «Contar imprevistos»:', e);
+    }
+    deps = nuevo ? { ...nuevo, doc: deps.doc } : { ...deps, contarImprevistos: valor };
+    movimientos = deps.movimientos ?? [];
     render();
   });
   onClick(content, '[data-hist-mes]', (el) => seleccionar(el.getAttribute('data-hist-mes') as string));

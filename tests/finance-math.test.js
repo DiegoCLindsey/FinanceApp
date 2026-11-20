@@ -302,3 +302,23 @@ describe('saldoEnFecha: mover el ancla a hoy no borra el histórico anterior', (
     expect(FM.saldoEnFecha(cuenta, '2026-01-01')).toBe(0);
   });
 });
+
+describe('reserva para imprevistos en la proyección', () => {
+  const accounts = [{ _id: 'default', activo: true, esCuentaPrincipal: true, saldoInicial: 1000, fechaInicialSaldo: '2026-11-01', historicoSaldos: [] }];
+  const config = { dashboardStart: '2026-11-01', dashboardEnd: '2027-01-15', fechaReferencia: '2026-11-01' };
+  const reserva = { mediaMensual: 100, hoy: '2026-11-20', pendienteMesActual: 40 };
+
+  it('aparta lo que falta este mes (hoy) y la media el día 1 de cada mes siguiente', () => {
+    const ext = FM.generarExtracto([], [], accounts, { ...config, reservaImprevistos: reserva }, null, []);
+    const r = ext.filter(e => e.sourceType === 'imprevisto-estimado');
+    expect(r.map(e => [e.fecha, e.cuantia])).toEqual([['2026-11-20', 40], ['2026-12-01', 100], ['2027-01-01', 100]]);
+    expect(r.every(e => e.tipo === 'gasto' && e.cuenta === 'default')).toBe(true);
+    expect(ext[ext.length - 1].saldoAcum).toBeCloseTo(1000 - 240, 6);
+  });
+
+  it('sin la opción no aparece; y nunca antes de hoy', () => {
+    expect(FM.generarExtracto([], [], accounts, config, null, []).some(e => e.sourceType === 'imprevisto-estimado')).toBe(false);
+    const ext = FM.generarExtracto([], [], accounts, { ...config, reservaImprevistos: { ...reserva, hoy: '2026-12-10', pendienteMesActual: 0 } }, null, []);
+    expect(ext.filter(e => e.sourceType === 'imprevisto-estimado').map(e => e.fecha)).toEqual(['2027-01-01']);
+  });
+});

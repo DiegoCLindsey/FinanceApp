@@ -156,6 +156,51 @@ describe('ventana «Meses anteriores»', () => {
     expect(document.body.textContent).toContain('salen de lo que tienes configurado');
   });
 
+  it('«Contar imprevistos» apagado: los meses futuros no reservan nada', () => {
+    const d = deps();
+    (d as { movimientos?: unknown[] }).movimientos = [
+      { _id: 'm1', fecha: '2026-10-08', concepto: 'Taller', importeCts: -60000, tipo: 'gasto', imprevisto: true },
+    ];
+    const cambios: boolean[] = [];
+    (d as { onContarImprevistos?: unknown }).onContarImprevistos = (v: boolean) => {
+      cambios.push(v);
+      return { ...d, contarImprevistos: v };
+    };
+    abrirHistoricoMeses(d);
+    $('[data-hist-preset="f3"]').click();
+    const toggle = $('[data-contar-imprevistos]') as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    expect($('[data-hist-detalle]').textContent).toContain('Reservado');
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(cambios).toEqual([false]);
+    expect(($('[data-contar-imprevistos]') as HTMLInputElement).checked).toBe(false);
+    const det = $('[data-hist-detalle]').textContent ?? '';
+    expect(det).not.toContain('Reservado');
+    expect(det).toContain('«Contar imprevistos» está apagado');
+    // diciembre: 2000 − 700 − 60 − 300, sin reserva
+    expect(det).toContain('+940,00');
+  });
+
+  it('con intereses previstos, el margen dice cuánto se mueve el saldo', () => {
+    const d = deps();
+    const base = d.generarExtracto;
+    d.generarExtracto = vi.fn((desde: string, hasta: string) =>
+      [...base(desde, hasta), ev('2026-10-30', 25, { sourceType: 'account-interest', sourceId: 'aho' })].filter(
+        (e) => e.fecha >= desde && e.fecha <= hasta,
+      ),
+    );
+    abrirHistoricoMeses(d);
+    // la ventana recuerda el periodo anterior: se fija y se elige octubre
+    $('[data-hist-preset="6"]').click();
+    ($$('[data-hist-mes]').find((x) => x.dataset.histMes === '2026-10') as HTMLElement).click();
+    const det = $('[data-hist-detalle]').textContent ?? '';
+    // octubre: margen 2000 − 700 − 60 − 900 = 340; con 25 de intereses el saldo sube 365
+    expect(det).toContain('+340,00');
+    expect(det).toContain('+25,00');
+    expect(det).toContain('el saldo sube 365,00');
+  });
+
   it('la media de un periodo futuro lo dice', () => {
     abrirHistoricoMeses(deps());
     $('[data-hist-preset="f6"]').click();

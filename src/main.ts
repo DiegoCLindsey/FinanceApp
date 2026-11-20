@@ -410,26 +410,34 @@ function bootstrap(): FinanceAppNamespace {
     const gastos = store.get('expenses');
     const loans = store.get('loans');
     const nominas = store.get('nominas');
-    const generarExtracto = (desde: string, hasta: string, fechaReferencia = hoy) =>
-      fm.generarExtracto(
-        loans,
-        gastos,
-        store.get('accounts'),
-        { ...config, dashboardStart: desde, dashboardEnd: hasta, fechaReferencia },
-        null,
-        nominas,
-        store.get('inflacion'),
-      );
-    const fuente = { generarExtracto, gastos, prestamos: loans, movimientos: store.get('transacciones'), hoy };
+    // Igual que el cuadro de mando: con «Contar imprevistos» activo, la
+    // reserva va dentro del extracto y baja el saldo previsto.
+    const contarImprevistos = config.contarImprevistos !== false;
+    let reservaImprevistos: mes.ReservaParaProyeccion | null = null;
+    const extractoCon =
+      (reserva: mes.ReservaParaProyeccion | null) =>
+      (desde: string, hasta: string, fechaReferencia = hoy) =>
+        fm.generarExtracto(
+          loans,
+          gastos,
+          store.get('accounts'),
+          { ...config, dashboardStart: desde, dashboardEnd: hasta, fechaReferencia, ...(reserva ? { reservaImprevistos: reserva } : {}) },
+          null,
+          nominas,
+          store.get('inflacion'),
+        );
+    const sinReserva = extractoCon(null);
+    const fuente = { generarExtracto: sinReserva, gastos, prestamos: loans, movimientos: store.get('transacciones'), hoy };
     let imprevistos = null;
-    let imprevistosMesEnCurso = 0;
     try {
-      const mesActual = mes.mesEnCurso(fuente, generarExtracto(`${hoy.slice(0, 7)}-01`, mes.finDeMes(hoy.slice(0, 7))));
-      imprevistos = mesActual.estimacion;
-      imprevistosMesEnCurso = mesActual.desglose.imprevistos.total;
+      const mesHoy = hoy.slice(0, 7);
+      const delMes = sinReserva(`${mesHoy}-01`, mes.finDeMes(mesHoy));
+      imprevistos = mes.mesEnCurso(fuente, delMes).estimacion;
+      if (contarImprevistos) reservaImprevistos = mes.reservaParaProyeccion(fuente, delMes);
     } catch (e) {
       console.error('[informe] Sin estimación de imprevistos:', e);
     }
+    const generarExtracto = extractoCon(reservaImprevistos);
     const proyecto = proyectosAPI.activo().nombre;
     abrirCrearInforme({
       hoy,
@@ -448,7 +456,7 @@ function bootstrap(): FinanceAppNamespace {
             saldoEnFecha: (c, fecha) => fm.saldoEnFecha(c, fecha),
             ultimoSaldoConocido: (c, fecha) => fm.fechaUltimoSaldoConocido([c], fecha) ?? '',
             imprevistos,
-            imprevistosMesEnCurso,
+            contarImprevistos,
             cuadroDeMando: (() => {
               // Lo mismo que pinta el cuadro de mando para este periodo.
               try {

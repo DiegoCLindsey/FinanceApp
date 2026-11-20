@@ -22,7 +22,7 @@
 
 import { sumarDias, todayISO, type ISODate } from '@/core/dates';
 import { formatEUR } from '@/core/money';
-import { desgloseDelMes, finDeMes, mesesEntre, type EstimacionImprevistos } from '@/engine/mes';
+import { RESERVA_IMPREVISTOS, desgloseDelMes, finDeMes, mesesEntre, type EstimacionImprevistos } from '@/engine/mes';
 import type { CashEvent } from '@/engine/types';
 import type { Account, Expense } from '@/state/schema';
 
@@ -50,10 +50,14 @@ export interface EntradaInforme {
   saldoEnFecha: (cuenta: Account, fecha: ISODate) => number;
   /** Fecha del último saldo real conocido de una cuenta hasta `fecha` ('' si ninguno). */
   ultimoSaldoConocido: (cuenta: Account, fecha: ISODate) => ISODate | '' | null;
-  /** Estimación de imprevistos, para la reserva del tramo futuro. */
+  /**
+   * Estimación de imprevistos, solo para explicarla. La reserva en sí viene
+   * DENTRO del extracto (eventos `imprevisto-estimado`), la misma que aparta
+   * el cuadro de mando cuando «Contar imprevistos» está activo.
+   */
   imprevistos?: EstimacionImprevistos | null;
-  /** Imprevistos ya marcados en el mes en curso (para no reservarlos dos veces). */
-  imprevistosMesEnCurso?: number;
+  /** Toggle «Contar imprevistos» (para explicarlo; la reserva ya viene en el extracto). */
+  contarImprevistos?: boolean;
   /** Saldo final que enseña el cuadro de mando para el mismo periodo. */
   cuadroDeMando?: { saldoFinal: number } | null;
 }
@@ -72,9 +76,11 @@ export interface FilaMes {
   mes: string;
   tipo: 'real' | 'en-curso' | 'previsto';
   saldoInicial: number;
-  /** Lo previsto para el mes entero: ingresos netos y gastos. */
+  /** Lo previsto para el mes entero: ingresos netos y gastos (con la reserva para imprevistos). */
   ingresos: number;
   gastos: number;
+  /** Parte de `gastos` que es reserva para imprevistos. */
+  reserva: number;
   /** Intereses, traspasos y demás previstos que mueven el saldo. */
   otros: number;
   /** Saldo real − saldo previsto en el tramo pasado del mes (0 en los futuros). */
@@ -127,8 +133,8 @@ export interface Informe {
   /** saldoCorte − saldoPrevistoCorte. */
   diferencia: number;
   saldoFinal: number;
+  /** Lo apartado para imprevistos en el tramo futuro (ya descontado del saldo final). */
   reservaImprevistos: number;
-  saldoFinalConReserva: number;
   puente: PasoPuente[];
   /** Lo previsto para el tramo pasado, por grupo (solo previsto: lo real es el saldo). */
   previstoPasado: FilaPrevisto[];
@@ -139,6 +145,7 @@ export interface Informe {
   comprobaciones: Comprobacion[];
   avisos: string[];
   imprevistos: EstimacionImprevistos | null;
+  contarImprevistos: boolean;
 }
 
 // ── Utilidades ────────────────────────────────────────────────────────────────
@@ -178,13 +185,14 @@ export function construirInforme(e: EntradaInforme): Informe {
   const efectos = (evs: CashEvent[]) => evs.reduce((s, ev) => s + cts(efecto(ev)), 0);
   const entre = (ini: ISODate, finExcl: ISODate) => eventos.filter((ev) => ev.fecha >= ini && ev.fecha < finExcl);
 
-  /** Ingresos netos, gastos y lo demás (intereses, traspasos…) de unos eventos. */
+  /** Ingresos netos, gastos, reserva y lo demás (intereses, traspasos…) de unos eventos. */
   const flujos = (evs: CashEvent[]) => {
     const d = desgloseDelMes(evs, e.gastos, e.prestamos, hoy);
     const total = efectos(evs);
     const ingresos = cts(d.ingresosNetos);
     const gastos = cts(d.gastosTotales);
-    return { d, total, ingresos, gastos, otros: total - (ingresos - gastos) };
+    const reserva = evs.filter((ev) => ev.sourceType === RESERVA_IMPREVISTOS).reduce((s, ev) => s + cts(Math.abs(ev.cuantia)), 0);
+    return { d, total, ingresos, gastos, reserva, otros: total - (ingresos - gastos - reserva) };
   };
 
   const saldoInicio = realTotal(desde);
@@ -195,23 +203,7 @@ export function construirInforme(e: EntradaInforme): Informe {
   const diferencia = tienePasado ? saldoCorte - saldoPrevistoCorte : 0;
   const saldoFinal = saldoCorte + futuro.total;
 
-  // ── Reserva para imprevistos del tramo futuro ─────────────────────────────
-  let reserva = 0;
-  const media = e.imprevistos && e.imprevistos.meses > 0 ? cts(e.imprevistos.mediaMensual) : 0;
-  if (tieneFuturo && media > 0) {
-    for (const mes of mesesEntre(corte.slice(0, 7), hasta.slice(0, 7))) {
-      if (mes < hoy.slice(0, 7)) continue;
-      if (mes === hoy.slice(0, 7)) {
-        reserva += Math.max(0, media - cts(e.imprevistosMesEnCurso ?? 0));
-        continue;
-      }
-      const ini = maxFecha(`${mes}-01`, corte);
-      const fin = minFecha(finDeMes(mes), hasta);
-      const diasMes = Number(finDeMes(mes).slice(8, 10));
-      const dias = Number(fin.slice(8, 10)) - Number(ini.slice(8, 10)) + 1;
-      reserva += Math.round((media * dias) / diasMes);
-    }
-  }
+  const reserva = futuro.reserva;
 
   // ── Puente ────────────────────────────────────────────────────────────────
   const puente: PasoPuente[] = [{ concepto: `Saldo real al empezar (${desde})`, importe: eur(saldoInicio), saldo: true }];
@@ -222,6 +214,15 @@ export function construirInforme(e: EntradaInforme): Informe {
       { concepto: `Gastos previstos${sufijo}`, importe: -eur(f.gastos) },
     );
     if (f.otros) puente.push({ concepto: `Intereses y traspasos previstos${sufijo}`, importe: eur(f.otros) });
+    if (f.reserva)
+      puente.push({
+        concepto: 'Reserva para imprevistos',
+        nota:
+          e.imprevistos && e.imprevistos.meses > 0
+            ? `media de ${e.imprevistos.meses} ${e.imprevistos.meses === 1 ? 'mes' : 'meses'}`
+            : undefined,
+        importe: -eur(f.reserva),
+      });
   };
   let iCorte = 0;
   if (tienePasado) {
@@ -240,16 +241,6 @@ export function construirInforme(e: EntradaInforme): Informe {
     tramo(futuro, tienePasado ? 'desde el corte' : '');
     iFinal = puente.length;
     puente.push({ concepto: `Saldo previsto al final (${hasta})`, importe: eur(saldoFinal), saldo: true });
-    if (reserva > 0) {
-      puente.push(
-        {
-          concepto: 'Reserva para imprevistos',
-          nota: e.imprevistos ? `media de ${e.imprevistos.meses} ${e.imprevistos.meses === 1 ? 'mes' : 'meses'}` : undefined,
-          importe: -eur(reserva),
-        },
-        { concepto: 'Saldo previsto con la reserva', importe: eur(saldoFinal - reserva), saldo: true },
-      );
-    }
   }
 
   // ── Lo previsto para el pasado, por grupo ─────────────────────────────────
@@ -296,7 +287,8 @@ export function construirInforme(e: EntradaInforme): Informe {
       tipo,
       saldoInicial: eur(saldoIni),
       ingresos: eur(f.ingresos),
-      gastos: eur(f.gastos),
+      gastos: eur(f.gastos + f.reserva),
+      reserva: eur(f.reserva),
       otros: eur(f.otros),
       desviacion: eur(desviacion),
       saldoFinal: eur(saldoFin),
@@ -438,7 +430,6 @@ export function construirInforme(e: EntradaInforme): Informe {
     diferencia: eur(diferencia),
     saldoFinal: eur(saldoFinal),
     reservaImprevistos: eur(reserva),
-    saldoFinalConReserva: eur(saldoFinal - reserva),
     puente,
     previstoPasado,
     meses,
@@ -448,5 +439,6 @@ export function construirInforme(e: EntradaInforme): Informe {
     comprobaciones,
     avisos,
     imprevistos: e.imprevistos ?? null,
+    contarImprevistos: e.contarImprevistos !== false,
   };
 }

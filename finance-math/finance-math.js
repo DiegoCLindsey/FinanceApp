@@ -965,6 +965,33 @@ const FinanceMath = (() => {
 
   // ── Inflación: pérdida de poder adquisitivo de los ahorros ───────────────────
   // Para cada mes, calcula la erosión del saldo por la inflación.
+  // Reserva para imprevistos (toggle «Contar con la estimación de imprevistos»).
+  // La estimación (media de lo marcado como imprevisto en los 12 meses
+  // anteriores) la calcula el motor de meses (src/engine/mes.ts) y llega por
+  // `config.reservaImprevistos`: { mediaMensual, hoy, pendienteMesActual }.
+  // Solo mira al futuro: en el mes en curso aparta lo que falta hasta la media
+  // (fechado hoy), y desde el mes siguiente la media entera el día 1 de cada mes.
+  // Es un gasto previsto más: baja el saldo proyectado, el mínimo y las alertas.
+  function proyectarReservaImprevistos(reserva, dateStart, dateEnd, principalCuenta='default') {
+    const events = [];
+    if (!reserva || !(reserva.mediaMensual > 0) || !reserva.hoy) return events;
+    const hoy = reserva.hoy;
+    const ev = (fecha, cuantia) => {
+      if (fecha < dateStart || fecha > dateEnd || fecha < hoy || !(cuantia > 0.004)) return;
+      events.push({
+        fecha, concepto: 'Imprevistos estimados', cuantia: Math.round(cuantia * 100) / 100,
+        tipo: 'gasto', tags: ['imprevisto'], cuenta: principalCuenta,
+        sourceId: 'imprevistos_' + fecha.slice(0, 7), sourceType: 'imprevisto-estimado',
+      });
+    };
+    ev(hoy, reserva.pendienteMesActual ?? reserva.mediaMensual);
+    const [y0, m0] = hoy.split('-').map(Number);
+    for (let d = new Date(y0, m0, 1); _fechaLocal(d) <= dateEnd; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+      ev(_fechaLocal(d), reserva.mediaMensual);
+    }
+    return events;
+  }
+
   function proyectarPerdidaAhorro(saldoInicial, inflacionPeriodos, dateStart, dateEnd, principalCuenta='default') {
     const events = [];
     if (!inflacionPeriodos || inflacionPeriodos.length === 0 || saldoInicial <= 0) return events;
@@ -1056,6 +1083,10 @@ const FinanceMath = (() => {
       allEvents = allEvents.concat(proyectarInflacionGastos(gastos, inflacionPeriodos, desde, hasta, filtroAccounts, principalId));
       const saldoIni = cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, config.dashboardStart), 0);
       allEvents = allEvents.concat(proyectarPerdidaAhorro(saldoIni, inflacionPeriodos, desde, hasta, principalId));
+    }
+    if (config.reservaImprevistos) {
+      const principal = cuentasActivas.find(a => a.esCuentaPrincipal) || cuentasActivas[0];
+      if (principal) allEvents = allEvents.concat(proyectarReservaImprevistos(config.reservaImprevistos, desde, hasta, principal._id));
     }
     allEvents.sort((a,b) => a.fecha.localeCompare(b.fecha));
     return _aplicarSaldoRef(allEvents, cuentasActivas, config)
@@ -1726,7 +1757,7 @@ const FinanceMath = (() => {
   function eur(n) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(n||0); }
   function pct(n) { return (n||0).toFixed(2)+'%'; }
 
-  return { saldoRealCuenta, saldoEnFecha, fechaUltimoSaldoConocido, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, generarExtracto, saldoHoy, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, ajustarPrecioReal, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
+  return { saldoRealCuenta, saldoEnFecha, fechaUltimoSaldoConocido, recomputarSaldoAcum, calcGananciasCapital, tramosGananciasParaAño, tramosIRPFParaAño, calcFondoInversion, calcFondosPension, calcImpuestoPension, calcTipoMarginalPension, calcTipoMarginalGrupo, proyectarAportaciones, cuotaMensual, calcTAE, tablaAmortizacion, resumenPrestamo, resumenPrestamoConAhorro, proyectarGastos, proyectarTransferencias, proyectarPrestamos, proyectarNominas, proyectarInflacionGastos, proyectarPerdidaAhorro, proyectarReservaImprevistos, generarExtracto, saldoHoy, sumarPorTags, mediaMensualGastos, calcColchon, calcColchonEnFecha, calcMargenEnFecha, saldosPorCuentaEnExtracto, detectarCrucesMargenes, calcGastoBasicoMensual, calcFactorInflacion, calcInflacionMediaAnual, calcTipoRealFisher, ajustarPrecioReal, calcBaseImponibleTrabajo, calcIRPF, retencionMensual, proyectarRetencionesFiscales, detectarPuntosCriticos, calcSaludFinanciera, calcDesviacion, optimizarAmortizaciones, compararFrecuencias, filtrarPorEscenario, resolverDiaEfectivo, ajustarFechaPago, labelDiaPago, eur, pct };
 })();
 
 

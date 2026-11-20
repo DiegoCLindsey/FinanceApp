@@ -141,6 +141,13 @@ export interface DesgloseMes {
   margen: number;
   /** Margen sobre ingresos netos, en %. `null` sin ingresos. */
   margenPct: number | null;
+  /**
+   * Intereses y rentabilidad previstos de cuentas y fondos (netos). No entran
+   * en el margen (ver RENDIMIENTOS), pero sí mueven el saldo: margen +
+   * rendimientos es lo que sube o baja el saldo previsto, la cifra que enseña
+   * la gráfica de saldo del cuadro de mando.
+   */
+  rendimientos: number;
 }
 
 const INTERNOS = new Set(['transfer-out', 'transfer-in', 'aportacion-out', 'aportacion-in']);
@@ -154,6 +161,12 @@ const INTERNOS = new Set(['transfer-out', 'transfer-in', 'aportacion-out', 'apor
  * histórico.
  */
 const RENDIMIENTOS = new Set(['account-interest']);
+/**
+ * La reserva para imprevistos que el motor de proyección mete en el extracto
+ * cuando está activo «Contar con la estimación de imprevistos». No es un gasto
+ * del mes: es la reserva, y se cuenta como tal.
+ */
+export const RESERVA_IMPREVISTOS = 'imprevisto-estimado';
 const esRetencionNomina = (e: CashEvent) => e.sourceType === 'nomina' && e.tipo === 'gasto';
 
 /** Céntimos enteros para sumar: evita que 0,1 + 0,2 acabe en la pantalla. */
@@ -201,7 +214,13 @@ export function desgloseDelMes(
 ): DesgloseMes {
   const gastoPorId = new Map(gastos.map((g) => [g._id, g]));
   const prestamoPorId = new Map(prestamos.map((p) => [p._id, p]));
-  const propios = eventos.filter((e) => !INTERNOS.has(e.sourceType ?? '') && !RENDIMIENTOS.has(e.sourceType ?? ''));
+  const propios = eventos.filter(
+    (e) => !INTERNOS.has(e.sourceType ?? '') && !RENDIMIENTOS.has(e.sourceType ?? '') && e.sourceType !== RESERVA_IMPREVISTOS,
+  );
+  const rendimientosCts = eventos
+    .filter((e) => RENDIMIENTOS.has(e.sourceType ?? ''))
+    .reduce((s, e) => s + (e.tipo === 'ingreso' ? cts(e.cuantia) : -cts(e.cuantia)), 0);
+  const reservasEnExtracto = eventos.filter((e) => e.sourceType === RESERVA_IMPREVISTOS);
 
   const ingresosBrutos = propios.filter((e) => e.tipo === 'ingreso').reduce((s, e) => s + cts(e.cuantia), 0);
   const retenciones = propios.filter(esRetencionNomina).reduce((s, e) => s + cts(e.cuantia), 0);
@@ -244,7 +263,14 @@ export function desgloseDelMes(
   const ingresosCts = ingresosBrutos - retenciones;
   const gastosCts = cts(prestamosB.total) + cts(facturasB.total) + cts(otrosB.total) + cts(imprevistosB.total);
   const estimacion = opciones.estimacionImprevistos ?? null;
-  const reservaCts = estimacion !== null ? Math.max(0, cts(estimacion) - cts(imprevistosB.total)) : 0;
+  // Si el extracto ya trae la reserva (la proyección la cuenta), manda esa: es
+  // la misma que baja la línea de saldo. Si no, la que se pida aquí.
+  const reservaCts =
+    reservasEnExtracto.length > 0
+      ? reservasEnExtracto.reduce((s, e) => s + cts(e.cuantia), 0)
+      : estimacion !== null
+        ? Math.max(0, cts(estimacion) - cts(imprevistosB.total))
+        : 0;
   const ingresosNetos = ingresosCts / 100;
   const margen = (ingresosCts - gastosCts - reservaCts) / 100;
   return {
@@ -258,6 +284,7 @@ export function desgloseDelMes(
     reservaImprevistos: reservaCts / 100,
     margen,
     margenPct: ingresosNetos > 0 ? (margen / ingresosNetos) * 100 : null,
+    rendimientos: rendimientosCts / 100,
   };
 }
 
@@ -390,6 +417,7 @@ export function sumarDesgloses(lista: DesgloseMes[]): DesgloseMes {
   const ingresosCts = lista.reduce((s, d) => s + Math.round(d.ingresosNetos * 100), 0);
   const gastosCts = cts(prestamos.total) + cts(facturas.total) + cts(otros.total) + cts(imprevistos.total);
   const reservaCts = lista.reduce((s, d) => s + cts(d.reservaImprevistos), 0);
+  const rendimientosCts = lista.reduce((s, d) => s + Math.round((d.rendimientos ?? 0) * 100), 0);
   const ingresosNetos = ingresosCts / 100;
   const margen = (ingresosCts - gastosCts - reservaCts) / 100;
   return {
@@ -403,6 +431,7 @@ export function sumarDesgloses(lista: DesgloseMes[]): DesgloseMes {
     reservaImprevistos: reservaCts / 100,
     margen,
     margenPct: ingresosNetos > 0 ? (margen / ingresosNetos) * 100 : null,
+    rendimientos: rendimientosCts / 100,
   };
 }
 
@@ -451,6 +480,7 @@ export function mediaDeDesgloses(lista: DesgloseMes[]): DesgloseMes {
     reservaImprevistos: reservaCts / 100,
     margen,
     margenPct: ingresosNetos > 0 ? (margen / ingresosNetos) * 100 : null,
+    rendimientos: Math.round((acc.rendimientos * 100) / n) / 100,
   };
 }
 
@@ -532,13 +562,44 @@ export function estimacionImprevistosPara(mes: string, f: FuenteMes): Estimacion
  * Desglose del mes en curso con la reserva de imprevistos aplicada. Es lo que
  * pinta la tarjeta «Este mes»; la ventana de meses anteriores usa lo mismo.
  */
-export function mesEnCurso(f: FuenteMes, eventosDelMes: CashEvent[]): { desglose: DesgloseMes; estimacion: EstimacionImprevistos } {
+export function mesEnCurso(
+  f: FuenteMes,
+  eventosDelMes: CashEvent[],
+  /** Con `false` no se aparta nada: el toggle «Contar con la estimación de imprevistos» apagado. */
+  contarImprevistos = true,
+): { desglose: DesgloseMes; estimacion: EstimacionImprevistos } {
   const mes = f.hoy.slice(0, 7);
   const estimacion = estimacionImprevistosPara(mes, f);
   const movimientos = f.movimientos.filter((m) => m.fecha.startsWith(mes));
-  const desglose = desgloseDelMes(eventosDelMes, f.gastos, f.prestamos, f.hoy, {
-    movimientos,
-    estimacionImprevistos: estimacion.meses > 0 ? estimacion.mediaMensual : null,
-  });
+  const desglose = desgloseDelMes(
+    contarImprevistos ? eventosDelMes : eventosDelMes.filter((e) => e.sourceType !== RESERVA_IMPREVISTOS),
+    f.gastos,
+    f.prestamos,
+    f.hoy,
+    {
+      movimientos,
+      estimacionImprevistos: contarImprevistos && estimacion.meses > 0 ? estimacion.mediaMensual : null,
+    },
+  );
   return { desglose, estimacion };
+}
+
+/** Lo que necesita el motor de proyección para meter la reserva en el extracto. */
+export interface ReservaParaProyeccion {
+  mediaMensual: number;
+  hoy: ISODate;
+  /** Lo que falta por apartar este mes: la media menos lo ya marcado como imprevisto. */
+  pendienteMesActual: number;
+}
+
+/**
+ * La reserva de imprevistos para la proyección del cuadro de mando, o null si
+ * no hay estimación. `eventosDelMes` es el extracto del mes en curso SIN la
+ * reserva (con ella, la reserva se contaría para calcularse a sí misma).
+ */
+export function reservaParaProyeccion(f: FuenteMes, eventosDelMes: CashEvent[]): ReservaParaProyeccion | null {
+  const sinReserva = eventosDelMes.filter((e) => e.sourceType !== RESERVA_IMPREVISTOS);
+  const { desglose, estimacion } = mesEnCurso(f, sinReserva);
+  if (estimacion.meses <= 0 || estimacion.mediaMensual <= 0) return null;
+  return { mediaMensual: estimacion.mediaMensual, hoy: f.hoy, pendienteMesActual: desglose.reservaImprevistos };
 }

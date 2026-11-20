@@ -7,6 +7,7 @@ import {
   estimarImprevistos,
   mesEnCurso,
   mesesEntre,
+  reservaParaProyeccion,
   primerDatoDeSeguimiento,
   sumarDesgloses,
   type MovimientoReal,
@@ -207,5 +208,58 @@ describe('media del periodo', () => {
 
   it('con un solo mes, la media es ese mes', () => {
     expect(mediaDeDesgloses([meses[0]])).toEqual(meses[0]);
+  });
+});
+
+describe('la reserva y los rendimientos que vienen en el extracto', () => {
+  const reserva = (fecha: string, cuantia: number) =>
+    ev({ fecha, cuantia, sourceType: 'imprevisto-estimado', sourceId: `imprevistos_${fecha.slice(0, 7)}` });
+
+  it('la reserva del extracto manda sobre la estimación y no cuenta como gasto', () => {
+    const d = desgloseDelMes(
+      [ev({ tipo: 'ingreso', cuantia: 2000, sourceType: 'nomina' }), ev({ sourceId: 'luz', cuantia: -60 }), reserva('2026-12-01', 100)],
+      gastos,
+      [],
+      '2026-11-20',
+      { estimacionImprevistos: 500 },
+    );
+    expect(d.gastosTotales).toBe(60);
+    expect(d.imprevistos.total).toBe(0);
+    expect(d.reservaImprevistos).toBe(100);
+    expect(d.margen).toBe(2000 - 60 - 100);
+  });
+
+  it('intereses y rentabilidad: fuera del margen, pero se cuentan aparte', () => {
+    const d = desgloseDelMes(
+      [
+        ev({ tipo: 'ingreso', cuantia: 2000, sourceType: 'nomina' }),
+        ev({ tipo: 'ingreso', cuantia: 37.5, sourceType: 'account-interest' }),
+        ev({ tipo: 'gasto', cuantia: -7.5, sourceType: 'account-interest' }),
+      ],
+      gastos,
+      [],
+      '2026-11-20',
+    );
+    expect(d.margen).toBe(2000);
+    expect(d.rendimientos).toBe(30);
+    expect(sumarDesgloses([d, d]).rendimientos).toBe(60);
+    expect(mediaDeDesgloses([d, d]).rendimientos).toBe(30);
+  });
+
+  it('mesEnCurso con «Contar imprevistos» apagado no aparta nada', () => {
+    const generarExtracto = (desde: string, hasta: string) =>
+      [
+        ev({ fecha: '2026-10-15', sourceId: 'averia', cuantia: -300 }),
+        ev({ fecha: '2026-11-28', tipo: 'ingreso', cuantia: 2000, sourceType: 'nomina' }),
+      ].filter((e) => e.fecha >= desde && e.fecha <= hasta);
+    const f = { generarExtracto, gastos, prestamos: [], movimientos: [], hoy: '2026-11-20' };
+    const delMes = [...generarExtracto('2026-11-01', '2026-11-30'), reserva('2026-11-20', 50)];
+    const con = mesEnCurso(f, generarExtracto('2026-11-01', '2026-11-30'));
+    expect(con.desglose.reservaImprevistos).toBe(50); // 300 € en 6 meses (may–oct)
+    const sin = mesEnCurso(f, delMes, false);
+    expect(sin.desglose.reservaImprevistos).toBe(0);
+    expect(sin.estimacion.mediaMensual).toBe(50);
+    // lo que necesita la proyección: la media, y lo que falta este mes
+    expect(reservaParaProyeccion(f, delMes)).toEqual({ mediaMensual: 50, hoy: '2026-11-20', pendienteMesActual: 50 });
   });
 });

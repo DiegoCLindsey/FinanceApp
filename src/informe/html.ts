@@ -124,7 +124,7 @@ function tablaMeses(meses: FilaMes[]): string {
   const filas = meses
     .map(
       (m) => `<tr class="${m.tipo}">
-      <th scope="row">${esc(nombreMes(m.mes))}<span class="nota">${etiqueta[m.tipo]}${m.tipo !== 'previsto' && !m.conSaldoReal ? ' · sin saldo anotado' : ''}</span></th>
+      <th scope="row">${esc(nombreMes(m.mes))}<span class="nota">${etiqueta[m.tipo]}${m.tipo !== 'previsto' && !m.conSaldoReal ? ' · sin saldo anotado' : ''}${m.reserva > 0 ? ` · gastos con ${eur(m.reserva)} de reserva para imprevistos` : ''}</span></th>
       <td class="num">${eur(m.saldoInicial)}</td>
       <td class="num pos">${eur(m.ingresos)}</td>
       <td class="num neg">${eur(m.gastos)}</td>
@@ -213,8 +213,8 @@ export function informeHtml(inf: Informe): string {
     .join('');
   const avisos = inf.avisos.map((a) => `<li>${esc(a)}</li>`).join('');
   const futuroTexto = inf.tieneFuturo
-    ? `<div><span>Previsto al final</span><strong>${eur(inf.saldoFinal)}</strong><em>${esc(fecha(inf.hasta))}</em></div>
-       ${inf.reservaImprevistos > 0 ? `<div><span>Con reserva para imprevistos</span><strong>${eur(inf.saldoFinalConReserva)}</strong><em>reservando ${eur(inf.reservaImprevistos)}</em></div>` : ''}
+    ? `<div><span>Previsto al final</span><strong>${eur(inf.saldoFinal)}</strong><em>${esc(fecha(inf.hasta))}${inf.reservaImprevistos > 0 ? ` · apartados ${eur(inf.reservaImprevistos)} para imprevistos` : ''}</em></div>
+
        ${inf.minimo ? `<div class="${inf.minimo.saldo < 0 ? 'neg' : ''}"><span>Saldo mínimo previsto</span><strong>${eur(inf.minimo.saldo)}</strong><em>${esc(fecha(inf.minimo.fecha))}</em></div>` : ''}`
     : '';
   return `<!doctype html>
@@ -318,7 +318,7 @@ export function informeHtml(inf: Informe): string {
     ${avisos ? `<h3>A tener en cuenta</h3><ul class="avisos">${avisos}</ul>` : ''}
   </section>
 
-  <footer>Generado con FinanceApp. Las cifras previstas son estimaciones: dependen de los gastos, nóminas y préstamos que tengas dados de alta.${inf.imprevistos && inf.imprevistos.meses > 0 ? ` La reserva para imprevistos usa la media de lo marcado como imprevisto en ${inf.imprevistos.meses} meses (${eur(inf.imprevistos.mediaMensual)}/mes).` : ''}</footer>
+  <footer>Generado con FinanceApp. Las cifras previstas son estimaciones: dependen de los gastos, nóminas y préstamos que tengas dados de alta.${inf.imprevistos && inf.imprevistos.meses > 0 && inf.tieneFuturo ? ` ${inf.contarImprevistos ? `La previsión aparta para imprevistos la media de lo marcado como imprevisto en ${inf.imprevistos.meses} meses (${eur(inf.imprevistos.mediaMensual)}/mes).` : `«Contar imprevistos» está apagado: la previsión no aparta nada para imprevistos (la media de lo marcado es ${eur(inf.imprevistos.mediaMensual)}/mes).`}` : ''}</footer>
 </main>
 </body>
 </html>`;

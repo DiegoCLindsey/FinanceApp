@@ -524,16 +524,56 @@ const DashboardModule = (() => {
     }
   }
 
+  /**
+   * Reserva de imprevistos para la proyección (null si el toggle está apagado
+   * o no hay estimación). Sale del motor de meses: la media de lo marcado como
+   * imprevisto en los 12 meses anteriores, y lo que falta este mes.
+   */
+  function _reservaImprevistos(config, loans, expenses, accounts, nominas, inflPeriodos) {
+    if (config.contarImprevistos === false) return null;
+    const mesApi = window.FinanceApp?.engine?.mes;
+    if (!mesApi?.reservaParaProyeccion) return null;
+    const hoy = _fechaLocal(new Date());
+    const mes = hoy.slice(0, 7);
+    const filtro = filtroAccounts.length > 0 ? filtroAccounts : null;
+    const generarExtracto = (desde, hasta) => FinanceMath.generarExtracto(
+      loans, expenses, accounts, { ...config, dashboardStart: desde, dashboardEnd: hasta }, filtro, nominas, inflPeriodos);
+    const movimientos = (window.FinanceApp?.store?.get('transacciones') || [])
+      .filter(t => filtroAccounts.length === 0 || filtroAccounts.includes(t.cuentaId));
+    try {
+      return mesApi.reservaParaProyeccion(
+        { generarExtracto, gastos: expenses, prestamos: loans, movimientos, hoy },
+        generarExtracto(`${mes}-01`, mesApi.finDeMes(mes)));
+    } catch (e) {
+      console.error('[Dashboard] No se ha podido estimar la reserva de imprevistos:', e);
+      return null;
+    }
+  }
+
+  function toggleContarImprevistos(valor) {
+    const cfg = State.get('config');
+    const nuevo = typeof valor === 'boolean' ? valor : cfg.contarImprevistos === false;
+    State.set('config', { ...cfg, contarImprevistos: nuevo });
+    render();
+    return _ctxHistorico;
+  }
+
   function render() {
     if (_chartTimer !== null) { clearTimeout(_chartTimer); _chartTimer = null; }
     destroyCharts();
     const view=document.getElementById('view-dashboard');
-    const config=State.get('config');
     const loans=State.get('loans'), expenses=State.get('expenses'), accounts=State.get('accounts'), nominas=State.get('nominas')||[];
     const accountsForExtracto = accounts;
+    const inflPeriodos  = State.get('inflacion') || [];
+    // La config de ESTE pintado: la guardada más, si está activo «Contar con la
+    // estimación de imprevistos», la reserva que la proyección aparta cada mes.
+    // Todos los extractos de abajo salen de aquí, así que la línea de saldo,
+    // las barras, la tarjeta y «Otros meses» cuentan lo mismo. No se guarda.
+    const configGuardada = State.get('config');
+    const reservaImprevistos = _reservaImprevistos(configGuardada, loans, expenses, accountsForExtracto, nominas, inflPeriodos);
+    const config = reservaImprevistos ? { ...configGuardada, reservaImprevistos } : configGuardada;
 
     const usarInflacion = config.usarInflacion||false;
-    const inflPeriodos  = State.get('inflacion') || [];
     const extracto=FinanceMath.generarExtracto(loans,expenses,accountsForExtracto,config, filtroAccounts.length>0?filtroAccounts:null, nominas, inflPeriodos);
 
     // ── Línea canónica ────────────────────────────────────────────────────────
@@ -590,9 +630,7 @@ const DashboardModule = (() => {
       filtroAccounts.length > 0 ? filtroAccounts : null, nominas, inflPeriodos
     );
     // Mismo filtro que el gráfico breakdown: sin transferencias
-    const evsMesActual = extractoMesActual.filter(e =>
-      e.sourceType !== 'transfer-out' && e.sourceType !== 'transfer-in'
-    );
+    const evsMesActual = extractoMesActual.filter(e => !_esMovimientoInterno(e));
 
     const ingresosMesActual      = evsMesActual.filter(e=>e.tipo==='ingreso').reduce((s,e)=>s+Math.abs(e.cuantia),0);
     // Solo préstamos cuya fechaInicio <= hoy (ya arrancados)
@@ -618,7 +656,7 @@ const DashboardModule = (() => {
     const numMeses = _mesesDelPeriodo(config.dashboardStart, config.dashboardEnd);
 
     // Media mensual en el intervalo del dashboard (extracto del dashboard, sin transferencias)
-    const evSinTransf        = extracto.filter(e=>e.sourceType!=='transfer-out'&&e.sourceType!=='transfer-in');
+    const evSinTransf        = extracto.filter(e => !_esMovimientoInterno(e));
     const ingresosMediaMes   = evSinTransf.filter(e=>e.tipo==='ingreso').reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
     const cuotasMediaMes          = evSinTransf.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto').reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
     const amortizacionesMediaMes  = evSinTransf.filter(e=>e.sourceType==='loan-amort').reduce((s,e)=>s+Math.abs(e.cuantia),0) / numMeses;
@@ -899,11 +937,18 @@ const DashboardModule = (() => {
       // filtro de cuentas activo, solo los de esas cuentas, igual que el resto.
       movimientos: (window.FinanceApp?.store?.get('transacciones') || [])
         .filter(t => filtroAccounts.length === 0 || filtroAccounts.includes(t.cuentaId)),
+      // El toggle: con él, la reserva ya viene dentro del extracto (ver arriba).
+      contarImprevistos: configGuardada.contarImprevistos !== false,
+      // Cambiarlo desde «Otros meses» repinta el cuadro de mando y devuelve el
+      // contexto nuevo para que la ventana se recalcule con él.
+      onContarImprevistos: (valor) => toggleContarImprevistos(valor),
     };
     if (!view.dataset.histCableado) {
       // Delegado en la vista, que no se sustituye al repintar: un solo listener.
       view.addEventListener('click', e => {
         if (e.target.closest('[data-crear-informe]')) { window.FinanceApp?.ui?.abrirCrearInforme?.(); return; }
+        const toggleImp = e.target.closest('[data-contar-imprevistos]');
+        if (toggleImp) { toggleContarImprevistos(!!toggleImp.checked); return; }
         if (!e.target.closest('[data-mes-historico]')) return;
         try { window.FinanceApp?.ui?.abrirHistoricoMeses?.(_ctxHistorico); }
         catch (err) { console.error('[Dashboard] No se ha podido abrir «Meses anteriores»:', err); UI.toast('No se ha podido abrir «Meses anteriores»', 'err'); }
@@ -916,8 +961,9 @@ const DashboardModule = (() => {
       if (fa?.engine?.mes && fa.ui?.tarjetaMes) {
         // Con la reserva de imprevistos: la media de lo marcado como imprevisto
         // en los 12 meses anteriores se aparta del margen de este mes.
-        const { desglose, estimacion } = fa.engine.mes.mesEnCurso(_ctxHistorico, extractoMesActual);
-        tarjetaMesHtml = fa.ui.tarjetaMes(desglose, mesActualLabel, hoyStr, estimacion);
+        const contar = configGuardada.contarImprevistos !== false;
+        const { desglose, estimacion } = fa.engine.mes.mesEnCurso(_ctxHistorico, extractoMesActual, contar);
+        tarjetaMesHtml = fa.ui.tarjetaMes(desglose, mesActualLabel, hoyStr, estimacion, contar);
       }
     } catch (e) { console.error('[Dashboard] No se ha podido calcular el desglose del mes:', e); }
 
@@ -1914,6 +1960,14 @@ const DashboardModule = (() => {
     });
   }
 
+  // Traspasos y aportaciones entre cuentas propias: el dinero cambia de sitio,
+  // no entra ni se gasta. Antes solo se quitaban los traspasos, y una
+  // aportación a un fondo contaba como ingreso (la entrada en el fondo) sin
+  // contar como gasto (la salida no es de un gasto), inflando los ingresos.
+  // Mismo criterio que el desglose de «Este mes» (src/engine/mes.ts, INTERNOS).
+  const _INTERNOS = new Set(['transfer-out', 'transfer-in', 'aportacion-out', 'aportacion-in']);
+  function _esMovimientoInterno(e) { return _INTERNOS.has(e.sourceType); }
+
   function renderChartBreakdown({ loans, expenses, config, numMeses, extracto, tagCategorias=[] }) {
     const ctx = document.getElementById('chart-breakdown-mensual'); if (!ctx) return;
     const dS = new Date(config.dashboardStart+'T00:00:00');
@@ -1929,7 +1983,7 @@ const DashboardModule = (() => {
       return;
     }
 
-    const dataIngresos = [], dataCuotas = [], dataBasicos = [], dataOtros = [], dataFiscal = [];
+    const dataIngresos = [], dataRend = [], dataCuotas = [], dataBasicos = [], dataOtros = [], dataFiscal = [], dataReserva = [];
     const dataTagPromo = tagCategorias.map(() => []);
 
     // Helper: first promoted tag for expense (same priority logic as render)
@@ -1945,25 +1999,36 @@ const DashboardModule = (() => {
       const [_my, _mm] = mesLabel.split('-').map(Number);
       const mesFin = _fechaLocal(new Date(_my, _mm, 0));
 
-      // Misma fuente que los KPIs: el extracto proyectado, sin transferencias
-      const evsMes = extracto.filter(e =>
-        e.fecha >= mesIni && e.fecha <= mesFin &&
-        e.sourceType !== 'transfer-out' && e.sourceType !== 'transfer-in'
-      );
+      // Misma fuente que la línea de saldo: el extracto proyectado, sin
+      // traspasos ni aportaciones entre cuentas propias. Así ingresos +
+      // rentabilidad − gastos − reserva de cada mes es lo que se mueve el saldo.
+      const evsMes = extracto.filter(e => e.fecha >= mesIni && e.fecha <= mesFin && !_esMovimientoInterno(e));
+      const suma = lista => lista.reduce((s,e)=>s+Math.abs(e.cuantia),0);
 
       const esFiscal = e => e.tipo === 'gasto' && (e.tags || []).includes('fiscal');
+      const esRend = e => e.sourceType === 'account-interest';
+      const esReserva = e => e.sourceType === 'imprevisto-estimado';
+      const esCuota = e => e.sourceType === 'loan' || e.sourceType === 'loan-amort';
 
-      dataIngresos.push(evsMes.filter(e=>e.tipo==='ingreso').reduce((s,e)=>s+Math.abs(e.cuantia),0));
-      dataCuotas.push(evsMes.filter(e=>e.sourceType==='loan'&&e.tipo==='gasto').reduce((s,e)=>s+Math.abs(e.cuantia),0));
-      dataFiscal.push(evsMes.filter(esFiscal).reduce((s,e)=>s+Math.abs(e.cuantia),0));
-      const gastoExpNoFiscal = evsMes.filter(e=>e.tipo==='gasto'&&e.sourceType==='expense'&&!esFiscal(e));
-      dataBasicos.push(gastoExpNoFiscal.filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return ex?.basico;}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
+      dataIngresos.push(suma(evsMes.filter(e=>e.tipo==='ingreso'&&!esRend(e))));
+      // Intereses y rentabilidad, netos (un fondo puede prever pérdidas).
+      dataRend.push(evsMes.filter(esRend).reduce((s,e)=>s+(e.tipo==='ingreso'?1:-1)*Math.abs(e.cuantia),0));
+      dataReserva.push(suma(evsMes.filter(esReserva)));
+      const gastosMes = evsMes.filter(e=>e.tipo==='gasto'&&!esRend(e)&&!esReserva(e));
+      dataCuotas.push(suma(gastosMes.filter(esCuota)));
+      dataFiscal.push(suma(gastosMes.filter(e=>!esCuota(e)&&esFiscal(e))));
+      // El resto de gastos: los de la lista (básicos, etiquetas destacadas) y
+      // lo que no viene de una ficha de gasto (IRPF de fondos, inflación…),
+      // que antes no salía en ninguna barra.
+      const resto = gastosMes.filter(e=>!esCuota(e)&&!esFiscal(e));
+      const ficha = e => e.sourceType==='expense' ? expenses.find(ex=>ex._id===e.sourceId) : null;
+      dataBasicos.push(suma(resto.filter(e=>ficha(e)?.basico)));
       // Promoted tags: per-tag buckets
       tagCategorias.forEach((tag, ti) => {
-        dataTagPromo[ti].push(gastoExpNoFiscal.filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return !ex?.basico&&_tagPromo(e.sourceId)===tag;}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
+        dataTagPromo[ti].push(suma(resto.filter(e=>ficha(e)&&!ficha(e).basico&&_tagPromo(e.sourceId)===tag)));
       });
       // Otros: non-basic, non-promoted
-      dataOtros.push(gastoExpNoFiscal.filter(e=>{const ex=expenses.find(ex=>ex._id===e.sourceId);return !ex?.basico&&!_tagPromo(e.sourceId);}).reduce((s,e)=>s+Math.abs(e.cuantia),0));
+      dataOtros.push(suma(resto.filter(e=>!ficha(e)?.basico&&!(ficha(e)&&_tagPromo(e.sourceId)))));
     }
 
     const labels = months.map(m => {
@@ -1983,12 +2048,18 @@ const DashboardModule = (() => {
       data: {
         labels,
         datasets: [
-          { label:'Ingresos', data:dataIngresos, backgroundColor:'rgba(46,230,168,0.7)', borderWidth:0, borderRadius:2, order:1 },
+          { label:'Ingresos', data:dataIngresos, backgroundColor:'rgba(46,230,168,0.7)', borderWidth:0, borderRadius:2, stack:'ingresos', order:1 },
+          ...(dataRend.some(v => Math.abs(v) >= 0.005)
+            ? [{ label:'Intereses y rentabilidad', data:dataRend, backgroundColor:'rgba(46,230,168,0.32)', borderWidth:0, borderRadius:2, stack:'ingresos', order:1 }]
+            : []),
           { label:'Cuotas préstamos', data:dataCuotas, backgroundColor:'rgba(168,85,247,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
           { label:'Gastos básicos', data:dataBasicos, backgroundColor:'rgba(77,159,255,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
           { label:'Fiscal / IRPF', data:dataFiscal, backgroundColor:'rgba(251,146,60,0.75)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
           ...promoDatasets,
           { label:'Otros gastos', data:dataOtros, backgroundColor:'rgba(255,77,109,0.65)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 },
+          ...(dataReserva.some(v => v > 0.004)
+            ? [{ label:'Imprevistos estimados', data:dataReserva, backgroundColor:'rgba(213,81,129,0.4)', borderWidth:0, borderRadius:2, stack:'gastos', order:2 }]
+            : []),
         ]
       },
       options: {
@@ -2000,7 +2071,17 @@ const DashboardModule = (() => {
           tooltip:{
             backgroundColor:'#111a28', borderColor:'rgba(255,255,255,0.12)', borderWidth:1,
             titleColor:'#a9b6cc', bodyColor:'#eef3fb',
-            callbacks:{ label: ctx => ` ${ctx.dataset.label}: ${FinanceMath.eur(ctx.parsed.y)}` }
+            callbacks:{
+              label: ctx => ` ${ctx.dataset.label}: ${FinanceMath.eur(ctx.parsed.y)}`,
+              // Lo que se mueve el saldo ese mes: cuadra con la línea de saldo.
+              footer: items => {
+                const i = items[0]?.dataIndex ?? 0;
+                const gastos = dataCuotas[i] + dataBasicos[i] + dataFiscal[i] + dataOtros[i] + dataReserva[i]
+                  + dataTagPromo.reduce((s, d) => s + (d[i] || 0), 0);
+                const neto = dataIngresos[i] + dataRend[i] - gastos;
+                return `Variación del saldo: ${neto >= 0 ? '+' : '−'}${FinanceMath.eur(Math.abs(neto))}`;
+              },
+            }
           }
         },
         scales:{
@@ -2245,7 +2326,7 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, abrir, actualizar, setVentanaVelas, setDashScope, setDashTab, limpiarSimulaciones, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleCriticos, toggleConfig, toggleAnalisis, verDetalleDistribucionMedia };
+  return { render, abrir, actualizar, toggleContarImprevistos, setVentanaVelas, setDashScope, setDashTab, limpiarSimulaciones, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleCriticos, toggleConfig, toggleAnalisis, verDetalleDistribucionMedia };
 })();
 
 // Publicado para el paquete nuevo: ver la nota al final de common/state.js.

@@ -276,6 +276,11 @@ export interface AppConfig {
    * las transferencias, en vez de aparecer como gasto imprevisto cada mes.
    */
   cierreOmitidos?: string[];
+  /**
+   * «Contar con la estimación de imprevistos»: la proyección aparta cada mes,
+   * desde hoy, la media de lo marcado como imprevisto. Sin definir = sí.
+   */
+  contarImprevistos?: boolean;
   // tagCategorias + tagGrupos se unifican en 1.9 (docs/03, B3)
   tagCategorias: string[];
   tagGrupos: string[];

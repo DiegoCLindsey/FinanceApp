@@ -1541,6 +1541,46 @@ que se le preveía desde entonces aparece como diferencia. El informe lo avisa.
 Proyectar cada cuenta desde su propio último dato exige cambiar también el
 ancla del cuadro de mando (`_anclaSaldo`).
 
+#### [x] BUG-29 · El cuadro de mando y «Otros meses» no cuadraban — *propietario (2026-11-20)*
+
+Comparando mes a mes la gráfica de saldo, las barras de ingresos y gastos y
+«Otros meses», con los mismos datos:
+
+1. **Intereses y rentabilidad.** La línea de saldo y la barra «Ingresos» los
+   contaban; el margen de «Otros meses» no (a propósito: no es dinero para
+   gastar). Con un fondo al 6 % la diferencia era de ~640 €/mes. Ahora el
+   margen sigue sin contarlos, pero cada mes dice «con +X de intereses y
+   rentabilidad, el saldo sube Y», la gráfica de ahorro añade la línea «Saldo
+   (con intereses)», y en las barras del cuadro de mando van en su propia serie.
+2. **Reserva de imprevistos.** «Otros meses» la descontaba en los meses futuros
+   y la proyección del cuadro de mando no. Ahora la decide el toggle de abajo,
+   y cuando está activo la reserva va dentro del extracto: la cuentan la línea
+   de saldo, el mínimo, las alertas, las barras, la tarjeta, «Otros meses» y el
+   informe.
+3. **Barras de ingresos y gastos.** Las aportaciones a fondos contaban como
+   ingreso (la entrada en el fondo) sin contar como gasto; las amortizaciones
+   anticipadas no salían en «Cuotas»; los gastos que no vienen de una ficha
+   (impuestos de fondos, inflación) no salían en ninguna barra. Ahora ingresos
+   + rentabilidad − gastos − reserva de cada barra es exactamente lo que se
+   mueve la línea de saldo (la ayuda emergente lo dice).
+
+Comprobado en el navegador: barras, línea de saldo y «Otros meses» coinciden
+al céntimo mes a mes, con el toggle activo y apagado. La única diferencia que
+queda es a propósito: los imprevistos REALES registrados en Cuentas cuentan en
+«Otros meses» pero no están en la previsión; el bloque de imprevistos lo dice.
+
+#### [x] NEW-13 · Toggle «Contar imprevistos» — *propietario (2026-11-20)*
+
+En la tarjeta «Este mes» y en «Otros meses» (la misma opción,
+`config.contarImprevistos`, activa por defecto). Activo: desde hoy, la
+proyección aparta la estimación de imprevistos (media de lo marcado en los 12
+meses anteriores): en el mes en curso lo que falta hasta la media, fechado hoy;
+desde el mes siguiente la media entera el día 1. La calcula
+`engine/mes.reservaParaProyeccion` y la mete `FinanceMath.generarExtracto` como
+eventos `imprevisto-estimado` (`config.reservaImprevistos`, que no se guarda).
+El informe la toma del mismo extracto. Apagado: no se aparta nada en ninguna
+pantalla.
+
 **Descartado**: conexión directa con bancos (PSD2 exige servidor y licencia),
 multimoneda, categorización con servicios externos (los datos saldrían del
 dispositivo), y simulación Monte Carlo (ya se retiró).

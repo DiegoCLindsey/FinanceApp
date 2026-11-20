@@ -21,6 +21,7 @@ import { esc, nombreMes } from '../accounting/dom';
 export const COLORES_GRUPO = { prestamos: '#9085e9', facturas: '#d95926', otros: '#3987e5', imprevistos: '#d55181' } as const;
 
 const dia = (f: ISODate) => String(Number(f.slice(8, 10)));
+const conSignoEur = (n: number) => `${n >= 0 ? '+' : '\u2212'}${formatEUR(Math.abs(n))}`;
 
 export interface OpcionesCuerpo {
   hoy: ISODate;
@@ -38,6 +39,19 @@ export interface OpcionesCuerpo {
   media?: { meses: number; acumulado: DesgloseMes };
   /** Estimación de imprevistos, para enseñarla en su bloque. */
   estimacion?: EstimacionImprevistos | null;
+  /** Toggle «Contar con la estimación de imprevistos». Sin definir = sí. */
+  contarImprevistos?: boolean;
+}
+
+/**
+ * El interruptor «Contar imprevistos». Lo mismo en la tarjeta y en «Otros
+ * meses»: los dos cambian la misma opción, y con ella la proyección de saldo.
+ */
+export function toggleImprevistos(contar: boolean): string {
+  return `<label class="mes-toggle-imp" title="Si está activo, la previsión aparta cada mes, desde hoy, la media de lo que has marcado como imprevisto en los últimos 12 meses: baja el margen y también la línea de saldo del cuadro de mando.">
+    <span class="toggle"><input type="checkbox" data-contar-imprevistos${contar ? ' checked' : ''} aria-label="Contar con la estimación de imprevistos"/><span class="toggle-slider"></span></span>
+    <span>Contar imprevistos</span>
+  </label>`;
 }
 
 function detalle(b: BloqueMes, o: OpcionesCuerpo): string {
@@ -113,6 +127,14 @@ function bloqueImprevistos(d: DesgloseMes, o: OpcionesCuerpo): string {
       d.reservaImprevistos > 0
         ? `<div class="mes-bloque-pie mes-bloque-nota"><span>+ ${esc(formatEUR(d.reservaImprevistos))}${o.media ? '/mes' : ''} reservados para los que aún no han llegado</span></div>`
         : '';
+    // Los imprevistos que salen de movimientos REALES (Cuentas) no están en la
+    // previsión: la gráfica de saldo del cuadro de mando no los tiene. Se dice,
+    // para que la diferencia entre las dos pantallas no parezca un error.
+    const reales = b.partidas.filter((p) => p.id.startsWith('mov:')).reduce((s, p) => s + p.total, 0);
+    const notaReales =
+      reales > 0.004 && o.meses === undefined && !o.media
+        ? `<div class="mes-bloque-pie mes-bloque-nota" title="Son movimientos registrados en Cuentas y marcados como imprevisto. La previsión del cuadro de mando sale de tus gastos configurados, así que no los incluye."><span>${esc(formatEUR(reales))} son movimientos reales: no están en la previsión del cuadro de mando</span></div>`
+        : '';
     return bloque(
       'Imprevistos',
       'Gastos marcados como imprevisto: en el gasto o en el movimiento real',
@@ -120,7 +142,7 @@ function bloqueImprevistos(d: DesgloseMes, o: OpcionesCuerpo): string {
       o,
       'mes-bloque--imprevistos',
       'imprevistos',
-      reserva,
+      reserva + notaReales,
     );
   }
   const media = e.mediaMensual;
@@ -128,9 +150,11 @@ function bloqueImprevistos(d: DesgloseMes, o: OpcionesCuerpo): string {
   const pasado = b.total > media + 0.004;
   const pie = pasado
     ? `<span>Te has pasado <strong>${esc(formatEUR(b.total - media))}</strong></span>`
-    : d.reservaImprevistos > 0
-      ? `<span>Reservado <strong>${esc(formatEUR(d.reservaImprevistos))}</strong></span>`
-      : '<span>Sin imprevistos previstos</span>';
+    : o.contarImprevistos === false
+      ? '<span>No se aparta nada: «Contar imprevistos» está apagado</span>'
+      : d.reservaImprevistos > 0
+        ? `<span>Reservado <strong>${esc(formatEUR(d.reservaImprevistos))}</strong></span>`
+        : '<span>Sin imprevistos previstos</span>';
   const origen = `Estimación ${formatEUR(media)}/mes · media de ${e.meses} ${e.meses === 1 ? 'mes' : 'meses'}`;
   return `<section class="mes-bloque mes-bloque--imprevistos${pasado ? ' es-excedido' : ''}" aria-label="Imprevistos">
     <div class="mes-bloque-titulo" title="Gastos marcados como imprevisto: en el gasto o en el movimiento real. La estimación es la media de lo marcado en los últimos 12 meses."><span class="mes-punto" aria-hidden="true"></span>Imprevistos</div>
@@ -157,6 +181,11 @@ export function cuerpoDesglose(d: DesgloseMes, o: OpcionesCuerpo): string {
   const enPeriodo = o.media
     ? `<div class="mes-bloque-pie"><span>En ${o.media.meses} meses: <strong>${o.media.acumulado.margen >= 0 ? '+' : '\u2212'}${esc(formatEUR(Math.abs(o.media.acumulado.margen)))}</strong></span></div>`
     : '';
+  const rend = Math.abs(d.rendimientos ?? 0) >= 0.005 ? d.rendimientos : 0;
+  const variacion = d.margen + rend;
+  const rendimientos = rend
+    ? `<div class="mes-bloque-pie mes-bloque-nota" title="Intereses de cuentas y rentabilidad de fondos: no cuentan en el margen (no es dinero para gastar), pero sí mueven el saldo. Es la cifra que verás en la gráfica de saldo."><span>Con ${esc(conSignoEur(rend))}${o.media ? '/mes' : ''} de intereses y rentabilidad, el saldo ${variacion >= 0 ? 'sube' : 'baja'} <strong>${esc(formatEUR(Math.abs(variacion)))}</strong>${o.media ? '/mes' : ''}</span></div>`
+    : '';
   return `<div class="mes-rejilla">
       ${bloque('Préstamos', 'Cuotas y amortizaciones previstas', d.prestamos, o, 'mes-bloque--prestamos', 'prestamos')}
       ${bloque('Facturas', 'Gastos fijos y recurrentes: recibos, alquiler, seguros, suscripciones. Se puede marcar a mano en cada gasto.', d.facturas, o, 'mes-bloque--facturas', 'facturas')}
@@ -170,20 +199,28 @@ export function cuerpoDesglose(d: DesgloseMes, o: OpcionesCuerpo): string {
         ${enPeriodo}
         ${reserva}
         <div class="mes-bloque-pie"><span>Gastos previstos: ${esc(formatEUR(d.gastosTotales))}${o.media ? '/mes' : ''}</span></div>
+        ${rendimientos}
       </section>
     </div>`;
 }
 
 /** HTML de la tarjeta. `mes` en formato `YYYY-MM`. */
-export function tarjetaMes(d: DesgloseMes, mes: string, hoy: ISODate, estimacion: EstimacionImprevistos | null = null): string {
+export function tarjetaMes(
+  d: DesgloseMes,
+  mes: string,
+  hoy: ISODate,
+  estimacion: EstimacionImprevistos | null = null,
+  contarImprevistos = true,
+): string {
   return `<div class="card mes-card" data-mes-card>
     <div class="mes-cabecera">
       <div class="card-title" style="margin:0">Este mes · ${esc(nombreMes(mes))}</div>
       <div class="mes-cabecera-der">
         <span class="mes-ingresos">Entran <strong>${esc(formatEUR(d.ingresosNetos))}</strong> netos</span>
+        ${toggleImprevistos(contarImprevistos)}
         <button type="button" class="btn-secondary btn-sm" data-mes-historico title="Meses anteriores y previsión de los próximos">Otros meses</button>
       </div>
     </div>
-    ${cuerpoDesglose(d, { hoy, estimacion })}
+    ${cuerpoDesglose(d, { hoy, estimacion, contarImprevistos })}
   </div>`;
 }

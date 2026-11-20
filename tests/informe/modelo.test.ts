@@ -13,7 +13,7 @@ const HOY = '2026-11-20';
 /** Saldos anotados por cuenta: [fecha, saldo al empezar ese día]. */
 type Saldos = Record<string, [string, number][]>;
 
-function entorno(saldos: Saldos = {}) {
+function entorno(saldos: Saldos = {}, reservas: [string, number][] = []) {
   const anotados: Saldos = {
     // Septiembre cuadra; en octubre faltan 150; del 1 al 15 de noviembre, 50 más.
     default: [
@@ -49,6 +49,18 @@ function entorno(saldos: Saldos = {}) {
       ev('01', 'Supermercado', 300, 'gasto', 'sup');
       ev('28', 'Sueldo', 2000, 'ingreso', 'sue');
     }
+    // La reserva para imprevistos que mete el motor con «Contar imprevistos».
+    for (const [fecha, cuantia] of reservas)
+      out.push({
+        fecha,
+        concepto: 'Imprevistos estimados',
+        cuantia,
+        tipo: 'gasto',
+        tags: [],
+        cuenta: 'default',
+        sourceId: 'imp',
+        sourceType: 'imprevisto-estimado',
+      } as CashEvent);
     return out.filter((e) => e.fecha >= desde && e.fecha <= hasta);
   };
 
@@ -129,17 +141,20 @@ describe('construirInforme (contra el saldo de las cuentas)', () => {
     expect(g('Facturas')! + g('Otros gastos')!).toBe(-3600);
   });
 
-  it('reserva para imprevistos: lo que falta este mes y la media en los siguientes', () => {
-    const { entrada } = entorno();
-    const inf = construirInforme(
-      entrada('2026-09-01', '2027-01-15', {
-        imprevistos: { mediaMensual: 100, total: 600, meses: 6, desde: '2026-05', hasta: '2026-10' },
-        imprevistosMesEnCurso: 120,
-      }),
-    );
-    // noviembre: ya se han ido 120 > 100, no reserva; diciembre 100; enero 15/31 de 100
-    expect(inf.reservaImprevistos).toBeCloseTo(100 + 48.39, 2);
-    expect(inf.saldoFinalConReserva).toBeCloseTo(inf.saldoFinal - inf.reservaImprevistos, 2);
+  it('reserva para imprevistos: la del extracto, descontada del saldo final', () => {
+    const { entrada } = entorno({}, [
+      ['2026-12-01', 100],
+      ['2027-01-01', 100],
+      ['2027-02-01', 100],
+    ]);
+    const inf = construirInforme(entrada('2026-09-01', '2027-01-15'));
+    expect(inf.reservaImprevistos).toBe(200);
+    expect(inf.puente.find((p) => p.concepto === 'Reserva para imprevistos')?.importe).toBe(-200);
+    // sueldo de noviembre; diciembre +800; enero −1200; y la reserva
+    expect(inf.saldoFinal).toBe(3700 + 2000 + 800 - 1200 - 200);
+    expect(inf.comprobaciones.every((c) => c.ok)).toBe(true);
+    const dic = inf.meses.find((m) => m.mes === '2026-12')!;
+    expect(dic).toMatchObject({ gastos: 1300, reserva: 100, otros: 0 });
   });
 
   it('solo pasado y solo futuro también cuadran', () => {

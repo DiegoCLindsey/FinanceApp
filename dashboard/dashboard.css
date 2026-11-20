@@ -125,6 +125,7 @@
 .mes-fila--hecha { color: var(--text3); }
 
 .mes-cabecera-der { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mes-toggle-imp { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); cursor: pointer; min-height: 36px; }
 
 /* ── Ventana «Meses anteriores» ────────────────────────────────────────────── */
 .modal-box.modal-box--ancho { max-width: 980px; }
