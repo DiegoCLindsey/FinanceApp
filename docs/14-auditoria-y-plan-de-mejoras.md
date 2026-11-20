@@ -1470,6 +1470,14 @@ seleccionado» y «Acumulado del periodo»: cada grupo y cada concepto divididos
 entre los meses del periodo (los vacíos cuentan), con el total del periodo en
 cada bloque y el margen medio recalculado sobre las cifras redondeadas.
 
+**Añadido (2026-11-20)**: la ventana pasa a llamarse «Otros meses» y mira
+también al futuro: periodos de previsión (próximos 3, 6 o 12 meses, el año
+completo, y fechas a elegir sin límite en el mes en curso). Los meses futuros
+salen de lo configurado (gastos, nóminas, préstamos) y reservan la estimación
+de imprevistos, que se ve como un tramo translúcido «Imprevistos estimados» en
+las barras y se descuenta del margen. La zona de previsión va sombreada en las
+dos gráficas y las fichas de los meses futuros llevan borde discontinuo.
+
 #### [x] NEW-11 · Imprevistos: marca, seguimiento y estimación automática — *pedido por el propietario (2026-11-17)*
 
 - **Marca «Imprevisto»** en un gasto (interruptor en el formulario, solo para

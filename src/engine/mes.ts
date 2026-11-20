@@ -330,7 +330,16 @@ export function desglosePorMeses(
   prestamos: PrestamoNombrado[],
   meses: string[],
   hoy: ISODate,
-  opciones: { movimientos?: MovimientoReal[]; estimacion?: { mes: string; importe: number } | null } = {},
+  opciones: {
+    movimientos?: MovimientoReal[];
+    estimacion?: { mes: string; importe: number } | null;
+    /**
+     * Estimación de imprevistos a reservar en cada mes (null = ninguna). Manda
+     * sobre `estimacion`. La usa la vista por meses para que los meses futuros
+     * reserven la media igual que el mes en curso.
+     */
+    estimacionPorMes?: (mes: string) => number | null;
+  } = {},
 ): DesgloseDeMes[] {
   const porMes = new Map<string, CashEvent[]>(meses.map((m) => [m, []]));
   for (const e of eventos) porMes.get(e.fecha.slice(0, 7))?.push(e);
@@ -340,7 +349,11 @@ export function desglosePorMeses(
     mes,
     desglose: desgloseDelMes(porMes.get(mes) ?? [], gastos, prestamos, hoy, {
       movimientos: movsPorMes.get(mes),
-      estimacionImprevistos: opciones.estimacion?.mes === mes ? opciones.estimacion.importe : null,
+      estimacionImprevistos: opciones.estimacionPorMes
+        ? opciones.estimacionPorMes(mes)
+        : opciones.estimacion?.mes === mes
+          ? opciones.estimacion.importe
+          : null,
     }),
   }));
 }

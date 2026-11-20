@@ -47,7 +47,12 @@ export interface HistoricoDeps {
   doc?: Document;
 }
 
-type Preset = '3' | '6' | '12' | 'anio' | 'personalizado';
+/**
+ * Pasado: '3' | '6' | '12' meses hasta el mes en curso y 'anio' (enero → hoy).
+ * Previsión: 'f3' | 'f6' | 'f12' meses desde el siguiente y 'aniocompleto'
+ * (enero → diciembre, mezcla las dos cosas).
+ */
+type Preset = '3' | '6' | '12' | 'anio' | 'f3' | 'f6' | 'f12' | 'aniocompleto' | 'personalizado';
 type Vista = 'mes' | 'media' | 'acumulado';
 
 /** Lo que el usuario eligió la última vez, mientras dure la sesión. */
@@ -83,16 +88,31 @@ function destruirGraficas(): void {
   graficas = [];
 }
 
-/** Meses del periodo elegido. El último nunca pasa del mes en curso. */
+/** Meses del periodo elegido. Pueden ser pasados, futuros o de los dos. */
 export function rangoDe(preset: Preset, mesActual: string, desde?: string, hasta?: string): string[] {
-  if (preset === 'anio') return mesesEntre(`${mesActual.slice(0, 4)}-01`, mesActual);
-  if (preset === 'personalizado' && desde && hasta) {
-    const fin = hasta > mesActual ? mesActual : hasta;
-    const lista = mesesEntre(desde <= fin ? desde : fin, fin);
-    return lista.slice(-MAX_MESES);
+  const anio = mesActual.slice(0, 4);
+  switch (preset) {
+    case 'anio':
+      return mesesEntre(`${anio}-01`, mesActual);
+    case 'aniocompleto':
+      return mesesEntre(`${anio}-01`, `${anio}-12`);
+    case 'f3':
+    case 'f6':
+    case 'f12':
+      return mesesEntre(sumarMesesA(mesActual, 1), sumarMesesA(mesActual, Number(preset.slice(1))));
+    case 'personalizado':
+      if (desde && hasta) {
+        const [a, b] = desde <= hasta ? [desde, hasta] : [hasta, desde];
+        // Más de 36 barras no se leen: se recorta por el lado más lejano a hoy.
+        const lista = mesesEntre(a, b);
+        return a > mesActual ? lista.slice(0, MAX_MESES) : lista.slice(-MAX_MESES);
+      }
+      return mesesEntre(sumarMesesA(mesActual, -5), mesActual);
+    default: {
+      const n = Number(preset) || 6;
+      return mesesEntre(sumarMesesA(mesActual, -(n - 1)), mesActual);
+    }
   }
-  const n = Number(preset) || 6;
-  return mesesEntre(sumarMesesA(mesActual, -(n - 1)), mesActual);
 }
 
 /** Abre la ventana. Devuelve el contenedor (útil en los tests). */
@@ -116,7 +136,7 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
   try {
     estimacion = estimacionImprevistosPara(mesActual, { ...deps, movimientos });
   } catch (e) {
-    console.error('[Meses anteriores] No se ha podido estimar los imprevistos:', e);
+    console.error('[Otros meses] No se ha podido estimar los imprevistos:', e);
   }
 
   function calcular(): void {
@@ -131,11 +151,16 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
     const eventos = deps.generarExtracto(`${meses[0]}-01`, finMes);
     datos = desglosePorMeses(eventos, deps.gastos, deps.prestamos, meses, deps.hoy, {
       movimientos,
-      // Solo el mes en curso reserva para imprevistos: en los pasados ya se
-      // sabe lo que hubo.
-      estimacion: estimacion && estimacion.meses > 0 ? { mes: mesActual, importe: estimacion.mediaMensual } : null,
+      // El mes en curso y los futuros reservan para imprevistos la media
+      // estimada; en los pasados ya se sabe lo que hubo.
+      estimacionPorMes: (mes) => (estimacion && estimacion.meses > 0 && mes >= mesActual ? estimacion.mediaMensual : null),
     });
-    if (!meses.includes(seleccionado)) seleccionado = meses.length > 1 ? meses[meses.length - 2] : meses[0];
+    if (!meses.includes(seleccionado)) {
+      // El último mes cerrado del periodo; si no hay ninguno (solo previsión),
+      // el primero.
+      const pasados = meses.filter((m) => m < mesActual);
+      seleccionado = pasados.length ? pasados[pasados.length - 1] : meses[0];
+    }
   }
 
   // ── HTML ────────────────────────────────────────────────────────────────────
@@ -146,12 +171,20 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
     const personal =
       recuerdo.preset === 'personalizado'
         ? `<div class="hist-rango">
-            <label>Desde <input class="form-input" type="month" data-hist-desde value="${esc(recuerdo.desde ?? '')}" max="${mesActual}"/></label>
-            <label>Hasta <input class="form-input" type="month" data-hist-hasta value="${esc(recuerdo.hasta ?? mesActual)}" max="${mesActual}"/></label>
+            <label>Desde <input class="form-input" type="month" data-hist-desde value="${esc(recuerdo.desde ?? '')}"/></label>
+            <label>Hasta <input class="form-input" type="month" data-hist-hasta value="${esc(recuerdo.hasta ?? mesActual)}"/></label>
           </div>`
         : '';
-    return `<div class="hist-filtros" role="group" aria-label="Periodo">
-        ${opcion('3', '3 meses')}${opcion('6', '6 meses')}${opcion('12', '12 meses')}${opcion('anio', 'Este año')}${opcion('personalizado', 'Elegir…')}
+    return `<div class="hist-periodos">
+        <div class="hist-filtros" role="group" aria-label="Periodo pasado">
+          <span class="hist-filtros-etq">Pasado</span>
+          ${opcion('3', '3 meses')}${opcion('6', '6 meses')}${opcion('12', '12 meses')}${opcion('anio', 'Este año')}
+        </div>
+        <div class="hist-filtros" role="group" aria-label="Previsión">
+          <span class="hist-filtros-etq">Previsión</span>
+          ${opcion('f3', 'Próximos 3')}${opcion('f6', 'Próximos 6')}${opcion('f12', 'Próximos 12')}${opcion('aniocompleto', `Todo ${mesActual.slice(0, 4)}`)}
+          ${opcion('personalizado', 'Elegir…')}
+        </div>
       </div>${personal}`;
   }
 
@@ -160,8 +193,9 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
       .map(({ mes, desglose }) => {
         const activo = recuerdo.vista === 'mes' && mes === seleccionado;
         const enCurso = mes === mesActual;
-        return `<button type="button" class="hist-ficha${activo ? ' activa' : ''}" data-hist-mes="${mes}" aria-pressed="${activo}"
-            title="${esc(nombreMes(mes))}${enCurso ? ' (en curso)' : ''}: gastos ${esc(formatEUR(desglose.gastosTotales))}, margen ${esc(conSigno(desglose.margen))}">
+        const futuro = mes > mesActual;
+        return `<button type="button" class="hist-ficha${activo ? ' activa' : ''}${futuro ? ' es-futuro' : ''}" data-hist-mes="${mes}" aria-pressed="${activo}"
+            title="${esc(nombreMes(mes))}${enCurso ? ' (en curso)' : futuro ? ' (previsión)' : ''}: gastos ${esc(formatEUR(desglose.gastosTotales))}, margen ${esc(conSigno(desglose.margen))}">
           <span class="hist-ficha-mes">${esc(mesCorto(mes))}${enCurso ? '*' : ''}</span>
           <span class="hist-ficha-margen ${desglose.margen >= 0 ? 'es-positivo' : 'es-negativo'}">${esc(conSigno(desglose.margen))}</span>
         </button>`;
@@ -176,10 +210,9 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
       const media = mediaDeDesgloses(lista);
       const acumulado = sumarDesgloses(lista);
       const titulo = `${nombreMes(datos[0].mes)} – ${nombreMes(datos[datos.length - 1].mes)}`;
-      const enCurso = datos.some((d) => d.mes === mesActual);
       return `<div class="hist-detalle-cab">
           <div><div class="card-title" style="margin:0">Media mensual · ${datos.length} ${datos.length === 1 ? 'mes' : 'meses'}</div>
-          <div class="text-sm" style="color:var(--text3)">${esc(titulo)}${enCurso ? ' · incluye el mes en curso' : ''}</div></div>
+          <div class="text-sm" style="color:var(--text3)">${esc(titulo)}${notaPeriodo()}</div></div>
           <span class="mes-ingresos">Entran <strong>${esc(formatEUR(media.ingresosNetos))}</strong> netos al mes</span>
         </div>
         ${cuerpoDesglose(media, { hoy: deps.hoy, media: { meses: datos.length, acumulado } })}`;
@@ -189,18 +222,31 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
       const titulo = `${nombreMes(datos[0].mes)} – ${nombreMes(datos[datos.length - 1].mes)}`;
       return `<div class="hist-detalle-cab">
           <div><div class="card-title" style="margin:0">Acumulado · ${datos.length} ${datos.length === 1 ? 'mes' : 'meses'}</div>
-          <div class="text-sm" style="color:var(--text3)">${esc(titulo)}</div></div>
-          <span class="mes-ingresos">Entraron <strong>${esc(formatEUR(acc.ingresosNetos))}</strong> netos</span>
+          <div class="text-sm" style="color:var(--text3)">${esc(titulo)}${notaPeriodo()}</div></div>
+          <span class="mes-ingresos">${datos.every((d) => d.mes > mesActual) ? 'Entrarán' : 'Entran'} <strong>${esc(formatEUR(acc.ingresosNetos))}</strong> netos</span>
         </div>
         ${cuerpoDesglose(acc, { hoy: deps.hoy, meses: datos.length })}`;
     }
     const d = datos.find((x) => x.mes === seleccionado) ?? datos[datos.length - 1];
     const enCurso = d.mes === mesActual;
+    const futuro = d.mes > mesActual;
     return `<div class="hist-detalle-cab">
-        <div class="card-title" style="margin:0">${esc(nombreMes(d.mes))}${enCurso ? ' · en curso' : ''}</div>
-        <span class="mes-ingresos">Entraron <strong>${esc(formatEUR(d.desglose.ingresosNetos))}</strong> netos</span>
+        <div class="card-title" style="margin:0">${esc(nombreMes(d.mes))}${enCurso ? ' · en curso' : futuro ? ' · previsión' : ''}</div>
+        <span class="mes-ingresos">${futuro ? 'Entrarán' : enCurso ? 'Entran' : 'Entraron'} <strong>${esc(formatEUR(d.desglose.ingresosNetos))}</strong> netos</span>
       </div>
-      ${cuerpoDesglose(d.desglose, { hoy: deps.hoy, abierto: true, estimacion: enCurso ? estimacion : null })}`;
+      ${cuerpoDesglose(d.desglose, { hoy: deps.hoy, abierto: true, estimacion: enCurso || futuro ? estimacion : null })}`;
+  }
+
+  /** «· incluye el mes en curso», «· 4 meses de previsión»… para las vistas de periodo. */
+  function notaPeriodo(): string {
+    const futuros = datos.filter((d) => d.mes > mesActual).length;
+    const enCurso = datos.some((d) => d.mes === mesActual);
+    if (futuros === datos.length) return ' · todo previsión';
+    const partes = [
+      enCurso ? 'incluye el mes en curso' : '',
+      futuros ? `${futuros} ${futuros === 1 ? 'mes' : 'meses'} de previsión` : '',
+    ].filter(Boolean);
+    return partes.length ? ` · ${partes.join(' y ')}` : '';
   }
 
   function resumenGraficas(): { gastos: string; ahorro: string } {
@@ -209,8 +255,8 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
     const peor = datos.reduce((a, b) => (b.desglose.margen < a.desglose.margen ? b : a));
     const mayor = datos.reduce((a, b) => (b.desglose.gastosTotales > a.desglose.gastosTotales ? b : a));
     return {
-      gastos: `Gastos previstos por mes, de ${nombreMes(datos[0].mes)} a ${nombreMes(datos[datos.length - 1].mes)}. El mes de más gasto fue ${nombreMes(mayor.mes)}, con ${formatEUR(mayor.desglose.gastosTotales)}.`,
-      ahorro: `Margen de ahorro de cada mes y acumulado. En el periodo: ${conSigno(acc.margen)}. El peor mes fue ${nombreMes(peor.mes)}, con ${conSigno(peor.desglose.margen)}.`,
+      gastos: `Gastos por mes, de ${nombreMes(datos[0].mes)} a ${nombreMes(datos[datos.length - 1].mes)}. El mes de más gasto es ${nombreMes(mayor.mes)}, con ${formatEUR(mayor.desglose.gastosTotales)}.`,
+      ahorro: `Margen de ahorro de cada mes y acumulado. En el periodo: ${conSigno(acc.margen)}. El peor mes es ${nombreMes(peor.mes)}, con ${conSigno(peor.desglose.margen)}.`,
     };
   }
 
@@ -221,7 +267,7 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
     const acc = datos.length ? sumarDesgloses(datos.map((d) => d.desglose)) : null;
     const hayChart = typeof (globalThis as { Chart?: unknown }).Chart === 'function';
     content.innerHTML = `
-      <div class="modal-title">Meses anteriores</div>
+      <div class="modal-title">Otros meses</div>
       ${selectorPeriodo()}
       ${
         datos.length === 0
@@ -249,6 +295,11 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
       </section>
       <div class="hist-fichas" role="group" aria-label="Meses del periodo">${fichas()}</div>
       ${datos.some((d) => d.mes === mesActual) ? '<div class="text-sm" style="color:var(--text3);margin-top:4px">* Mes en curso: incluye lo que queda por cargar.</div>' : ''}
+      ${
+        datos.some((d) => d.mes > mesActual)
+          ? `<div class="text-sm" style="color:var(--text3);margin-top:4px">Los meses de la zona «Previsión» salen de lo que tienes configurado (gastos, nóminas y préstamos)${estimacion && estimacion.meses > 0 ? `, y cada uno reserva ${esc(formatEUR(estimacion.mediaMensual))} para imprevistos` : ''}.</div>`
+          : ''
+      }
       <div class="hist-filtros hist-vista" role="group" aria-label="Qué desglose ver">
         <button type="button" class="period-btn${recuerdo.vista === 'mes' ? ' active' : ''}" data-hist-vista="mes" aria-pressed="${recuerdo.vista === 'mes'}">Mes seleccionado</button>
         <button type="button" class="period-btn${recuerdo.vista === 'media' ? ' active' : ''}" data-hist-vista="media" aria-pressed="${recuerdo.vista === 'media'}">Media del periodo</button>
@@ -284,17 +335,32 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
   const NEGATIVO = '#ff6b6b';
   const ACUMULADO = '#c9d3e3';
 
-  /** El mes seleccionado a color pleno; el resto, atenuado. */
-  const atenuar = (hex: string, i: number) => {
-    if (recuerdo.vista !== 'mes' || datos[i]?.mes === seleccionado) return hex;
-    return `${hex}66`;
+  /** `#rrggbb` con opacidad. */
+  const rgba = (hex: string, alfa: number) => {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alfa})`;
   };
+  /** El mes seleccionado a color pleno; el resto, atenuado. `alfa` es la opacidad base de la serie. */
+  const atenuar = (hex: string, i: number, alfa = 1) => {
+    if (recuerdo.vista !== 'mes' || datos[i]?.mes === seleccionado) return rgba(hex, alfa);
+    return rgba(hex, alfa * 0.4);
+  };
+  /** Opacidad de la reserva de imprevistos: el mismo color, pero «aún no ha pasado». */
+  const ALFA_RESERVA = 0.38;
+  const hayReserva = () => datos.some((d) => d.desglose.reservaImprevistos > 0);
 
   function resaltar(): void {
     const [barras, ahorro] = graficas;
     if (barras) {
-      const grupos = [COLORES_GRUPO.prestamos, COLORES_GRUPO.facturas, COLORES_GRUPO.otros, COLORES_GRUPO.imprevistos];
-      barras.data.datasets.forEach((ds, k) => (ds.backgroundColor = datos.map((_, i) => atenuar(grupos[k], i))));
+      const grupos = [
+        COLORES_GRUPO.prestamos,
+        COLORES_GRUPO.facturas,
+        COLORES_GRUPO.otros,
+        COLORES_GRUPO.imprevistos,
+        COLORES_GRUPO.imprevistos,
+      ];
+      const alfas = [1, 1, 1, 1, ALFA_RESERVA];
+      barras.data.datasets.forEach((ds, k) => (ds.backgroundColor = datos.map((_, i) => atenuar(grupos[k], i, alfas[k]))));
       barras.update('none');
     }
     if (ahorro) {
@@ -331,6 +397,40 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
         })),
     },
   });
+
+  /**
+   * Plugin de Chart.js que sombrea la zona de previsión (los meses posteriores
+   * al en curso) y la rotula: pasado y futuro no deben poder confundirse.
+   */
+  const zonaPrevision = {
+    id: 'zonaPrevision',
+    beforeDatasetsDraw(chart: {
+      ctx: CanvasRenderingContext2D;
+      chartArea: { left: number; right: number; top: number; bottom: number };
+      scales: { x: { getPixelForValue(i: number): number } };
+    }) {
+      const primero = datos.findIndex((d) => d.mes > mesActual);
+      if (primero < 0) return;
+      const { ctx, chartArea, scales } = chart;
+      const x0 = primero === 0 ? chartArea.left : (scales.x.getPixelForValue(primero - 1) + scales.x.getPixelForValue(primero)) / 2;
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.035)';
+      ctx.fillRect(x0, chartArea.top, chartArea.right - x0, chartArea.bottom - chartArea.top);
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x0, chartArea.top);
+      ctx.lineTo(x0, chartArea.bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = TEXTO;
+      ctx.font = '11px system-ui, sans-serif';
+      // Al pie: arriba choca con las barras más altas.
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('Previsión', x0 + 6, chartArea.bottom - 4);
+      ctx.restore();
+    },
+  };
 
   function pintarGraficas(): void {
     const Chart = (globalThis as { Chart?: ChartCtor }).Chart as ChartCtor;
@@ -377,10 +477,10 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
     // 1 · Gastos por mes, apilados. Préstamos abajo (lo más fijo), otros arriba.
     const lienzoGastos = content.querySelector<HTMLCanvasElement>('[data-hist-gastos]');
     if (lienzoGastos) {
-      const serie = (label: string, color: string, valores: number[], arriba: boolean) => ({
+      const serie = (label: string, color: string, valores: number[], arriba: boolean, alfa = 1) => ({
         label,
         data: valores,
-        backgroundColor: datos.map((_, i) => atenuar(color, i)),
+        backgroundColor: datos.map((_, i) => atenuar(color, i, alfa)),
         // 2 px de superficie entre tramos, y esquinas redondeadas solo arriba.
         borderColor: SUPERFICIE,
         borderWidth: { top: 2 },
@@ -418,16 +518,36 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
                 'Imprevistos',
                 COLORES_GRUPO.imprevistos,
                 datos.map((d) => d.desglose.imprevistos.total),
-                true,
+                !hayReserva(),
               ),
+              // Lo reservado para imprevistos que aún no han llegado: el mes en
+              // curso y los futuros. Mismo color, translúcido.
+              ...(hayReserva()
+                ? [
+                    serie(
+                      'Imprevistos estimados',
+                      COLORES_GRUPO.imprevistos,
+                      datos.map((d) => d.desglose.reservaImprevistos),
+                      true,
+                      ALFA_RESERVA,
+                    ),
+                  ]
+                : []),
             ],
           },
+          plugins: [zonaPrevision],
           options: {
             ...comunes,
             scales: ejes(true),
             plugins: {
-              legend: leyenda([COLORES_GRUPO.prestamos, COLORES_GRUPO.facturas, COLORES_GRUPO.otros, COLORES_GRUPO.imprevistos]),
-              tooltip: tooltip((i) => `Total: ${formatEUR(datos[i].desglose.gastosTotales)}`),
+              legend: leyenda([
+                COLORES_GRUPO.prestamos,
+                COLORES_GRUPO.facturas,
+                COLORES_GRUPO.otros,
+                COLORES_GRUPO.imprevistos,
+                rgba(COLORES_GRUPO.imprevistos, ALFA_RESERVA),
+              ]),
+              tooltip: tooltip((i) => `Total: ${formatEUR(datos[i].desglose.gastosTotales + datos[i].desglose.reservaImprevistos)}`),
             },
           },
         }),
@@ -472,6 +592,7 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
               },
             ],
           },
+          plugins: [zonaPrevision],
           options: {
             ...comunes,
             scales: ejes(false),
@@ -479,7 +600,9 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
               legend: leyenda([POSITIVO, ACUMULADO]),
               tooltip: tooltip((i) => {
                 const d = datos[i].desglose;
-                return d.margenPct === null ? '' : `${d.margenPct.toFixed(0)} % de lo que entró`;
+                const pct =
+                  d.margenPct === null ? '' : `${d.margenPct.toFixed(0)} % de lo que ${datos[i].mes > mesActual ? 'entrará' : 'entra'}`;
+                return d.reservaImprevistos > 0 ? `${pct}\nDescontados ${formatEUR(d.reservaImprevistos)} para imprevistos` : pct;
               }),
             },
           },
@@ -497,7 +620,7 @@ export function abrirHistoricoMeses(deps: HistoricoDeps): HTMLElement | null {
       // Arranca con lo que se estaba viendo, para no partir de cero.
       const actuales = datos.map((d) => d.mes);
       recuerdo.desde = recuerdo.desde ?? actuales[0] ?? sumarMesesA(mesActual, -5);
-      recuerdo.hasta = recuerdo.hasta ?? actuales[actuales.length - 1] ?? mesActual;
+      recuerdo.hasta = recuerdo.hasta ?? actuales[actuales.length - 1] ?? sumarMesesA(mesActual, 6);
     }
     render();
   });

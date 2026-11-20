@@ -44,14 +44,24 @@ const deps = () => ({
 const $ = (sel: string) => document.querySelector(sel) as HTMLElement;
 const $$ = (sel: string) => [...document.querySelectorAll<HTMLElement>(sel)];
 
+const mesesDel2026 = Array.from({ length: 12 }, (_, i) => `2026-${String(i + 1).padStart(2, '0')}`);
+
 describe('rangoDe', () => {
   it('los atajos terminan en el mes en curso', () => {
     expect(rangoDe('3', '2026-11')).toEqual(['2026-09', '2026-10', '2026-11']);
     expect(rangoDe('anio', '2026-03')).toEqual(['2026-01', '2026-02', '2026-03']);
   });
-  it('el personalizado no pasa del mes en curso ni de 36 meses', () => {
-    expect(rangoDe('personalizado', '2026-11', '2026-10', '2027-05')).toEqual(['2026-10', '2026-11']);
-    expect(rangoDe('personalizado', '2026-11', '2020-01', '2026-11')).toHaveLength(36);
+  it('la previsión: los próximos meses empiezan en el siguiente al en curso', () => {
+    expect(rangoDe('f3', '2026-11')).toEqual(['2026-12', '2027-01', '2027-02']);
+    expect(rangoDe('f12', '2026-11')).toHaveLength(12);
+    expect(rangoDe('aniocompleto', '2026-11')).toEqual(mesesDel2026);
+  });
+  it('el personalizado puede llegar al futuro, con 36 meses como mucho', () => {
+    expect(rangoDe('personalizado', '2026-11', '2026-10', '2027-01')).toEqual(['2026-10', '2026-11', '2026-12', '2027-01']);
+    // del pasado lejano se quedan los 36 más cercanos a hoy; del futuro, los 36 primeros
+    expect(rangoDe('personalizado', '2026-11', '2020-01', '2026-11').at(-1)).toBe('2026-11');
+    expect(rangoDe('personalizado', '2026-11', '2027-01', '2035-01')[0]).toBe('2027-01');
+    expect(rangoDe('personalizado', '2026-11', '2027-01', '2035-01')).toHaveLength(36);
   });
 });
 
@@ -123,10 +133,51 @@ describe('ventana «Meses anteriores»', () => {
     expect($('[data-hist-detalle]').textContent).toContain('septiembre 2026');
   });
 
+  it('la previsión: meses futuros con la reserva de imprevistos descontada del margen', () => {
+    const d = deps();
+    // un imprevisto real en octubre: la estimación sale de él
+    (d as { movimientos?: unknown[] }).movimientos = [
+      { _id: 'm1', fecha: '2026-10-08', concepto: 'Taller', importeCts: -60000, tipo: 'gasto', imprevisto: true },
+    ];
+    abrirHistoricoMeses(d);
+    $('[data-hist-preset="f3"]').click();
+    expect($$('[data-hist-mes]').map((b) => b.dataset.histMes)).toEqual(['2026-12', '2027-01', '2027-02']);
+    expect($$('.hist-ficha.es-futuro')).toHaveLength(3);
+    expect(d.generarExtracto).toHaveBeenLastCalledWith('2026-12-01', '2027-02-28');
+    // sin pasado en el periodo, se selecciona el primer mes
+    const det = $('[data-hist-detalle]').textContent ?? '';
+    expect(det).toContain('diciembre 2026 · previsión');
+    expect(det).toContain('Entrarán');
+    // el mes futuro reserva la estimación de imprevistos (aquí, los 600 € de
+    // octubre en el único mes de seguimiento)
+    expect(det).toContain('Reservado');
+    expect(det).toContain('600,00');
+    // la nota explica de dónde sale la previsión
+    expect(document.body.textContent).toContain('salen de lo que tienes configurado');
+  });
+
+  it('la media de un periodo futuro lo dice', () => {
+    abrirHistoricoMeses(deps());
+    $('[data-hist-preset="f6"]').click();
+    $('[data-hist-vista="media"]').click();
+    expect($('[data-hist-detalle]').textContent).toContain('todo previsión');
+  });
+
+  it('«Todo el año» mezcla pasado y previsión y lo cuenta', () => {
+    abrirHistoricoMeses(deps());
+    $('[data-hist-preset="aniocompleto"]').click();
+    $('[data-hist-vista="acumulado"]').click();
+    const det = $('[data-hist-detalle]').textContent ?? '';
+    expect(det).toContain('Acumulado · 12 meses');
+    expect(det).toContain('incluye el mes en curso y 1 mes de previsión');
+  });
+
   it('el periodo personalizado se elige por meses', () => {
     const d = deps();
     abrirHistoricoMeses(d);
     $('[data-hist-preset="personalizado"]').click();
+    // La ventana recuerda el periodo anterior: se fijan los dos extremos.
+    ($('[data-hist-hasta]') as HTMLInputElement).value = '2026-11';
     const desde = $('[data-hist-desde]') as HTMLInputElement;
     desde.value = '2026-09';
     desde.dispatchEvent(new Event('change', { bubbles: true }));

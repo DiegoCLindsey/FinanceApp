@@ -154,3 +154,7 @@
 .hist-detalle-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .hist-estimacion { font-size: 12px; color: var(--text2); margin: 2px 0 8px; line-height: 1.5; }
 .hist-estimacion strong { color: var(--text); font-family: var(--font-mono); }
+.hist-periodos { display: flex; flex-direction: column; gap: 6px; }
+.hist-filtros-etq { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); align-self: center; min-width: 72px; }
+.hist-ficha.es-futuro { border-style: dashed; }
+.hist-ficha.es-futuro .hist-ficha-mes::after { content: ' · prev.'; color: var(--text3); }

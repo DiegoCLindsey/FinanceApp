@@ -64,7 +64,16 @@ function detalle(b: BloqueMes, o: OpcionesCuerpo): string {
 /** El mismo bloque en el acumulado, para el pie de la vista de media. */
 type ClaveBloque = 'prestamos' | 'facturas' | 'otros' | 'imprevistos';
 
-function bloque(titulo: string, ayuda: string, b: BloqueMes, o: OpcionesCuerpo, clase: string, clave?: ClaveBloque): string {
+function bloque(
+  titulo: string,
+  ayuda: string,
+  b: BloqueMes,
+  o: OpcionesCuerpo,
+  clase: string,
+  clave?: ClaveBloque,
+  /** Línea más bajo el pie (HTML ya escapado). */
+  extra = '',
+): string {
   const progreso = b.total > 0 ? Math.min(100, (b.vencido / b.total) * 100) : 0;
   let pie: string;
   if (b.total <= 0) pie = '<span>Nada previsto</span>';
@@ -82,6 +91,7 @@ function bloque(titulo: string, ayuda: string, b: BloqueMes, o: OpcionesCuerpo, 
     <div class="mes-bloque-total">${esc(formatEUR(b.total))}</div>
     ${barra}
     <div class="mes-bloque-pie">${pie}</div>
+    ${extra}
     ${detalle(b, o)}
   </section>`;
 }
@@ -96,6 +106,13 @@ function bloqueImprevistos(d: DesgloseMes, o: OpcionesCuerpo): string {
   const e = o.estimacion;
   const conEstimacion = o.meses === undefined && !o.media && e && e.meses > 0;
   if (!conEstimacion) {
+    // En la media y el acumulado de un periodo con meses en curso o futuros, lo
+    // reservado para imprevistos también es de este bloque: si no, el margen
+    // lo descontaría sin que se viera de dónde sale.
+    const reserva =
+      d.reservaImprevistos > 0
+        ? `<div class="mes-bloque-pie mes-bloque-nota"><span>+ ${esc(formatEUR(d.reservaImprevistos))}${o.media ? '/mes' : ''} reservados para los que aún no han llegado</span></div>`
+        : '';
     return bloque(
       'Imprevistos',
       'Gastos marcados como imprevisto: en el gasto o en el movimiento real',
@@ -103,6 +120,7 @@ function bloqueImprevistos(d: DesgloseMes, o: OpcionesCuerpo): string {
       o,
       'mes-bloque--imprevistos',
       'imprevistos',
+      reserva,
     );
   }
   const media = e.mediaMensual;
@@ -163,7 +181,7 @@ export function tarjetaMes(d: DesgloseMes, mes: string, hoy: ISODate, estimacion
       <div class="card-title" style="margin:0">Este mes · ${esc(nombreMes(mes))}</div>
       <div class="mes-cabecera-der">
         <span class="mes-ingresos">Entran <strong>${esc(formatEUR(d.ingresosNetos))}</strong> netos</span>
-        <button type="button" class="btn-secondary btn-sm" data-mes-historico>Meses anteriores</button>
+        <button type="button" class="btn-secondary btn-sm" data-mes-historico title="Meses anteriores y previsión de los próximos">Otros meses</button>
       </div>
     </div>
     ${cuerpoDesglose(d, { hoy, estimacion })}
