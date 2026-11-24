@@ -55,6 +55,7 @@ import { createPersonasModal } from './ui/personas-modal';
 import { createGating } from './ui/gating';
 import { instalarDeshacer } from './ui/deshacer';
 import { instalarBuscador } from './ui/buscador';
+import { instalarCamposFecha } from './ui/campos-fecha';
 import { instalarAvisoGuardado, type Guardado } from './ui/guardado';
 import { instalarConsultaFlags } from './flags/guard';
 import { createFeatureRegistry, type FeatureRegistry } from './app/feature-registry';
@@ -328,6 +329,9 @@ function bootstrap(): FinanceAppNamespace {
   // funcionalidades opcionales fallan si su flag está apagado en vez de
   // devolver resultados que nadie debería estar viendo. Ver `flags/guard`.
   instalarConsultaFlags((id) => flags.isEnabled(id));
+  // Que se pueda escribir una fecha entera en cualquier campo de fecha: las
+  // pantallas que repintan en `change` cortaban el año (ver ui/campos-fecha).
+  if (typeof window !== 'undefined') instalarCamposFecha(window);
   // El límite se lee en cada comprobación, no se captura: mientras el modal de
   // datos siga siendo legacy, es `State` quien tiene la copia recién escrita y
   // la del store se queda atrás hasta la siguiente recarga. Puente temporal,

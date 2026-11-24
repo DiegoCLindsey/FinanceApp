@@ -112,6 +112,14 @@
   background-color: var(--surface-strong);
 }
 .form-input::placeholder { color: var(--text3); }
+/* Un campo de fecha nunca más estrecho que la fecha entera. Con anchos fijos
+   (130–140 px) el año quedaba cortado y no se podía escribir: el navegador no
+   desplaza el contenido de un campo de fecha. `max-content` es el ancho que
+   necesita con la tipografía y el formato de fecha del usuario, sea cual sea;
+   un `width` en línea sigue mandando cuando es mayor. */
+input[type="date"], input[type="month"], input[type="datetime-local"], input[type="time"] {
+  min-width: max-content;
+}
 /* Las listas desplegables se pintan con el tema del sistema: sobre cristal
    translúcido las opciones serían ilegibles, así que van en tinta opaca. */
 .form-select option, .form-input option { background: var(--ink-800); color: var(--text); }

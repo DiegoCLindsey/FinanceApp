@@ -1581,6 +1581,31 @@ eventos `imprevisto-estimado` (`config.reservaImprevistos`, que no se guarda).
 El informe la toma del mismo extracto. Apagado: no se aparta nada en ninguna
 pantalla.
 
+#### [x] BUG-30 · No se podía escribir el año en los campos de fecha — *propietario (2026-11-24)*
+
+Dos causas, revisadas en todos los campos de fecha (30 por dispositivo,
+medidos en el navegador en escritorio y móvil):
+
+1. **Anchos fijos.** Cinco campos eran más estrechos que la fecha y el año
+   quedaba cortado: el punto de un margen de seguridad (130 px, necesita 144)
+   y los de Cuentas `acc-mes`, `acc-periodo-desde/hasta` (140, necesitan 165);
+   la barra de periodo y el intervalo de Cuentas iban al límite. Regla común en
+   `common/components.css`: un campo de fecha o de mes nunca es más estrecho que
+   su contenido (`min-width: max-content`), sea cual sea la tipografía o el
+   formato de fecha.
+2. **Repintar mientras se escribe.** Chrome dispara `change` en cuanto lo
+   escrito forma una fecha completa, y como los campos llegan rellenos eso
+   pasa con la primera tecla. Las pantallas que guardan y repintan en `change`
+   (puntos de un margen, barra de periodo, filtros de Cuentas, «Otros meses»)
+   sustituían el campo a mitad de escribir. `ui/campos-fecha` (instalado al
+   arrancar) aguanta ese `change` mientras se teclea y lo dispara una vez al
+   salir del campo o con Intro; elegir en el calendario sigue aplicando al
+   momento. Ojo: en ese momento Chrome deja el foco en las piezas internas del
+   campo y `document.activeElement` es el `<body>`; solo `:focus-within` lo ve.
+
+Comprobado tecleando fechas completas en esos cinco campos, en escritorio y
+móvil, sin desbordes en ninguna pantalla.
+
 **Descartado**: conexión directa con bancos (PSD2 exige servidor y licencia),
 multimoneda, categorización con servicios externos (los datos saldrían del
 dispositivo), y simulación Monte Carlo (ya se retiró).
