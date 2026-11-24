@@ -808,17 +808,24 @@ const FinanceMath = (() => {
 
     const out = [];
     let i = 0;
+    // Fecha del saldo real anterior: el error de cada corrección es el de una
+    // previsión hecha desde ahí (null en la primera, que parte del ancla).
+    let anterior = null;
+    // También se apuntan las correcciones de 0 €: un mes en que la previsión
+    // acertó es un dato más para medir la precisión (engine/precision-saldo).
+    // La gráfica solo pinta las que mueven el saldo.
     const corregir = p => {
-      const salto = p.saldo - saldo;
+      const salto = Math.abs(p.saldo - saldo) < 0.005 ? 0 : p.saldo - saldo;
       const previsto = saldo;
       saldo = p.saldo;
-      if (Math.abs(salto) < 0.005) return;
       out.push({
         fecha: p.fecha, concepto: 'Corrección con saldo real',
         cuantia: Math.abs(salto), tipo: 'ajuste', tags: [], cuenta: '',
         sourceId: `saldo-real_${p.fecha}`, sourceType: 'ajuste-saldo-real',
         delta: salto, saldoPrevisto: previsto, saldoReal: p.saldo, saldoAcum: saldo,
+        desdeSaldoReal: anterior,
       });
+      anterior = p.fecha;
     };
     for (const ev of eventos) {
       while (i < puntos.length && puntos[i].fecha <= ev.fecha) corregir(puntos[i++]);

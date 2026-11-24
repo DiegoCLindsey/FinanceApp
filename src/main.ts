@@ -17,6 +17,7 @@ import * as margins from './engine/margins';
 import * as avisos from './engine/avisos';
 import * as dashboard from './engine/dashboard';
 import * as mes from './engine/mes';
+import * as precisionSaldo from './engine/precision-saldo';
 import { tarjetaMes } from './features/dashboard/mes-card';
 import { abrirHistoricoMeses } from './features/dashboard/mes-historico';
 import { abrirCrearInforme } from './features/informe/dialogo';
@@ -98,6 +99,8 @@ export interface FinanceAppNamespace {
     dashboard: typeof dashboard;
     /** Desglose del mes en curso y meses de calendario. */
     mes: typeof mes;
+    /** Margen de error medido contra el saldo real (la banda de la gráfica). */
+    precisionSaldo: typeof precisionSaldo;
   };
   /** Store tipado ya cargado (migraciones aplicadas). */
   store: Store;
@@ -532,6 +535,7 @@ function bootstrap(): FinanceAppNamespace {
       avisos,
       dashboard,
       mes,
+      precisionSaldo,
     },
     store,
     flags,

@@ -1635,6 +1635,30 @@ siguientes. Toggle «Corregir con saldo real» en «Evolución del saldo»
   es el sin corregir); la comprobación contra el cuadro de mando usa el
   cuadro de mando tal como esté.
 
+#### [x] NEW-15 · Margen de error medido contra el saldo real — *propietario (2026-11-24)*
+
+La banda «Margen de error» de «Evolución del saldo» salía de la contabilidad de
+Cuentas (cada gasto estimado frente a los movimientos asignados), que exige
+tener los movimientos bien clasificados; el propietario indica que esa parte
+no está fina. Ahora sale SOLO de los saldos reales (`engine/precision-saldo`):
+
+- Cada corrección con saldo real (NEW-14) es el error de la previsión a un
+  mes: desde el saldo real anterior, con todo lo previsto entre medias, se
+  esperaba X y había Y. Se mide siempre sobre los 13 meses anteriores a hoy,
+  esté o no activo el toggle, y también cuentan los meses acertados (0 €).
+- Cuentan los de 20 a 45 días entre saldos reales, no el primero de la serie
+  (parte del ancla), y no los atípicos: a más de 3,5 desviaciones robustas de
+  la mediana Y más del 30 % de lo que entra en un mes (mín. 100 €), el tamaño
+  de un desfase de fechas con un pago grande. Se dicen, con la causa probable
+  si hay un movimiento grande previsto a ±3 días.
+- Rótulo: «de media, acabas el mes X € mejor/peor de lo previsto, con una
+  dispersión de ±Y € al mes». Banda: ruido = dispersión (crece con √m) y
+  deriva = √(sesgo² + dispersión²/n) (crece con m: un sesgo se repite cada mes).
+- Con menos de 3 meses medidos no hay banda, y el rótulo lo explica.
+
+Pendiente, si se quiere: aplicar el sesgo a la previsión (una línea «ajustada
+por el sesgo») con un toggle aparte; y llevar la cifra al informe.
+
 **Descartado**: conexión directa con bancos (PSD2 exige servidor y licencia),
 multimoneda, categorización con servicios externos (los datos saldrían del
 dispositivo), y simulación Monte Carlo (ya se retiró).

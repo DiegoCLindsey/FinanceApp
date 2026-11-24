@@ -344,9 +344,9 @@ describe('previsión corregida con saldo real', () => {
   it('corregida, cada mes parte del último saldo real del mes anterior', () => {
     const ext = FM.generarExtracto([], gastos, [cuenta()], { ...config, corregirConSaldoReal: true }, null, []);
     const aj = ext.filter(e => e.sourceType === 'ajuste-saldo-real');
-    expect(aj.map(e => [e.fecha, e.delta, e.saldoPrevisto, e.saldoReal])).toEqual([
-      ['2026-01-31', -200, 900, 700],
-      ['2026-02-28', 50, 600, 650],
+    expect(aj.map(e => [e.fecha, e.delta, e.saldoPrevisto, e.saldoReal, e.desdeSaldoReal])).toEqual([
+      ['2026-01-31', -200, 900, 700, null],
+      ['2026-02-28', 50, 600, 650, '2026-01-31'],
     ]);
     expect(aj.every(e => e.tipo === 'ajuste')).toBe(true);
     // marzo y abril, desde los 650 reales: 650 − 100 − 100
@@ -369,7 +369,8 @@ describe('previsión corregida con saldo real', () => {
     const ext = FM.generarExtracto([], gastos, [nom, aho], { ...config, corregirConSaldoReal: true }, null, []);
     const aj = ext.filter(e => e.sourceType === 'ajuste-saldo-real');
     // se preveían 900 + 5000 = 5900; había 600 + 5300 = 5900: nada que corregir
-    expect(aj).toHaveLength(0);
+    // (se apunta igual, con salto 0: es un mes en que la previsión acertó)
+    expect(aj.map(e => e.delta)).toEqual([0]);
     // y ningún punto del extracto baja de lo que había (no hay picos)
     expect(Math.min(...ext.map(e => e.saldoAcum))).toBeGreaterThan(5000);
   });

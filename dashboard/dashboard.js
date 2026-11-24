@@ -78,15 +78,43 @@ const DashboardModule = (() => {
   // hay datos suficientes: así el usuario sabe que la línea es una raya sin
   // margen y qué le falta para tenerlo, en vez de no enterarse. Solo tiene
   // sentido en modo "∑ Total" (las demás vistas ya muestran varias líneas).
-  function _bandaConfianzaHtml(expenses, chartMode) {
-    const _acc = window.FinanceApp?.accounting;
-    if (!_acc?.medirVariabilidad || chartMode !== 'summed') return '';
+  // ── Margen de error, medido contra el saldo real ─────────────────────────────
+  // Antes salía de la contabilidad de Cuentas (lo estimado frente a los
+  // movimientos asignados a cada gasto), que exige tener los movimientos bien
+  // clasificados. Ahora sale de los saldos reales: cada mes, lo que preveía la
+  // previsión desde el saldo real anterior frente al saldo que hubo (ver
+  // src/engine/precision-saldo.ts). Se mide sobre los 13 meses anteriores a hoy,
+  // sea cual sea el periodo que se esté mirando y esté o no activo «Corregir con
+  // saldo real»: la medida usa siempre las correcciones.
+  let _precisionSaldo = null;
+  function _medirPrecisionSaldo(config, loans, expenses, accounts, nominas, inflPeriodos) {
+    const api = window.FinanceApp?.engine?.precisionSaldo;
+    if (!api) return null;
     try {
-      const v = _acc.medirVariabilidad(_acc.precision.analizarTodas(expenses));
-      return `<div class="text-sm mt-8" style="color:var(--text3);line-height:1.6">
-        ${v.fiable && v.sigmaMensual > 0 ? '◫ ' : '· '}${_acc.describirBanda(v)}
+      const hoy = _fechaLocal(new Date());
+      const d = new Date();
+      const desde = _fechaLocal(new Date(d.getFullYear(), d.getMonth() - 13, 1));
+      const { reservaImprevistos, ...sinReserva } = config;
+      const ext = FinanceMath.generarExtracto(loans, expenses, accounts,
+        { ...sinReserva, dashboardStart: desde, dashboardEnd: hoy, corregirConSaldoReal: true },
+        filtroAccounts.length > 0 ? filtroAccounts : null, nominas, inflPeriodos);
+      return api.medirPrecisionConSaldo(ext, hoy);
+    } catch (e) {
+      console.error('[Dashboard] No se ha podido medir la precisión con el saldo real:', e);
+      return null;
+    }
+  }
+
+  function _bandaConfianzaHtml(chartMode) {
+    const api = window.FinanceApp?.engine?.precisionSaldo;
+    if (!api || !_precisionSaldo || chartMode !== 'summed') return '';
+    const v = _precisionSaldo.variabilidad;
+    return `<div class="text-sm mt-8" data-precision-saldo style="color:var(--text3);line-height:1.6">
+        ${v.fiable && v.sigmaMensual > 0 ? '◫ ' : '· '}${_escHtml(api.describirPrecisionSaldo(_precisionSaldo))}
       </div>`;
-    } catch { return ''; }
+  }
+  function _escHtml(t) {
+    return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   /** Un par estimado/real con su diferencia, con el mismo diseño que ya usaba «Saldo real vs proyectado hoy». */
@@ -579,6 +607,7 @@ const DashboardModule = (() => {
     const configGuardada = State.get('config');
     const reservaImprevistos = _reservaImprevistos(configGuardada, loans, expenses, accountsForExtracto, nominas, inflPeriodos);
     const config = reservaImprevistos ? { ...configGuardada, reservaImprevistos } : configGuardada;
+    _precisionSaldo = _medirPrecisionSaldo(configGuardada, loans, expenses, accountsForExtracto, nominas, inflPeriodos);
 
     const usarInflacion = config.usarInflacion||false;
     const extracto=FinanceMath.generarExtracto(loans,expenses,accountsForExtracto,config, filtroAccounts.length>0?filtroAccounts:null, nominas, inflPeriodos);
@@ -1094,7 +1123,7 @@ const DashboardModule = (() => {
           </div>
         </div>
         <div class="chart-wrap-lg"><canvas id="chart-saldo"></canvas></div>
-        <div id="banda-confianza">${_bandaConfianzaHtml(expenses, chartMode)}</div>
+        <div id="banda-confianza">${_bandaConfianzaHtml(chartMode)}</div>
       </div>
 
       <!-- Velas del saldo (mensual / anual) -->
@@ -1602,18 +1631,19 @@ const DashboardModule = (() => {
     ];
     if (histDataset) datasets.push(histDataset);
 
-    // Banda de confianza: cuánto puede desviarse la proyección, medido con la
-    // contabilidad real (ver src/accounting/confianza.ts). Solo en modo suma:
-    // en apilado o por líneas no hay UNA proyección que envolver.
+    // Banda de confianza: cuánto puede desviarse la proyección, medido contra el
+    // saldo real (src/engine/precision-saldo.ts; la forma de la banda, en
+    // src/accounting/confianza.ts). Solo en modo suma: en apilado o por líneas
+    // no hay UNA proyección que envolver.
     //
     // Si no hay al menos tres meses de datos reales no se pinta nada, a
     // propósito: una banda inventada da falsa sensación de rigor justo en la
     // pantalla donde se decide.
     if (chartMode === 'summed' && config.showBanda !== false) {
       const _acc = window.FinanceApp?.accounting;
-      if (_acc?.medirVariabilidad) {
+      if (_acc?.bandaDeConfianza && _precisionSaldo) {
         try {
-          const variabilidad = _acc.medirVariabilidad(_acc.precision.analizarTodas(expenses));
+          const variabilidad = _precisionSaldo.variabilidad;
           // Con sigma 0 la banda existe pero tiene ancho cero: serían dos rayas
           // encima de la línea y dos entradas más en la leyenda para no decir
           // nada. El rótulo de debajo del gráfico sí explica ese caso.
@@ -1651,7 +1681,7 @@ const DashboardModule = (() => {
 
     // Previsión corregida con saldo real: la línea sin corregir, atenuada, y un
     // punto en cada corrección (el salto entre lo previsto y el saldo real).
-    const correcciones = extracto.filter(e => e.sourceType === 'ajuste-saldo-real');
+    const correcciones = extracto.filter(e => e.sourceType === 'ajuste-saldo-real' && Math.abs(e.delta) >= 0.005);
     if (chartMode === 'summed' && extractoSinCorregir && extractoSinCorregir.length > 0) {
       datasets.push({
         label: 'Estimación sin corregir',
