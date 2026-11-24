@@ -1663,14 +1663,16 @@ const DashboardModule = (() => {
               data: banda.map(p => ({ x: ts(p), y: p.arriba })),
               borderColor: 'rgba(255,176,32,0.45)', backgroundColor: 'rgba(255,176,32,0.13)',
               borderWidth: 1, borderDash: [3,3], pointRadius: 0, pointHitRadius: 0,
-              fill: '+1', tension: 0.3, order: 9,
+              // En escalones, como la línea del saldo: suavizada en curva, en
+              // cada bajada brusca llegaba tarde y el saldo parecía salirse.
+              fill: '+1', tension: 0, stepped: 'after', order: 9,
             });
             datasets.push({
               label: 'Margen de error (abajo)',
               data: banda.map(p => ({ x: ts(p), y: p.abajo })),
               borderColor: 'rgba(255,176,32,0.45)', backgroundColor: 'transparent',
               borderWidth: 1, borderDash: [3,3], pointRadius: 0, pointHitRadius: 0,
-              fill: false, tension: 0.3, order: 10,
+              fill: false, tension: 0, stepped: 'after', order: 10,
             });
           }
         } catch (e) {
@@ -1717,7 +1719,8 @@ const DashboardModule = (() => {
         pointRadius: 0,
         pointHitRadius: 20,
         fill: false,
-        tension: 0.3,
+        tension: 0,
+        stepped: 'after',
         order: 7,
       });
     }

@@ -195,8 +195,11 @@ export function describirPrecisionSaldo(p: PrecisionSaldo): string {
         .map((a) => `${a.fecha} (${a.error > 0 ? '+' : '−'}${eur(a.error)}, ${a.descartado})`)
         .join('; ')}.`
     : '';
+  const mesesES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const mesCorto = (f: string) => `${mesesES[Number(f.slice(5, 7)) - 1]} ${f.slice(0, 4)}`;
+  const tramo = `${mesCorto(p.errores[0].fecha)} – ${mesCorto(p.errores[n - 1].fecha)}`;
   return (
-    `Margen de error medido con tu saldo real en ${n} meses: ${sentido}, con una dispersión de ±${eur(p.dispersion)} al mes. ` +
+    `Margen de error medido con tu saldo real en ${n} meses (${tramo}): ${sentido}, con una dispersión de ±${eur(p.dispersion)} al mes. ` +
     `La banda (±1 desviación típica, el 68 % de los casos) se ensancha con el tiempo, y más deprisa si hay sesgo: un error que se repite se acumula cada mes.` +
     atip
   );
