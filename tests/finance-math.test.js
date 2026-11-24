@@ -355,11 +355,33 @@ describe('previsión corregida con saldo real', () => {
     expect(ext.find(e => e.fecha === '2026-03-05').saldoAcum).toBeCloseTo(550, 6);
   });
 
-  it('por cuenta: una cuenta sin actualizar no arrastra a la otra', () => {
+  it('una cuenta sin actualizar cuenta con su último saldo, como el histórico', () => {
     const aho = { _id: 'aho', nombre: 'Ahorro', activo: true, saldoInicial: 5000, fechaInicialSaldo: '2026-01-01', historicoSaldos: [] };
     const ext = FM.generarExtracto([], gastos, [cuenta(), aho], { ...config, corregirConSaldoReal: true }, null, []);
-    expect(ext.filter(e => e.sourceType === 'ajuste-saldo-real').every(e => e.cuenta === 'default')).toBe(true);
     expect(ultimo(ext)).toBeCloseTo(450 + 5000, 6);
+  });
+
+  it('varias cuentas el mismo día: UNA corrección, sin totales intermedios', () => {
+    // La nómina acaba con 300 € menos de lo previsto y el ahorro con 300 € más
+    // (un traspaso sin prever): por cuentas, dos saltos; en total, ninguno.
+    const nom = cuenta({ historicoSaldos: [{ fecha: '2026-01-31', saldo: 600 }] });
+    const aho = { _id: 'aho', nombre: 'Ahorro', activo: true, saldoInicial: 5000, fechaInicialSaldo: '2026-01-01', historicoSaldos: [{ fecha: '2026-01-31', saldo: 5300 }] };
+    const ext = FM.generarExtracto([], gastos, [nom, aho], { ...config, corregirConSaldoReal: true }, null, []);
+    const aj = ext.filter(e => e.sourceType === 'ajuste-saldo-real');
+    // se preveían 900 + 5000 = 5900; había 600 + 5300 = 5900: nada que corregir
+    expect(aj).toHaveLength(0);
+    // y ningún punto del extracto baja de lo que había (no hay picos)
+    expect(Math.min(...ext.map(e => e.saldoAcum))).toBeGreaterThan(5000);
+  });
+
+  it('la línea corregida pasa por la suma de saldos reales en cada corrección', () => {
+    const aho = { _id: 'aho', nombre: 'Ahorro', activo: true, saldoInicial: 5000, fechaInicialSaldo: '2026-01-01', historicoSaldos: [{ fecha: '2026-01-31', saldo: 5300 }] };
+    const ext = FM.generarExtracto([], gastos, [cuenta(), aho], { ...config, corregirConSaldoReal: true }, null, []);
+    const aj = ext.filter(e => e.sourceType === 'ajuste-saldo-real');
+    expect(aj.map(e => [e.fecha, e.saldoAcum, e.cuenta])).toEqual([
+      ['2026-01-31', 700 + 5300, ''],
+      ['2026-02-28', 650 + 5300, ''],
+    ]);
   });
 
   it('con la simulación desde un saldo real reciente, el final es el mismo con y sin corregir', () => {

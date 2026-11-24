@@ -1796,7 +1796,7 @@ const DashboardModule = (() => {
                 const aj = ctx.raw?.ajuste;
                 if (aj) {
                   const signo = aj.delta >= 0 ? '+' : '−';
-                  return ` Corrección · ${aj.concepto.replace('Corrección con saldo real · ', '')}: ${signo}${FinanceMath.eur(Math.abs(aj.delta))} (se preveían ${FinanceMath.eur(aj.saldoPrevisto)}, había ${FinanceMath.eur(aj.saldoReal)})`;
+                  return ` Corrección con saldo real: ${signo}${FinanceMath.eur(Math.abs(aj.delta))} (se preveían ${FinanceMath.eur(aj.saldoPrevisto)}, había ${FinanceMath.eur(aj.saldoReal)})`;
                 }
                 if (isStacked) {
                   const dsIdx = stackedDatasets.findIndex(d => d.label === ctx.dataset.label);

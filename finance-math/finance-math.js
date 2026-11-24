@@ -768,69 +768,63 @@ const FinanceMath = (() => {
   // Sin corregir, la línea de saldo sale de UN solo saldo real (el ancla) y todo
   // lo demás se proyecta: el error de cada mes se arrastra a los siguientes.
   // Corregida (toggle «Corregir con saldo real», `config.corregirConSaldoReal`),
-  // cada cuenta vuelve a su ÚLTIMO SALDO REAL DE CADA MES y la previsión sigue
-  // desde ahí: si en enero se preveían 1000 € y hubo 800, febrero parte de 800.
+  // una vez al mes —en la última fecha del mes con algún saldo real— el saldo
+  // vuelve al real y la previsión sigue desde ahí: si en enero se preveían
+  // 1000 € y hubo 800, febrero parte de 800.
   //
-  // Va por cuenta, no por el total: una cuenta que no se actualiza no arrastra a
-  // las demás. Cada corrección es un evento más del extracto, `tipo: 'ajuste'`
-  // y `sourceType: 'ajuste-saldo-real'`, con el salto en `delta`: se ve en la
-  // gráfica y no cuenta como ingreso ni como gasto en ningún sitio (todo lo
-  // que suma ingresos o gastos filtra por `tipo`). Convención de siempre: un
-  // saldo real con fecha D es el saldo al EMPEZAR ese día.
+  // El saldo real de una fecha es la suma de `saldoEnFecha` de las cuentas, la
+  // misma regla que la serie «Histórico» y que el ancla: la línea corregida pasa
+  // justo por los puntos reales en los que se corrige. (Una primera versión
+  // corregía cuenta a cuenta: con varias cuentas el mismo día la línea pintaba
+  // picos con los totales intermedios, y una cuenta sin actualizar seguía
+  // sumando lo previsto para ella y la línea se separaba del histórico.)
+  //
+  // Cada corrección es UN evento por fecha, `tipo: 'ajuste'`,
+  // `sourceType: 'ajuste-saldo-real'`, sin cuenta (`cuenta: ''`: las vistas por
+  // cuenta no lo reparten), con el salto en `delta` y lo previsto y lo real en
+  // `saldoPrevisto` / `saldoReal`. Mueve el saldo y no cuenta como ingreso ni
+  // como gasto en ningún sitio: todo lo que suma ingresos o gastos filtra por
+  // `tipo`. Convención de siempre: un saldo real con fecha D es el saldo al
+  // EMPEZAR ese día.
   function _corregirConSaldoReal(eventos, cuentasActivas, config) {
-    const fechaRef = _anclaSaldo(cuentasActivas, config).fecha;
     const deltaDe = ev => (typeof ev.delta === 'number' ? ev.delta : (ev.tipo === 'ingreso' ? Math.abs(ev.cuantia) : -Math.abs(ev.cuantia)));
-    const cuentaDe = ev => ev.cuenta || 'default';
+    // Saldo justo antes del primer evento: lo que dice la línea sin corregir.
+    let saldo = eventos.length ? eventos[0].saldoAcum - deltaDe(eventos[0]) : _anclaSaldo(cuentasActivas, config).saldo;
 
-    // Saldo de cada cuenta justo antes del primer evento: el del ancla menos lo
-    // que se movió entre ese evento y el ancla (lo mismo que hace la línea sin
-    // corregir hacia atrás). Las cuentas sin seguir (fuera del filtro) parten de
-    // 0, como en el total de siempre.
-    const corriente = {};
-    for (const a of cuentasActivas) corriente[a._id] = saldoEnFecha(a, fechaRef);
-    for (const ev of eventos) {
-      if (ev.fecha >= fechaRef) break;
-      const c = cuentaDe(ev);
-      corriente[c] = (corriente[c] || 0) - deltaDe(ev);
-    }
-    const total = () => Object.values(corriente).reduce((s, v) => s + v, 0);
-
-    // Puntos de corrección: por cuenta y mes, el último saldo real del mes.
+    // Puntos de corrección: por mes, la última fecha con algún saldo real.
     const primero = eventos.length ? eventos[0].fecha : config.dashboardStart;
-    const puntos = [];
+    const ultimoDelMes = {};
     for (const a of cuentasActivas) {
-      const fechas = new Set((a.historicoSaldos || []).map(h => h.fecha));
-      if (a.fechaInicialSaldo) fechas.add(a.fechaInicialSaldo);
-      const ultimoDelMes = {};
+      const fechas = (a.historicoSaldos || []).map(h => h.fecha);
+      if (a.fechaInicialSaldo) fechas.push(a.fechaInicialSaldo);
       for (const f of fechas) {
         if (!f || f < primero || f > config.dashboardEnd) continue;
         const mes = f.slice(0, 7);
         if (!ultimoDelMes[mes] || f > ultimoDelMes[mes]) ultimoDelMes[mes] = f;
       }
-      for (const f of Object.values(ultimoDelMes)) puntos.push({ fecha: f, cuenta: a._id, nombre: a.nombre || a._id, saldo: saldoEnFecha(a, f) });
     }
-    puntos.sort((x, y) => x.fecha.localeCompare(y.fecha));
+    const puntos = Object.values(ultimoDelMes).sort()
+      .map(f => ({ fecha: f, saldo: cuentasActivas.reduce((s, a) => s + saldoEnFecha(a, f), 0) }));
 
     const out = [];
     let i = 0;
     const corregir = p => {
-      const actual = corriente[p.cuenta] || 0;
-      const salto = p.saldo - actual;
-      corriente[p.cuenta] = p.saldo;
+      const salto = p.saldo - saldo;
+      const previsto = saldo;
+      saldo = p.saldo;
       if (Math.abs(salto) < 0.005) return;
       out.push({
-        fecha: p.fecha, concepto: `Corrección con saldo real · ${p.nombre}`,
-        cuantia: Math.abs(salto), tipo: 'ajuste', tags: [], cuenta: p.cuenta,
-        sourceId: `saldo-real_${p.cuenta}_${p.fecha}`, sourceType: 'ajuste-saldo-real',
-        delta: salto, saldoPrevisto: actual, saldoReal: p.saldo, saldoAcum: total(),
+        fecha: p.fecha, concepto: 'Corrección con saldo real',
+        cuantia: Math.abs(salto), tipo: 'ajuste', tags: [], cuenta: '',
+        sourceId: `saldo-real_${p.fecha}`, sourceType: 'ajuste-saldo-real',
+        delta: salto, saldoPrevisto: previsto, saldoReal: p.saldo, saldoAcum: saldo,
       });
     };
     for (const ev of eventos) {
       while (i < puntos.length && puntos[i].fecha <= ev.fecha) corregir(puntos[i++]);
       const d = deltaDe(ev);
-      const c = cuentaDe(ev);
-      corriente[c] = (corriente[c] || 0) + d;
-      out.push({ ...ev, delta: d, saldoAcum: total() });
+      saldo += d;
+      out.push({ ...ev, delta: d, saldoAcum: saldo });
     }
     while (i < puntos.length) corregir(puntos[i++]);
     return out;

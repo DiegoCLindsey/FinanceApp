@@ -1616,11 +1616,18 @@ siguientes. Toggle «Corregir con saldo real» en «Evolución del saldo»
 1000 € a fin de enero y hubo 800, febrero parte de 800).
 
 - Motor: `FinanceMath._corregirConSaldoReal`, dentro de `generarExtracto`.
-  Por cuenta, no por el total, para que una cuenta sin actualizar no arrastre
-  a las demás. Cada corrección es un evento `tipo: 'ajuste'`,
-  `sourceType: 'ajuste-saldo-real'`, con el salto en `delta` y lo previsto y lo
-  real (`saldoPrevisto`, `saldoReal`): mueve el saldo, pero no cuenta como
-  ingreso ni gasto en ninguna parte.
+  Una vez al mes, en la última fecha con algún saldo real, el TOTAL vuelve a la
+  suma de `saldoEnFecha` de las cuentas: la misma regla que la serie
+  «Histórico» y que el ancla, así que la línea corregida pasa justo por los
+  puntos reales en los que corrige. Cada corrección es UN evento por fecha,
+  `tipo: 'ajuste'`, `sourceType: 'ajuste-saldo-real'`, sin cuenta, con el
+  salto en `delta` y lo previsto y lo real (`saldoPrevisto`, `saldoReal`):
+  mueve el saldo, pero no cuenta como ingreso ni gasto en ninguna parte.
+- Primera versión (corregida el mismo día tras verla con datos reales): iba
+  cuenta a cuenta. Con varias cuentas el mismo día la línea escalonada pintaba
+  picos con los totales intermedios (hasta saldos negativos que no existían), y
+  una cuenta sin actualizar seguía sumando lo previsto para ella, así que la
+  línea se separaba del histórico.
 - Gráfica: la línea corregida es la principal (y de ella salen el saldo final,
   el mínimo y las alertas); la previsión sin corregir va atenuada y
   discontinua; cada corrección es un punto con lo que se preveía y lo que había.
