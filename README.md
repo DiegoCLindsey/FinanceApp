@@ -124,9 +124,19 @@ npm run build      # bundle del core
 
 ## Desplegar en GitHub Pages
 
-1. Subir la carpeta `financeapp/` a un repositorio de GitHub
-2. Settings → Pages → Source: `main` branch, carpeta `/` (root) o `/financeapp`
-3. No requiere ninguna configuración adicional (solo ficheros estáticos)
+El despliegue es automático: cada push a `main` lanza el flujo
+`.github/workflows/deploy.yml` («Deploy FinanceApp to GitHub Pages»), que
+construye el paquete (`npm run build`), inyecta la configuración de Google
+Drive y Firebase, versiona las URL propias con el SHA del commit (así el
+service worker estrena caché en cada versión) y publica en Pages. También se
+puede lanzar a mano: Actions → «Deploy FinanceApp to GitHub Pages» → «Run
+workflow» sobre `main`.
+
+**Si falla con «No artifacts named "github-pages" were found»** (o «Fetching
+artifact metadata failed»), no es el código: GitHub no encontró el paquete que
+el paso anterior acababa de subir. Se arregla relanzándolo: abrir la ejecución
+fallida → «Re-run all jobs», o «Run workflow» como arriba. Mientras tanto la web
+sigue sirviendo la versión anterior.
 
 ## Notas de diseño
 
