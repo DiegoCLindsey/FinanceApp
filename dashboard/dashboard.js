@@ -550,6 +550,13 @@ const DashboardModule = (() => {
     }
   }
 
+  function toggleCorregirSaldo(valor) {
+    const cfg = State.get('config');
+    const nuevo = typeof valor === 'boolean' ? valor : !cfg.corregirConSaldoReal;
+    State.set('config', { ...cfg, corregirConSaldoReal: nuevo });
+    render();
+  }
+
   function toggleContarImprevistos(valor) {
     const cfg = State.get('config');
     const nuevo = typeof valor === 'boolean' ? valor : cfg.contarImprevistos === false;
@@ -589,6 +596,15 @@ const DashboardModule = (() => {
     const _scn = window.FinanceApp?.core;
     const _entradaSim = { loans, expenses, nominas, accounts: accountsForExtracto };
     const haySimulaciones = !!_scn?.haySimulaciones?.(_entradaSim);
+    // Con «Corregir con saldo real», la misma previsión SIN corregir, para
+    // pintarla atenuada al lado: se ve cuánto error acumulaba la estimación.
+    let extractoSinCorregir = null;
+    if (config.corregirConSaldoReal) {
+      try {
+        extractoSinCorregir = FinanceMath.generarExtracto(loans, expenses, accountsForExtracto, { ...config, corregirConSaldoReal: false },
+          filtroAccounts.length>0?filtroAccounts:null, nominas, inflPeriodos);
+      } catch (e) { console.error('[Dashboard] No se ha podido proyectar la línea sin corregir:', e); }
+    }
     let extractoCanonico = null;
     if (haySimulaciones && _scn?.sinSimulaciones) {
       try {
@@ -947,6 +963,8 @@ const DashboardModule = (() => {
       // Delegado en la vista, que no se sustituye al repintar: un solo listener.
       view.addEventListener('click', e => {
         if (e.target.closest('[data-crear-informe]')) { window.FinanceApp?.ui?.abrirCrearInforme?.(); return; }
+        const toggleCorr = e.target.closest('[data-corregir-saldo]');
+        if (toggleCorr) { toggleCorregirSaldo(!!toggleCorr.checked); return; }
         const toggleImp = e.target.closest('[data-contar-imprevistos]');
         if (toggleImp) { toggleContarImprevistos(!!toggleImp.checked); return; }
         if (!e.target.closest('[data-mes-historico]')) return;
@@ -1060,6 +1078,10 @@ const DashboardModule = (() => {
         <div class="flex justify-between items-center mb-8" style="flex-wrap:wrap;gap:6px">
           <div class="card-title" style="margin:0">Evolución del saldo</div>
           <div class="flex gap-8 items-center flex-wrap">
+            <label class="mes-toggle-imp" title="Sin corregir, la previsión sale de un solo saldo real y el error de cada mes se arrastra a los siguientes. Corregida, cada cuenta vuelve a su último saldo real de cada mes y la previsión sigue desde ahí.">
+              <span class="toggle"><input type="checkbox" data-corregir-saldo ${configGuardada.corregirConSaldoReal ? 'checked' : ''} aria-label="Corregir la previsión con el saldo real de cada mes"/><span class="toggle-slider"></span></span>
+              <span>Corregir con saldo real</span>
+            </label>
             <div class="period-selector">
               <button class="period-btn ${chartMode==='summed'?'active':''}" data-toggle="chartMode" data-valor="summed" onclick="DashboardModule.setChartMode('summed')" title="Suma de cuentas seleccionadas">∑ Total</button>
               <button class="period-btn ${chartMode==='lines'?'active':''}" data-toggle="chartMode" data-valor="lines" onclick="DashboardModule.setChartMode('lines')" title="Una línea independiente por cuenta">∥ Líneas</button>
@@ -1396,7 +1418,7 @@ const DashboardModule = (() => {
       // Cada gráfica va aislada: un fallo en una no puede dejar sin pintar a las
       // que vienen detrás, que es justo lo que pasó con `_tagMapConGrupos`.
       const _graficas = [
-        ['saldo',      () => renderChartSaldo(extracto, extractoCanonico)],
+        ['saldo',      () => renderChartSaldo(extracto, extractoCanonico, extractoSinCorregir)],
         ['tags',       () => renderChartTags(extracto, activeTags, grupoTags, tagGroupsMode)],
         ['breakdown',  () => renderChartBreakdown(_metricasGraficos)],
         ['gastos',     () => renderChartExpenseDonut(_donutMetrics)],
@@ -1416,7 +1438,7 @@ const DashboardModule = (() => {
     }, 60);
   }
 
-  function renderChartSaldo(extracto, extractoCanonico) {
+  function renderChartSaldo(extracto, extractoCanonico, extractoSinCorregir = null) {
     const ctx=document.getElementById('chart-saldo'); if(!ctx)return;
     const config = State.get('config');
     const expenses = State.get('expenses');
@@ -1627,6 +1649,29 @@ const DashboardModule = (() => {
       }
     }
 
+    // Previsión corregida con saldo real: la línea sin corregir, atenuada, y un
+    // punto en cada corrección (el salto entre lo previsto y el saldo real).
+    const correcciones = extracto.filter(e => e.sourceType === 'ajuste-saldo-real');
+    if (chartMode === 'summed' && extractoSinCorregir && extractoSinCorregir.length > 0) {
+      datasets.push({
+        label: 'Estimación sin corregir',
+        data: extractoSinCorregir.map(e => ({ x: new Date(e.fecha+'T00:00:00').getTime(), y: e.saldoAcum })),
+        borderColor: 'rgba(201,211,227,0.45)', backgroundColor: 'transparent',
+        borderWidth: 1.5, borderDash: [6,4], pointRadius: 0, pointHitRadius: 20,
+        fill: false, tension: 0, stepped: 'after', order: 6,
+      });
+    }
+    if (chartMode === 'summed' && correcciones.length > 0) {
+      datasets.push({
+        label: 'Corrección con saldo real',
+        data: correcciones.map(e => ({ x: new Date(e.fecha+'T00:00:00').getTime(), y: e.saldoAcum, ajuste: e })),
+        type: 'scatter', showLine: false,
+        backgroundColor: correcciones.map(e => e.delta >= 0 ? '#2ee6a8' : '#ff6b6b'),
+        borderColor: '#0d131d', borderWidth: 1.5, pointRadius: 5, pointHoverRadius: 7, pointStyle: 'rectRot',
+        order: 1,
+      });
+    }
+
     // Línea canónica: el saldo SIN nada de lo marcado como simulación. Va
     // atenuada y por detrás, como referencia contra la que comparar; la línea
     // gruesa sigue siendo la que incluye las simulaciones, que es la que
@@ -1725,7 +1770,7 @@ const DashboardModule = (() => {
         interaction: { mode: 'porFecha', intersect: false },
         plugins: {
           legend: {
-            display: isStacked || (histDataset != null) || margenDatasets.length>0 || criticoDatasets.length>0 || (extractoCanonico != null) || datasets.some(d=>d.label?.startsWith('🏁')),
+            display: isStacked || (histDataset != null) || (extractoSinCorregir != null) || margenDatasets.length>0 || criticoDatasets.length>0 || (extractoCanonico != null) || datasets.some(d=>d.label?.startsWith('🏁')),
             labels: { color:'#a9b6cc', font:{size:11}, boxWidth:12, filter: i => !['MC p25','MC p10','MC p75','MC p90'].includes(i.text) }
           },
           tooltip: {
@@ -1748,6 +1793,11 @@ const DashboardModule = (() => {
                 return propio === titulo ? '' : `   ↳ dato del ${propio}`;
               },
               label: ctx => {
+                const aj = ctx.raw?.ajuste;
+                if (aj) {
+                  const signo = aj.delta >= 0 ? '+' : '−';
+                  return ` Corrección · ${aj.concepto.replace('Corrección con saldo real · ', '')}: ${signo}${FinanceMath.eur(Math.abs(aj.delta))} (se preveían ${FinanceMath.eur(aj.saldoPrevisto)}, había ${FinanceMath.eur(aj.saldoReal)})`;
+                }
                 if (isStacked) {
                   const dsIdx = stackedDatasets.findIndex(d => d.label === ctx.dataset.label);
                   if (dsIdx >= 0) {
@@ -2326,7 +2376,7 @@ const DashboardModule = (() => {
     render();
   }
 
-  return { render, abrir, actualizar, toggleContarImprevistos, setVentanaVelas, setDashScope, setDashTab, limpiarSimulaciones, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleCriticos, toggleConfig, toggleAnalisis, verDetalleDistribucionMedia };
+  return { render, abrir, actualizar, toggleContarImprevistos, toggleCorregirSaldo, setVentanaVelas, setDashScope, setDashTab, limpiarSimulaciones, applyConfig, applyPreset, setChartMode, setTagGroupsMode, toggleTag, toggleTagGrupo, toggleGruposPanel, toggleTagCategoria, toggleAccFilter, clearAccFilter, toggleCriticos, toggleConfig, toggleAnalisis, verDetalleDistribucionMedia };
 })();
 
 // Publicado para el paquete nuevo: ver la nota al final de common/state.js.

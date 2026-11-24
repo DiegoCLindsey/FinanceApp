@@ -1606,6 +1606,28 @@ medidos en el navegador en escritorio y móvil):
 Comprobado tecleando fechas completas en esos cinco campos, en escritorio y
 móvil, sin desbordes en ninguna pantalla.
 
+#### [x] NEW-14 · Previsión corregida con saldo real — *propietario (2026-11-24)*
+
+Sin corregir, la línea de saldo sale de UN solo saldo real (el de «Simulación
+desde») y lo demás se proyecta: el error de cada mes se arrastra a todos los
+siguientes. Toggle «Corregir con saldo real» en «Evolución del saldo»
+(`config.corregirConSaldoReal`, apagado por defecto): cada cuenta vuelve a su
+último saldo real de cada mes y la previsión sigue desde ahí (si se preveían
+1000 € a fin de enero y hubo 800, febrero parte de 800).
+
+- Motor: `FinanceMath._corregirConSaldoReal`, dentro de `generarExtracto`.
+  Por cuenta, no por el total, para que una cuenta sin actualizar no arrastre
+  a las demás. Cada corrección es un evento `tipo: 'ajuste'`,
+  `sourceType: 'ajuste-saldo-real'`, con el salto en `delta` y lo previsto y lo
+  real (`saldoPrevisto`, `saldoReal`): mueve el saldo, pero no cuenta como
+  ingreso ni gasto en ninguna parte.
+- Gráfica: la línea corregida es la principal (y de ella salen el saldo final,
+  el mínimo y las alertas); la previsión sin corregir va atenuada y
+  discontinua; cada corrección es un punto con lo que se preveía y lo que había.
+- El informe sigue comparando previsto frente a real a su manera (su extracto
+  es el sin corregir); la comprobación contra el cuadro de mando usa el
+  cuadro de mando tal como esté.
+
 **Descartado**: conexión directa con bancos (PSD2 exige servidor y licencia),
 multimoneda, categorización con servicios externos (los datos saldrían del
 dispositivo), y simulación Monte Carlo (ya se retiró).

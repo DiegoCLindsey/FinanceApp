@@ -322,3 +322,53 @@ describe('reserva para imprevistos en la proyección', () => {
     expect(ext.filter(e => e.sourceType === 'imprevisto-estimado').map(e => e.fecha)).toEqual(['2027-01-01']);
   });
 });
+
+describe('previsión corregida con saldo real', () => {
+  // 1000 € el 1 de enero; un gasto de 100 € el día 5 de cada mes. Saldos reales:
+  // 31 de enero 700 (se preveían 900); en febrero dos, manda el último: 650.
+  const cuenta = (extra = {}) => ({
+    _id: 'default', nombre: 'Nómina', activo: true, esCuentaPrincipal: true, saldoInicial: 1000, fechaInicialSaldo: '2026-01-01',
+    historicoSaldos: [{ fecha: '2026-01-31', saldo: 700 }, { fecha: '2026-02-15', saldo: 600 }, { fecha: '2026-02-28', saldo: 650 }],
+    ...extra,
+  });
+  const gastos = [{ _id: 'g', activo: true, concepto: 'Gasto', cuantia: 100, tipo: 'gasto', tipoFrecuencia: 'mensual', frecuencia: 1, diaPago: 'dia:5', fechaInicio: '2026-01-05', tags: [], cuenta: 'default' }];
+  const config = { dashboardStart: '2026-01-01', dashboardEnd: '2026-04-30', fechaReferencia: '2026-01-01' };
+  const ultimo = ext => ext[ext.length - 1].saldoAcum;
+
+  it('sin corregir, la previsión sale de un solo saldo y arrastra el error', () => {
+    const ext = FM.generarExtracto([], gastos, [cuenta()], config, null, []);
+    expect(ultimo(ext)).toBeCloseTo(600, 6);
+    expect(ext.some(e => e.sourceType === 'ajuste-saldo-real')).toBe(false);
+  });
+
+  it('corregida, cada mes parte del último saldo real del mes anterior', () => {
+    const ext = FM.generarExtracto([], gastos, [cuenta()], { ...config, corregirConSaldoReal: true }, null, []);
+    const aj = ext.filter(e => e.sourceType === 'ajuste-saldo-real');
+    expect(aj.map(e => [e.fecha, e.delta, e.saldoPrevisto, e.saldoReal])).toEqual([
+      ['2026-01-31', -200, 900, 700],
+      ['2026-02-28', 50, 600, 650],
+    ]);
+    expect(aj.every(e => e.tipo === 'ajuste')).toBe(true);
+    // marzo y abril, desde los 650 reales: 650 − 100 − 100
+    expect(ultimo(ext)).toBeCloseTo(450, 6);
+    // el gasto de marzo parte del saldo corregido
+    expect(ext.find(e => e.fecha === '2026-03-05').saldoAcum).toBeCloseTo(550, 6);
+  });
+
+  it('por cuenta: una cuenta sin actualizar no arrastra a la otra', () => {
+    const aho = { _id: 'aho', nombre: 'Ahorro', activo: true, saldoInicial: 5000, fechaInicialSaldo: '2026-01-01', historicoSaldos: [] };
+    const ext = FM.generarExtracto([], gastos, [cuenta(), aho], { ...config, corregirConSaldoReal: true }, null, []);
+    expect(ext.filter(e => e.sourceType === 'ajuste-saldo-real').every(e => e.cuenta === 'default')).toBe(true);
+    expect(ultimo(ext)).toBeCloseTo(450 + 5000, 6);
+  });
+
+  it('con la simulación desde un saldo real reciente, el final es el mismo con y sin corregir', () => {
+    const cfg = { ...config, fechaReferencia: '2026-03-01' };
+    const sin = FM.generarExtracto([], gastos, [cuenta()], cfg, null, []);
+    const con = FM.generarExtracto([], gastos, [cuenta()], { ...cfg, corregirConSaldoReal: true }, null, []);
+    expect(ultimo(sin)).toBeCloseTo(450, 6);
+    expect(ultimo(con)).toBeCloseTo(450, 6);
+    // pero el pasado corregido pasa por los saldos reales de cada fin de mes
+    expect(con.filter(e => e.sourceType === 'ajuste-saldo-real').length).toBeGreaterThan(0);
+  });
+});

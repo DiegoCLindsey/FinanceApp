@@ -281,6 +281,11 @@ export interface AppConfig {
    * desde hoy, la media de lo marcado como imprevisto. Sin definir = sí.
    */
   contarImprevistos?: boolean;
+  /**
+   * «Corregir con saldo real»: la previsión vuelve, cuenta a cuenta, al último
+   * saldo real de cada mes y sigue desde ahí. Sin definir = no.
+   */
+  corregirConSaldoReal?: boolean;
   // tagCategorias + tagGrupos se unifican en 1.9 (docs/03, B3)
   tagCategorias: string[];
   tagGrupos: string[];

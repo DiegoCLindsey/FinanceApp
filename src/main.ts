@@ -419,13 +419,22 @@ function bootstrap(): FinanceAppNamespace {
     const contarImprevistos = config.contarImprevistos !== false;
     let reservaImprevistos: mes.ReservaParaProyeccion | null = null;
     const extractoCon =
-      (reserva: mes.ReservaParaProyeccion | null) =>
+      (reserva: mes.ReservaParaProyeccion | null, corregir = false) =>
       (desde: string, hasta: string, fechaReferencia = hoy) =>
         fm.generarExtracto(
           loans,
           gastos,
           store.get('accounts'),
-          { ...config, dashboardStart: desde, dashboardEnd: hasta, fechaReferencia, ...(reserva ? { reservaImprevistos: reserva } : {}) },
+          {
+            ...config,
+            dashboardStart: desde,
+            dashboardEnd: hasta,
+            fechaReferencia,
+            // El informe ya compara contra el saldo real a su manera: su extracto
+            // es la previsión sin corregir. El cuadro de mando, abajo, como esté.
+            corregirConSaldoReal: corregir,
+            ...(reserva ? { reservaImprevistos: reserva } : {}),
+          },
           null,
           nominas,
           store.get('inflacion'),
@@ -464,7 +473,7 @@ function bootstrap(): FinanceAppNamespace {
             cuadroDeMando: (() => {
               // Lo mismo que pinta el cuadro de mando para este periodo.
               try {
-                const ext = generarExtracto(desde, hasta, hoy);
+                const ext = extractoCon(reservaImprevistos, config.corregirConSaldoReal === true)(desde, hasta, hoy);
                 if (ext.length === 0) return null;
                 const saldoFinal = Number(ext[ext.length - 1]?.saldoAcum ?? NaN);
                 return Number.isFinite(saldoFinal) ? { saldoFinal } : null;
