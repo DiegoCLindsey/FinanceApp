@@ -1629,8 +1629,13 @@ siguientes. Toggle «Corregir con saldo real» en «Evolución del saldo»
   una cuenta sin actualizar seguía sumando lo previsto para ella, así que la
   línea se separaba del histórico.
 - Gráfica: la línea corregida es la principal (y de ella salen el saldo final,
-  el mínimo y las alertas); la previsión sin corregir va atenuada y
-  discontinua; cada corrección es un punto con lo que se preveía y lo que había.
+  el mínimo y las alertas); al lado, atenuada y discontinua, la «Estimación
+  desde el inicio (sin corregir)», anclada en el inicio del periodo y
+  proyectada hacia delante: por debajo de la corregida = te ha ido mejor de lo
+  previsto. (Primero se anclaba en «Simulación desde»; siendo hoy, la línea se
+  calculaba hacia atrás desde el saldo de hoy y se leía al revés, y parecía
+  contradecir al sesgo medido.) Cada corrección es un punto con lo que se
+  preveía y lo que había.
 - El informe sigue comparando previsto frente a real a su manera (su extracto
   es el sin corregir); la comprobación contra el cuadro de mando usa el
   cuadro de mando tal como esté.

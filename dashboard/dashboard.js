@@ -625,12 +625,18 @@ const DashboardModule = (() => {
     const _scn = window.FinanceApp?.core;
     const _entradaSim = { loans, expenses, nominas, accounts: accountsForExtracto };
     const haySimulaciones = !!_scn?.haySimulaciones?.(_entradaSim);
-    // Con «Corregir con saldo real», la misma previsión SIN corregir, para
-    // pintarla atenuada al lado: se ve cuánto error acumulaba la estimación.
+    // Con «Corregir con saldo real», la estimación DESDE EL INICIO DEL PERIODO
+    // sin corregir, para pintarla atenuada al lado: se ve cuánto error
+    // acumulaba. Se ancla en el inicio (`fechaReferencia = dashboardStart`) y
+    // se proyecta hacia delante: si va por debajo de la corregida, te ha ido
+    // mejor de lo previsto. (La primera versión usaba la «Simulación desde» de
+    // la configuración; siendo hoy, la línea se calculaba HACIA ATRÁS desde el
+    // saldo de hoy y se leía al revés: por debajo significaba que te había ido
+    // peor.)
     let extractoSinCorregir = null;
     if (config.corregirConSaldoReal) {
       try {
-        extractoSinCorregir = FinanceMath.generarExtracto(loans, expenses, accountsForExtracto, { ...config, corregirConSaldoReal: false },
+        extractoSinCorregir = FinanceMath.generarExtracto(loans, expenses, accountsForExtracto, { ...config, corregirConSaldoReal: false, fechaReferencia: config.dashboardStart },
           filtroAccounts.length>0?filtroAccounts:null, nominas, inflPeriodos);
       } catch (e) { console.error('[Dashboard] No se ha podido proyectar la línea sin corregir:', e); }
     }
@@ -1686,7 +1692,7 @@ const DashboardModule = (() => {
     const correcciones = extracto.filter(e => e.sourceType === 'ajuste-saldo-real' && Math.abs(e.delta) >= 0.005);
     if (chartMode === 'summed' && extractoSinCorregir && extractoSinCorregir.length > 0) {
       datasets.push({
-        label: 'Estimación sin corregir',
+        label: 'Estimación desde el inicio (sin corregir)',
         data: extractoSinCorregir.map(e => ({ x: new Date(e.fecha+'T00:00:00').getTime(), y: e.saldoAcum })),
         borderColor: 'rgba(201,211,227,0.45)', backgroundColor: 'transparent',
         borderWidth: 1.5, borderDash: [6,4], pointRadius: 0, pointHitRadius: 20,
