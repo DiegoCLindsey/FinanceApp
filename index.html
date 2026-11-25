@@ -448,16 +448,27 @@
           <span class="period-resumen-flecha" aria-hidden="true">▾</span>
         </button>
         <span class="period-bar-label">Periodo</span>
-        <input class="form-input" type="date" id="cfg-start" style="width:138px" onchange="PeriodBar.apply()"/>
-        <div class="flex gap-4 flex-wrap" style="row-gap:4px">
-          <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('1M')">1M</button>
-          <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('3M')">3M</button>
-          <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('6M')">6M</button>
-          <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('1Y')">1Y</button>
-          <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('5Y')">5Y</button>
-          <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('10Y')">10Y</button>
+        <!-- Por defecto «hoy ± X»: el periodo avanza solo con los días (core/periodo).
+             «Intervalo específico» abre las fechas de inicio y fin de siempre. -->
+        <div class="period-selector" role="group" aria-label="Periodo que se mira">
+          <button type="button" class="period-btn" data-periodo-meses="6" onclick="PeriodBar.relativo(6)" title="De hoy menos 6 meses a hoy más 6 meses">Hoy ±6M</button>
+          <button type="button" class="period-btn" data-periodo-meses="12" onclick="PeriodBar.relativo(12)" title="De hoy menos 12 meses a hoy más 12 meses">±12M</button>
+          <button type="button" class="period-btn" data-periodo-meses="24" onclick="PeriodBar.relativo(24)" title="De hoy menos 24 meses a hoy más 24 meses">±24M</button>
+          <button type="button" class="period-btn" data-periodo-especifico onclick="PeriodBar.especifico()" title="Elegir las fechas de inicio y fin">Intervalo específico</button>
         </div>
-        <input class="form-input" type="date" id="cfg-end" style="width:138px" onchange="PeriodBar.apply()"/>
+        <div id="period-especifico" class="period-especifico hidden">
+          <input class="form-input" type="date" id="cfg-start" style="width:138px" onchange="PeriodBar.apply()" aria-label="Inicio del periodo"/>
+          <div class="flex gap-4 flex-wrap" style="row-gap:4px">
+            <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('1M')">1M</button>
+            <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('3M')">3M</button>
+            <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('6M')">6M</button>
+            <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('1Y')">1Y</button>
+            <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('5Y')">5Y</button>
+            <button type="button" class="btn-secondary" onclick="PeriodBar.applyPreset('10Y')">10Y</button>
+          </div>
+          <input class="form-input" type="date" id="cfg-end" style="width:138px" onchange="PeriodBar.apply()" aria-label="Fin del periodo"/>
+        </div>
+        <span id="period-relativo-texto" class="period-bar-label" style="text-transform:none;font-weight:400"></span>
         <span class="period-bar-label" style="margin-left:auto">Simulación desde</span>
         <input class="form-input" type="date" id="cfg-sim" style="width:138px" onchange="PeriodBar.apply()"
                title="Desde esta fecha se aplican las predicciones. Antes de ella manda lo que pasó de verdad, y el saldo se ancla en el último saldo real conocido."/>
@@ -608,7 +619,43 @@
       if (s) s.value = config.dashboardStart;
       if (e) e.value = config.dashboardEnd;
       if (r) r.value = config.fechaReferencia || hoyISO();
+      pintarModo(config);
       pintarAncla();
+    }
+    // ── Modo: «hoy ± X» (por defecto) o «intervalo específico» ───────────────
+    // En «hoy ± X» las fechas las calcula el store al leer la config (core/periodo):
+    // aquí solo se guarda el modo y los meses, y se enseña el tramo resultante.
+    const esEspecifico = c => c.periodoModo === 'especifico';
+    const mesesDe = c => [6, 12, 24].includes(Number(c.periodoMeses)) ? Number(c.periodoMeses) : 12;
+    function pintarModo(config) {
+      const especifico = esEspecifico(config);
+      const meses = mesesDe(config);
+      document.querySelectorAll('#period-bar [data-periodo-meses]').forEach(b => {
+        const activo = !especifico && Number(b.dataset.periodoMeses) === meses;
+        b.classList.toggle('active', activo);
+        b.setAttribute('aria-pressed', String(activo));
+      });
+      const bEsp = document.querySelector('#period-bar [data-periodo-especifico]');
+      if (bEsp) { bEsp.classList.toggle('active', especifico); bEsp.setAttribute('aria-pressed', String(especifico)); }
+      document.getElementById('period-especifico')?.classList.toggle('hidden', !especifico);
+      const txt = document.getElementById('period-relativo-texto');
+      if (txt) txt.textContent = especifico ? '' : `${fechaCorta(config.dashboardStart)} → ${fechaCorta(config.dashboardEnd)}`;
+    }
+    function guardarModo(patch) {
+      const existing = State.get('config');
+      State.set('config', { ...existing, ...patch });
+      const config = State.get('config');
+      init(config);
+      Router.rerender();
+    }
+    /** «Hoy ± meses». */
+    function relativo(meses) { guardarModo({ periodoModo: 'relativo', periodoMeses: meses }); }
+    /** «Intervalo específico»: parte del periodo que se estaba viendo. */
+    function especifico() {
+      const c = State.get('config');
+      if (esEspecifico(c)) return;
+      guardarModo({ periodoModo: 'especifico', dashboardStart: c.dashboardStart, dashboardEnd: c.dashboardEnd });
+      document.getElementById('cfg-start')?.focus();
     }
     // El saldo que el motor va a usar como ancla, para que no sea invisible.
     // Se recorta a la ventana igual que hace el motor (_aplicarSaldoRef): una
@@ -626,7 +673,9 @@
       const c = State.get('config');
       const ini = document.getElementById('cfg-start')?.value || c.dashboardStart;
       const fin = document.getElementById('cfg-end')?.value   || c.dashboardEnd;
-      t.textContent = `${fechaCorta(ini)} → ${fechaCorta(fin)}`;
+      t.textContent = esEspecifico(c)
+        ? `${fechaCorta(ini)} → ${fechaCorta(fin)}`
+        : `Hoy ±${mesesDe(c)} meses · ${fechaCorta(c.dashboardStart)} → ${fechaCorta(c.dashboardEnd)}`;
     }
     function pintarAncla() {
       pintarResumen();
@@ -653,11 +702,16 @@
       const start = document.getElementById('cfg-start')?.value || existing.dashboardStart;
       const end   = document.getElementById('cfg-end')?.value   || existing.dashboardEnd;
       const sim   = document.getElementById('cfg-sim')?.value   || existing.fechaReferencia || hoyISO();
-      State.set('config', { ...existing, dashboardStart: start, dashboardEnd: end, fechaReferencia: sim });
+      // Las fechas solo se escriben en «intervalo específico»: en «hoy ± X» las
+      // calcula el store, y aquí solo puede cambiar la fecha de simulación.
+      const patch = esEspecifico(existing)
+        ? { dashboardStart: start, dashboardEnd: end, fechaReferencia: sim }
+        : { fechaReferencia: sim };
+      State.set('config', { ...existing, ...patch });
       // El store nuevo tiene su propia copia de config en memoria: sin avisarle,
       // las vistas de src/ (cierre por periodo, comparativa…) se quedan con la
       // ventana anterior hasta que se recarga la página.
-      window.FinanceApp?.store?.patchConfig?.({ dashboardStart: start, dashboardEnd: end, fechaReferencia: sim });
+      window.FinanceApp?.store?.patchConfig?.(patch);
       pintarAncla();
       Router.rerender();
     }
@@ -675,7 +729,7 @@
       if (endEl) endEl.value = fechaLocal(dE);
       apply();
     }
-    return { init, apply, applyPreset };
+    return { init, apply, applyPreset, relativo, especifico };
   })();
   // Publicado para el paquete nuevo: ver la nota al final de common/state.js.
   window.PeriodBar = PeriodBar;

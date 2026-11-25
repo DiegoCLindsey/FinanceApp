@@ -184,8 +184,57 @@ describe('store', () => {
     store.load();
     expect(store.get('accounts')).toHaveLength(1);
     expect(store.get('accounts')[0].esCuentaPrincipal).toBe(true);
-    expect(store.get('config').dashboardStart).toBe('2026-07-30');
+    // Por defecto, «hoy ± 12 meses»
+    expect(store.get('config').dashboardStart).toBe('2025-07-30');
     expect(store.get('config').dashboardEnd).toBe('2027-07-30');
+  });
+
+  describe('periodo: «hoy ± X» o intervalo específico', () => {
+    const nuevo = () => {
+      const adapter = createMemoryAdapter();
+      const store = createStore({ adapter, hoy: HOY });
+      store.load();
+      return { store, adapter };
+    };
+
+    it('«hoy ± X» se calcula al leer, con 6, 12 o 24 meses', () => {
+      const { store } = nuevo();
+      store.patchConfig({ periodoMeses: 6 });
+      expect(store.get('config')).toMatchObject({ dashboardStart: '2026-01-30', dashboardEnd: '2027-01-30' });
+      store.patchConfig({ periodoMeses: 24 });
+      expect(store.get('config')).toMatchObject({ dashboardStart: '2024-07-30', dashboardEnd: '2028-07-30' });
+      // un valor raro cae en 12
+      store.patchConfig({ periodoMeses: 7 });
+      expect(store.get('config').dashboardStart).toBe('2025-07-30');
+    });
+
+    it('leer no escribe nada, y la referencia es estable mientras no cambie', () => {
+      const { store, adapter } = nuevo();
+      const escritas: string[] = [];
+      const set = adapter.set.bind(adapter);
+      adapter.set = (k: string, v: unknown) => (escritas.push(k), set(k, v));
+      const a = store.get('config');
+      expect(store.get('config')).toBe(a);
+      expect(escritas).toEqual([]);
+    });
+
+    it('poner fechas concretas pasa a intervalo específico; cambiar otra cosa no', () => {
+      const { store } = nuevo();
+      store.patchConfig({ showCriticos: false });
+      expect(store.get('config').periodoModo).toBeUndefined();
+      store.patchConfig({ dashboardStart: '2026-01-01', dashboardEnd: '2026-12-31' });
+      expect(store.get('config')).toMatchObject({ periodoModo: 'especifico', dashboardStart: '2026-01-01', dashboardEnd: '2026-12-31' });
+      // y se vuelve a «hoy ± X» pidiéndolo
+      store.patchConfig({ periodoModo: 'relativo', periodoMeses: 12 });
+      expect(store.get('config')).toMatchObject({ dashboardStart: '2025-07-30', dashboardEnd: '2027-07-30' });
+    });
+
+    it('escribir la config leída (con las fechas calculadas) no cambia de modo', () => {
+      const { store } = nuevo();
+      store.set('config', { ...store.get('config'), showCriticos: false });
+      expect(store.get('config').periodoModo).toBeUndefined();
+      expect(store.get('config').dashboardStart).toBe('2025-07-30');
+    });
   });
 
   it('garantiza exactamente una cuenta principal', () => {

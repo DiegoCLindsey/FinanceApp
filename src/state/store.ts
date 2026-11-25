@@ -7,6 +7,7 @@
 // datos existentes del usuario sin conversión manual.
 
 import { formatLocalDate, todayISO, type ISODate } from '@/core/dates';
+import { normalizarPeriodoAlGuardar, resolverPeriodo } from '@/core/periodo';
 import { crearResolverTramos } from '@/core/tax/tables';
 import type { Tramos } from '@/core/tax/irpf';
 import { defaultAccount, defaultConfig, defaultState, SCHEMA_VERSION, type AppConfig, type AppState, type CollectionKey } from './schema';
@@ -28,8 +29,14 @@ function horizonteDefecto(hoy: Date): ISODate {
   return formatLocalDate(new Date(hoy.getFullYear() + 1, hoy.getMonth(), hoy.getDate()));
 }
 
-export function createStore({ adapter, hoy = new Date() }: StoreOptions) {
+export function createStore({ adapter, hoy: hoyFijo }: StoreOptions) {
+  const hoy = hoyFijo ?? new Date();
   const hoyISO = formatLocalDate(hoy);
+  /**
+   * «Hoy» para el periodo relativo: el de verdad, que avanza aunque la pestaña
+   * lleve abierta desde ayer; o el fijado al crear el store (tests).
+   */
+  const hoyPeriodo = () => (hoyFijo ? hoyISO : todayISO());
   const finISO = horizonteDefecto(hoy);
   let state: AppState = defaultState(hoyISO, finISO);
   const listeners = new Set<Listener>();
@@ -117,19 +124,33 @@ export function createStore({ adapter, hoy = new Date() }: StoreOptions) {
     }
   }
 
+  // La config que se lee lleva el periodo resuelto (core/periodo): en «hoy ± X»
+  // las fechas se calculan aquí, no se guardan. Se recuerda la última para
+  // devolver la MISMA referencia mientras no cambie la config ni el día.
+  let configResuelta: { origen: AppConfig; dia: ISODate; config: AppConfig } | null = null;
+  function configConPeriodo(): AppConfig {
+    const dia = hoyPeriodo();
+    if (configResuelta && configResuelta.origen === state.config && configResuelta.dia === dia) return configResuelta.config;
+    const config = resolverPeriodo(state.config, dia);
+    configResuelta = { origen: state.config, dia, config };
+    return config;
+  }
+
   function get<K extends StateKey>(key: K): AppState[K] {
+    if (key === 'config') return configConPeriodo() as AppState[K];
     return state[key];
   }
 
   function set<K extends StateKey>(key: K, value: AppState[K]): void {
-    state[key] = value;
+    state[key] =
+      key === 'config' ? (normalizarPeriodoAlGuardar(configConPeriodo(), value as AppConfig, hoyPeriodo()) as AppState[K]) : value;
     persist(key);
     notify(key);
   }
 
   /** Parche superficial sobre config (el patrón más común en las vistas). */
   function patchConfig(patch: Partial<AppConfig>): void {
-    set('config', { ...state.config, ...patch });
+    set('config', { ...configConPeriodo(), ...patch });
   }
 
   function subscribe(listener: Listener): () => void {

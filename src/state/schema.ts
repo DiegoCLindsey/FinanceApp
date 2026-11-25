@@ -248,6 +248,11 @@ export interface PuntoControl {
 export type FeatureFlags = Record<string, boolean>;
 
 export interface AppConfig {
+  /**
+   * Periodo que se mira. En «hoy ± X» (`periodoModo` sin definir o
+   * 'relativo') estas dos fechas las calcula el store al leer; solo mandan las
+   * guardadas en 'especifico'. Ver core/periodo.
+   */
   dashboardStart: ISODate;
   dashboardEnd: ISODate;
   fechaReferencia: ISODate;
@@ -286,6 +291,10 @@ export interface AppConfig {
    * saldo real de cada mes y sigue desde ahí. Sin definir = no.
    */
   corregirConSaldoReal?: boolean;
+  /** «Hoy ± X» (por defecto) o «Intervalo específico». */
+  periodoModo?: 'relativo' | 'especifico';
+  /** X de «hoy ± X», en meses: 6, 12 o 24 (por defecto 12). */
+  periodoMeses?: number;
   // tagCategorias + tagGrupos se unifican en 1.9 (docs/03, B3)
   tagCategorias: string[];
   tagGrupos: string[];

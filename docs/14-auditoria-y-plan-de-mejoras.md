@@ -1664,6 +1664,24 @@ no está fina. Ahora sale SOLO de los saldos reales (`engine/precision-saldo`):
 Pendiente, si se quiere: aplicar el sesgo a la previsión (una línea «ajustada
 por el sesgo») con un toggle aparte; y llevar la cifra al informe.
 
+#### [x] NEW-16 · Periodo «hoy ± X» por defecto — *propietario (2026-11-25)*
+
+La barra de periodo arranca en «Hoy ±12M» con selectores ±6 / ±12 / ±24 meses;
+«Intervalo específico» abre las fechas de inicio y fin y los atajos 1M…10Y de
+siempre (partiendo del periodo que se estaba viendo).
+
+- `config.periodoModo` ('relativo' por defecto | 'especifico') y
+  `config.periodoMeses` (6, 12, 24). Lógica en `core/periodo`.
+- En «hoy ± X» las fechas NO se guardan: el store las calcula al leer la
+  config (`get('config')`, misma referencia mientras no cambien config ni
+  día). Así el periodo avanza solo y abrir la aplicación no escribe nada:
+  guardarlas a diario haría que dos dispositivos cambiasen la config cada día
+  y la sincronización preguntaría por un conflicto casi siempre.
+- Escribir fechas concretas (la barra en «intervalo específico», tests,
+  asistentes) pasa el modo a específico automáticamente.
+- Quien ya tenía un intervalo guardado pasa a «hoy ± 12 meses» (el modo no
+  estaba guardado); su intervalo se recupera con «Intervalo específico».
+
 **Descartado**: conexión directa con bancos (PSD2 exige servidor y licencia),
 multimoneda, categorización con servicios externos (los datos saldrían del
 dispositivo), y simulación Monte Carlo (ya se retiró).
